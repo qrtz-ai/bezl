@@ -26,6 +26,21 @@ impl ProcessSpawn {
     }
 }
 
+/// The marker apps/desktop/src-tauri/build.rs puts in the shell-script stub it writes for a missing externalBin.
+pub const DEV_STUB_MARK: &[u8] = b"qrtz: dev stub";
+
+/// True if `program` is that dev stub (it only prints how to build the real binary and exits 1), so the supervisor
+/// reports why instead of crash-looping on an opaque `exited code=1`.
+pub fn is_dev_stub(program: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 128];
+    let Ok(mut f) = std::fs::File::open(program) else {
+        return false;
+    };
+    let n = f.read(&mut head).unwrap_or(0);
+    head[..n].starts_with(b"#!") && head[..n].windows(DEV_STUB_MARK.len()).any(|w| w == DEV_STUB_MARK)
+}
+
 #[cfg(unix)]
 fn signal_name(st: &std::process::ExitStatus) -> Option<String> {
     use std::os::unix::process::ExitStatusExt;
@@ -99,6 +114,12 @@ fn emit_stderr_line(line: &[u8], cut: usize) {
 
 impl Spawn for ProcessSpawn {
     fn spawn(&self) -> std::io::Result<ChildIo> {
+        if is_dev_stub(&self.program) {
+            return Err(std::io::Error::other(format!(
+                "{} is the dev stub, not the real binary: run `bun run build:helper`",
+                self.program.display()
+            )));
+        }
         let mut cmd = Command::new(&self.program);
         cmd.args(&self.args)
             .envs(self.env.iter().cloned())

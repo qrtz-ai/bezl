@@ -17,6 +17,9 @@ fn main() {
 /// externalBins, which tauri-build requires to exist. `bun run build:helper` builds the real ones. A debug build
 /// (`cargo check`, `tauri dev`, the CI check) without them gets a stub that says how to build them; a release build
 /// never does, so a bundle can't ship a stub. (`binaries/qrtz-helper` has always been required as is.)
+/// tauri-build copies these into target/<profile>/ only when cargo reruns this script, which is mtime-based, so
+/// scripts/sidecars.mjs gives a changed binary a fresh mtime and syncs target/debug itself; qrtz-helper-bridge's
+/// `is_dev_stub` refuses to spawn a stub that still got through (its marker is STUB_MARK).
 const STUB_MARK: &str = "qrtz: dev stub";
 const STUBBED: &[(&str, &str)] = &[
     (

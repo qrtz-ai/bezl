@@ -107,6 +107,9 @@ impl SnapHost {
         *last = Some((on, line.clone()));
         drop(last);
         match (was.map(|w| w.0), on) {
+            // Gave up after a crash loop (a dev stub, a missing grant): a change while on is the user's retry, like
+            // switching snap off and on again (which starts it with a fresh restart budget).
+            (Some(true), true) if self.sup.status().state == HelperState::Failed => self.sup.start(),
             (Some(true), true) => {
                 self.sup.try_send(line);
             }
@@ -267,6 +270,70 @@ mod tests {
             SnapLine::None
         );
         assert_eq!(h.on_line("not json", &cfg), SnapLine::None);
+    }
+
+    /// A qrtz-snap that never starts (counted), on a supervisor that gives up after two quick tries.
+    struct Broken(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl qrtz_helper_bridge::Spawn for Broken {
+        fn spawn(&self) -> std::io::Result<qrtz_helper_bridge::ChildIo> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::other("dev stub"))
+        }
+    }
+
+    async fn until(sup: &Supervisor, state: HelperState) {
+        let mut rx = sup.watch_status();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            rx.wait_for(|s| s.state == state),
+        )
+        .await
+        .expect("state reached")
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn switching_snap_back_on_or_changing_its_settings_retries_after_a_crash_loop() {
+        let tries = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let opts = qrtz_helper_bridge::SupervisorOptions {
+            name: "qrtz-snap".into(),
+            base_delay: std::time::Duration::from_millis(1),
+            max_delay: std::time::Duration::from_millis(2),
+            max_restarts: 2,
+            heartbeat_timeout: std::time::Duration::ZERO,
+            ..Default::default()
+        };
+        let h = SnapHost::new(Supervisor::spawn(
+            opts,
+            std::sync::Arc::new(Broken(tries.clone())),
+        ));
+        let n = || tries.load(std::sync::atomic::Ordering::SeqCst);
+        let on = json!({"modules": {"enabled": true, "snap": {"enabled": true}}, "snap": {}});
+        let off = json!({"modules": {"enabled": true, "snap": {"enabled": false}}, "snap": {}});
+        assert!(h.apply(&on));
+        until(&h.sup, HelperState::Failed).await;
+        assert_eq!(n(), 3, "the first try and two restarts, then it gives up");
+        assert!(h.apply(&off));
+        until(&h.sup, HelperState::Stopped).await;
+        assert!(h.apply(&on));
+        until(&h.sup, HelperState::Failed).await;
+        assert_eq!(n(), 6, "switched back on: a fresh restart budget");
+        let mut changed = on.clone();
+        changed["snap"]["statusItem"] = json!(false);
+        assert!(h.apply(&changed));
+        // Already Failed, so wait on the count rather than the state.
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while n() < 9 || h.sup.status().state != HelperState::Failed {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("a settings change while it had given up is a retry too");
+        assert_eq!(n(), 9);
+        assert!(
+            !h.apply(&changed),
+            "an unrelated config:set still changes nothing"
+        );
     }
 
     #[tokio::test]

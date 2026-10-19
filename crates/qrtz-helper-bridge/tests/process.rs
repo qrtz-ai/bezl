@@ -381,3 +381,57 @@ fn mock_mic_fails_at_start_shares_the_started_chunk() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+/// apps/desktop/src-tauri/build.rs's stub for a missing externalBin (qrtz-snap, the `qrtz` command), as written.
+fn write_stub(dir: &std::path::Path, name: &str) -> PathBuf {
+    let p = dir.join(name);
+    std::fs::write(
+        &p,
+        format!("#!/bin/sh\necho 'qrtz: dev stub ({name}); run bun run build:helper' >&2\nexit 1\n"),
+    )
+    .unwrap();
+    p
+}
+
+#[test]
+fn the_dev_stub_build_rs_writes_is_recognised_and_a_real_binary_is_not() {
+    let build_rs = std::fs::read_to_string(root().join("apps/desktop/src-tauri/build.rs")).unwrap();
+    let mark = std::str::from_utf8(process::DEV_STUB_MARK).unwrap();
+    assert!(
+        build_rs.contains(&format!("const STUB_MARK: &str = \"{mark}\";"))
+            && build_rs.contains("#!/bin/sh\\necho '{STUB_MARK}"),
+        "build.rs's stub and is_dev_stub must agree"
+    );
+    let d = tempfile::tempdir().unwrap();
+    assert!(process::is_dev_stub(&write_stub(d.path(), "qrtz-snap")));
+    let real = d.path().join("real");
+    std::fs::write(
+        &real,
+        b"\xcf\xfa\xed\xfe not a script; mentions qrtz: dev stub in its strings",
+    )
+    .unwrap();
+    assert!(
+        !process::is_dev_stub(&real),
+        "a Mach-O that merely contains the words is real"
+    );
+    assert!(!process::is_dev_stub(&d.path().join("missing")));
+}
+
+#[tokio::test]
+async fn the_supervisor_refuses_a_dev_stub_and_says_how_to_build_the_real_one() {
+    let d = tempfile::tempdir().unwrap();
+    let stub = write_stub(d.path(), "qrtz-snap");
+    let spawn = ProcessSpawn {
+        program: stub,
+        args: vec![],
+        env: vec![],
+    };
+    let err = match Spawn::spawn(&spawn) {
+        Err(e) => e.to_string(),
+        Ok(_) => panic!("the stub was spawned"),
+    };
+    assert!(
+        err.contains("dev stub") && err.contains("bun run build:helper"),
+        "{err}"
+    );
+}

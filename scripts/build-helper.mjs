@@ -6,6 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { install, isStub, syncDevCopy } from './sidecars.mjs';
 
 const dir = path.resolve(import.meta.dirname, '../native/qrtz-helper');
 // Toolchain: PATH, then QRTZ_SWIFT_TOOLCHAIN (a .../usr/bin dir), then the LOOP.md location on Linux.
@@ -98,23 +99,26 @@ const binDir = path.resolve(
   '../apps/desktop/src-tauri/binaries',
 );
 fs.mkdirSync(binDir, { recursive: true });
+const repo = path.resolve(import.meta.dirname, '..');
+const targetDir = process.env.CARGO_TARGET_DIR
+  ? path.resolve(repo, process.env.CARGO_TARGET_DIR)
+  : path.join(repo, 'target');
+// scripts/sidecars.mjs: a fresh mtime when the bytes change, or cargo never reruns build.rs and `tauri dev` keeps
+// running the stale (or stub) copy in target/debug.
 const dest = path.join(binDir, 'qrtz-helper-aarch64-apple-darwin');
-fs.copyFileSync(built, dest);
-fs.chmodSync(dest, 0o755);
+install(built, dest);
 console.log(`[build:helper] ${path.relative(process.cwd(), dest)}`);
 // ADR 0159: qrtz-snap ships next to the helper (Contents/MacOS/qrtz-snap, the third externalBin); the same SwiftPM
 // build made it. Its signature carries no entitlement (ai.qrtz.snap.entitlements is empty) and the identifier its
 // lock entry pins. tauri build re-signs every externalBin with the app's entitlements, so
 // scripts/release/sign-mac.sh signs it again after the bundle (docs/modules/confinement-map.json bundledCode).
 const snapDest = path.join(binDir, 'qrtz-snap-aarch64-apple-darwin');
-fs.copyFileSync(path.join(binPath.stdout.trim(), 'qrtz-snap'), snapDest);
-fs.chmodSync(snapDest, 0o755);
+install(path.join(binPath.stdout.trim(), 'qrtz-snap'), snapDest);
 console.log(`[build:helper] ${path.relative(process.cwd(), snapDest)}`);
 
 // ADR 0162: the `qrtz` command ships as the second externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
 // Contents/MacOS/qrtz-app). Built here so `bun run make` and the release workflow (which runs build:helper) bundle the
 // real one; a debug `cargo build` without it gets a stub from src-tauri/build.rs.
-const repo = path.resolve(import.meta.dirname, '..');
 const cargo = spawnSync(
   'cargo',
   [
@@ -130,12 +134,8 @@ const cargo = spawnSync(
   { cwd: repo, stdio: 'inherit' },
 );
 if (cargo.status !== 0) process.exit(1);
-const targetDir = process.env.CARGO_TARGET_DIR
-  ? path.resolve(repo, process.env.CARGO_TARGET_DIR)
-  : path.join(repo, 'target');
 const cliDest = path.join(binDir, 'qrtz-aarch64-apple-darwin');
-fs.copyFileSync(path.join(targetDir, 'release', 'qrtz'), cliDest);
-fs.chmodSync(cliDest, 0o755);
+install(path.join(targetDir, 'release', 'qrtz'), cliDest);
 // Hardened runtime and a secure timestamp on the nested command (no entitlements, it needs none) and on qrtz-snap.
 // The bundler signs both again inside the app, and scripts/release/sign-mac.sh fixes that up; signing here means a
 // local `bun run make` never has them without the runtime flag.
@@ -172,4 +172,20 @@ if (identity) {
   }
 }
 console.log(`[build:helper] ${path.relative(process.cwd(), cliDest)}`);
+// The copies `tauri dev` runs (target/debug/<name>), in case cargo doesn't rerun build.rs before it starts them.
+for (const [file, name] of [
+  [dest, 'qrtz-helper'],
+  [snapDest, 'qrtz-snap'],
+  [cliDest, 'qrtz'],
+]) {
+  if (isStub(file)) {
+    console.error(`[build:helper] ${file} is still the dev stub`);
+    process.exit(1);
+  }
+  // target/debug/qrtz may be cargo's own debug build of the command: only a stub there is replaced.
+  const devCopy = path.join(targetDir, 'debug', name);
+  if (name === 'qrtz' && fs.existsSync(devCopy) && !isStub(devCopy)) continue;
+  if (syncDevCopy(file, name, targetDir))
+    console.log(`[build:helper] synced ${path.join(targetDir, 'debug', name)}`);
+}
 process.exit(0);
