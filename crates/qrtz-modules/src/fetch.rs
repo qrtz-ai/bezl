@@ -11,7 +11,12 @@
 //!   ranges from it; once a module host has failed [`DEAD_HOST_AFTER`] blobs and served none, the rest of this fetch
 //!   skips it. An unpublished or unreachable host (a firewall that drops packets, a captive portal) then delays the
 //!   first install by about one timeout per host instead of one per range of every blob.
-//! - **Resumable**: finished range numbers are appended to `<sha256>.done`; a restart fetches only the rest.
+//! - **Resumable**: finished range numbers are appended to `<sha256>.done`, each line in one write after its bytes
+//!   are synced; a restart (a quit, a crash, a kill) fetches only the rest. Crash recovery (backlog P2, ADR 0218):
+//!   only whole lines count and a torn last line is dropped before anything is appended (a kill between a mark's
+//!   digits and its newline used to merge it with the next mark: "1" + "0" read as range 10); a part a crash left
+//!   read-only is made writable; and a part kept from an earlier fetch that fails its sha256 starts over once from
+//!   the same source instead of failing a model's only (pinned) source.
 //! - **Progress counts each byte once** (N177, ADR 0165): a blob's bytes already reported in this fetch (ranges a
 //!   failed source finished) aren't added again when the next source resumes its part.
 //! - **Verified**: a blob enters the store only after its whole size and sha256 match ([`Store::insert_file`]);
@@ -64,12 +69,34 @@ fn range_count(size: u64) -> u64 {
     size.div_ceil(RANGE_BYTES)
 }
 
+/// The range numbers in `<sha256>.done`, and whether the file is exactly those lines. Only lines that end in a
+/// newline count (backlog P2, ADR 0218): a process killed between a mark's digits and its newline leaves a torn last
+/// line whose range is simply fetched again. Bytes that aren't a number (a crash's garbage) are dropped the same way.
+fn read_marks(p: &Path) -> (BTreeSet<u64>, bool) {
+    let raw = std::fs::read(p).unwrap_or_default();
+    let text = String::from_utf8_lossy(&raw);
+    let mut clean = true;
+    let mut set = BTreeSet::new();
+    for l in text.split_inclusive('\n') {
+        match l.strip_suffix('\n').and_then(|n| n.parse::<u64>().ok()) {
+            Some(i) => {
+                set.insert(i);
+            }
+            None => clean = false,
+        }
+    }
+    (set, clean)
+}
+
 fn done_set(p: &Path) -> BTreeSet<u64> {
-    std::fs::read_to_string(p)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.trim().parse().ok())
-        .collect()
+    read_marks(p).0
+}
+
+/// Append one finished range's mark in a single write, so a kill can't leave its digits without their newline.
+fn append_mark(p: &Path, i: u64) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(p)?;
+    f.write_all(format!("{i}\n").as_bytes())
 }
 
 #[cfg(unix)]
@@ -119,7 +146,14 @@ pub async fn fetch_blobs(
                 let mut errs = vec![];
                 // This blob's bytes already in `done` during this fetch, across its sources (N177).
                 let counted = AtomicU64::new(0);
-                for src in sources(t, b) {
+                // Backlog P2 (ADR 0218): ranges a part kept from an earlier fetch (a quit, a crash, a kill) may be
+                // what's wrong if the finished part fails its hash; the part is gone then, so that source gets one
+                // fresh try before the next source (a model file has only its pinned one).
+                let mut from_disk = kept_ranges(store, b);
+                let srcs = sources(t, b);
+                let mut k = 0;
+                while let Some(src) = srcs.get(k).cloned() {
+                    k += 1;
                     let host = match src {
                         Source::Host(i) => Some(i),
                         Source::Url(_) => None,
@@ -138,6 +172,13 @@ pub async fn fetch_blobs(
                     }
                     match r {
                         Ok(true) => return Ok(()),
+                        Ok(false) if from_disk => {
+                            from_disk = false;
+                            k -= 1;
+                            errs.push(format!(
+                                "{src:?}: {MISMATCH} (resumed from an earlier download; started over)"
+                            ));
+                        }
                         Ok(false) => errs.push(format!("{src:?}: {MISMATCH}")),
                         Err(e) => errs.push(format!("{src:?}: {e}")),
                     }
@@ -157,6 +198,13 @@ pub async fn fetch_blobs(
     } else {
         Err(errs.join("; "))
     }
+}
+
+/// Whether `b` has a full-size part with finished ranges from before this fetch.
+fn kept_ranges(store: &Store, b: &BlobRef) -> bool {
+    let part = store.tmp().join(format!("{}.part", b.sha256));
+    let marks = store.tmp().join(format!("{}.done", b.sha256));
+    std::fs::metadata(&part).is_ok_and(|m| m.len() == b.size) && !done_set(&marks).is_empty()
 }
 
 /// Where `b` is fetched from. ADR 0171: a model file's bytes are never on modules.qrtz.ai; the signed tree gives it
@@ -193,8 +241,17 @@ async fn fetch_one(
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
         o.open(&part).map_err(io)?.set_len(b.size).map_err(io)?;
+    } else {
+        // Kept from an earlier fetch. A crash between `insert_file`'s chmod and its rename leaves it 0444, and every
+        // range write would then fail on each retry (backlog P2, ADR 0218).
+        crate::fsutil::set_mode(&part, 0o600).map_err(io)?;
     }
-    let have = done_set(&marks);
+    let (have, clean) = read_marks(&marks);
+    if !clean {
+        // A torn or garbled line: rewrite the marks as whole lines before anything is appended to them.
+        let lines: String = have.iter().map(|i| format!("{i}\n")).collect();
+        crate::fsutil::write_private_atomic(&marks, lines.as_bytes()).map_err(|e| e.to_string())?;
+    }
     let n = range_count(b.size);
     let already: u64 = have
         .iter()
@@ -243,13 +300,7 @@ async fn fetch_one(
                 write_at(part, start, &bytes).map_err(|e| e.to_string())?;
                 {
                     let _g = log.lock().expect("log");
-                    use std::io::Write;
-                    let mut f = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(marks)
-                        .map_err(|e| e.to_string())?;
-                    writeln!(f, "{i}").map_err(|e| e.to_string())?;
+                    append_mark(marks, i).map_err(|e| e.to_string())?;
                 }
                 counted.fetch_add(len, Ordering::SeqCst);
                 progress(done.fetch_add(len, Ordering::SeqCst) + len, total);
