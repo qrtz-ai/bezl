@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Button,
   IconButton,
   Input,
   MiniHudFrame,
@@ -27,9 +28,16 @@ const clock = (ms: number) => {
     : `${p(Math.floor(s / 60))}:${p(s % 60)}`;
 };
 
+/** `m:ss` left on the auto-stop countdown. */
+const autoStopLabel = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
 function Hud() {
   const client = useMemo(shellClient, []);
   const [s, setS] = useState<SessionView | null>(null);
+  const [stopAt, setStopAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     // N155: an older snapshot never overwrites a newer event.
@@ -37,9 +45,14 @@ function Hud() {
       setS((cur) => (sessionIsNewer(cur, v) ? v : cur));
     client.invoke('note:session').then(apply, () => {});
     const off = client.on('note:session', apply);
+    // Bozniak H3: the recorded meeting ended; show the countdown with "keep recording".
+    const offStop = client.on('note:auto-stop', (e) =>
+      setStopAt(e.state === 'armed' ? e.deadlineAt : null),
+    );
     const tick = setInterval(() => setNow(Date.now()), 500);
     return () => {
       off();
+      offStop();
       clearInterval(tick);
     };
   }, [client]);
@@ -68,6 +81,10 @@ function Hud() {
       () => setDraft(text),
     );
   };
+  const stopping = recording && stopAt !== null;
+  useEffect(() => {
+    if (!recording) setStopAt(null);
+  }, [recording]);
   const elapsed =
     recording && s?.startedAt ? now - s.startedAt : (s?.elapsedMs ?? 0);
   const line = s?.partial || s?.lines?.at(-1)?.text || '';
@@ -77,12 +94,14 @@ function Hud() {
         <>
           <RecordDot on={recording} />
           <StatusLines
-            top={`${s?.activeSpeaker ? `${s.activeSpeaker} · ` : ''}${
-              recording
-                ? 'recording'
-                : s?.phase === 'processing'
-                  ? 'summarizing…'
-                  : 'qrtz'
+            top={`${s?.activeSpeaker && !stopping ? `${s.activeSpeaker} · ` : ''}${
+              stopping
+                ? `meeting ended, stopping in ${autoStopLabel(stopAt - now)}`
+                : recording
+                  ? 'recording'
+                  : s?.phase === 'processing'
+                    ? 'summarizing…'
+                    : 'qrtz'
             }`}
             bottom={line || '\u00a0'}
             bottomTestId="mini-hud-line"
@@ -91,6 +110,18 @@ function Hud() {
             <Text variant="mono" data-testid="mini-hud-clock">
               {clock(elapsed)}
             </Text>
+            {stopping ? (
+              <Button
+                size="sm"
+                data-testid="mini-hud-keep-recording"
+                onClick={() => {
+                  setStopAt(null);
+                  void client.invoke('note:keep-recording').catch(() => {});
+                }}
+              >
+                keep recording
+              </Button>
+            ) : null}
             {recording ? (
               <IconButton
                 icon="edit"

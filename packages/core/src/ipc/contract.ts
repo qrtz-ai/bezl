@@ -266,6 +266,13 @@ export const ipcContract = {
     request: z.void(),
     response: SessionView,
   }),
+  /** The recorded meeting ended (note:auto-stop armed): keep recording, cancel the auto-stop countdown. */
+  'note:keep-recording': defineChannel({
+    version: 1,
+    capability: 'note.record',
+    request: z.void(),
+    response: SessionView,
+  }),
   'note:list': defineChannel({
     version: 1,
     capability: 'note.read',

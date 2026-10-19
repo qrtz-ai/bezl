@@ -255,6 +255,22 @@
         "degraded": []
       }
     },
+    "note:keep-recording": {
+      "request": null,
+      "response": {
+        "phase": "recording",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": [],
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "startedAt": 1760659200000
+      }
+    },
     "note:list": {
       "request": {
         "query": ""
@@ -1870,6 +1886,10 @@
     },
     "note:changed": {
       "id": "00000000-0000-4000-8000-000000000001"
+    },
+    "note:auto-stop": {
+      "state": "armed",
+      "deadlineAt": 1760000180000
     },
     "doc:changed": {
       "ids": [

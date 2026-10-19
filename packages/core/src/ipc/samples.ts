@@ -576,6 +576,7 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     },
   },
   'note:dismiss': { request: undefined, response: idleSession },
+  'note:keep-recording': { request: undefined, response: recordingSession },
   'note:list': { request: { query: '' }, response: [{ meeting }] },
   'note:get': {
     request: { id: SAMPLE_MEETING_ID },
@@ -772,6 +773,7 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
     partial: null,
   },
   'note:changed': { id: SAMPLE_MEETING_ID },
+  'note:auto-stop': { state: 'armed', deadlineAt: 1760000180000 },
   'doc:changed': { ids: [doc.id] },
   'data:backup-progress': { kind: 'export', phase: 'write', done: 1, total: 2 },
   'talk:state': talkIdle,

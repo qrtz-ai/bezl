@@ -571,6 +571,10 @@ export function createMockBridge(): TauriBridge {
     },
     'app-update:restart': () => ({ restarting: appUpdate.state === 'ready' }),
     'note:session': () => session as never,
+    'note:keep-recording': () => {
+      emit('note:auto-stop', { state: 'cleared' });
+      return session as never;
+    },
     'note:dismiss': () => {
       if (['done', 'error'].includes(String(session.phase)))
         session = { ...idleSession };

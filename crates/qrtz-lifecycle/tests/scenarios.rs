@@ -241,6 +241,8 @@ impl EventSink for Life {
             CoreEvent::DetectedPrompt { title, platform } => {
                 t.prompts.push(format!("{title}|{}", platform.as_str()))
             }
+            // Rust-only (the auto-stop countdown came after the TS oracle); covered by tests/auto_stop_grace.rs.
+            CoreEvent::AutoStop { .. } => {}
         }
     }
 }

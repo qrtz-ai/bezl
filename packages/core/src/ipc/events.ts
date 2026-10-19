@@ -59,6 +59,14 @@ export const eventContract = {
     capability: 'doc.read',
     payload: z.object({ ids: z.array(z.string()).max(1000) }),
   }),
+  /** The recorded meeting ended: the recording stops at `deadlineAt` unless it comes back or is kept. */
+  'note:auto-stop': defineEvent({
+    capability: 'note.read',
+    payload: z.discriminatedUnion('state', [
+      z.object({ state: z.literal('armed'), deadlineAt: z.number() }),
+      z.object({ state: z.literal('cleared') }),
+    ]),
+  }),
   'note:changed': defineEvent({
     capability: 'note.read',
     payload: z.object({ id: z.string() }),

@@ -349,6 +349,9 @@ pub enum CoreEvent {
         title: String,
         platform: MeetingPlatform,
     },
+    /// `note:auto-stop`: the recorded meeting ended and the recording stops at `deadline_at` unless it comes
+    /// back or the user keeps recording (`Some`), or that countdown was cleared (`None`).
+    AutoStop { deadline_at: Option<EpochMs> },
 }
 
 impl CoreEvent {
@@ -360,6 +363,7 @@ impl CoreEvent {
             CoreEvent::Changed { .. } => Some("note:changed"),
             CoreEvent::PermissionsChanged(_) => Some("permissions:changed"),
             CoreEvent::DetectedPrompt { .. } => None,
+            CoreEvent::AutoStop { .. } => Some("note:auto-stop"),
         }
     }
     pub fn payload(&self) -> Value {
@@ -370,6 +374,8 @@ impl CoreEvent {
             CoreEvent::Changed { id } => json!({ "id": id }),
             CoreEvent::PermissionsChanged(p) => serde_json::to_value(p).unwrap(),
             CoreEvent::DetectedPrompt { title, platform } => json!({ "title": title, "platform": platform }),
+            CoreEvent::AutoStop { deadline_at: Some(d) } => json!({ "state": "armed", "deadlineAt": d }),
+            CoreEvent::AutoStop { deadline_at: None } => json!({ "state": "cleared" }),
         }
     }
 }

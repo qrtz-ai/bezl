@@ -231,6 +231,11 @@ impl NoteRuntime {
     pub fn dismiss(&self) -> SessionView {
         self.sh.dismiss()
     }
+    /// `note:keep-recording`: the user keeps a recording whose meeting ended (disarms the auto-stop).
+    pub fn keep_recording(&self) -> SessionView {
+        self.sh.keep_recording();
+        self.sh.view()
+    }
     /// User delete of a meeting (`note:delete`, or the deferred delete after its undo window): stops its
     /// pipeline, drops the rows and removes its audio inside the recordings directory. Returns removed paths.
     pub async fn delete_meeting(&self, id: &str) -> Result<Vec<String>, CoreError> {
@@ -435,15 +440,13 @@ struct State {
     faults_fired: HashSet<String>,
     manual_steps: HashSet<String>,
     seq: u64,
-    /// Jared: flipping away from the meeting tab ended the meeting after the helper's ~4 s grace and stopped the
-    /// recording. A `meeting.ended` for the recorded meeting only arms this timer: (key, identity, gen, timer).
-    /// The meeting coming back (same key or identity) disarms it; the stop runs after [`AUTO_STOP_GRACE_MS`].
-    auto_stop: Option<(String, u64, u64, Option<AbortHandle>)>,
+    /// The recorded meeting's auto-stop watch (see [`super::auto_stop`]) and its armed timer.
+    auto_stop: Option<super::auto_stop::Watch>,
+    auto_stop_timer: Option<AbortHandle>,
     auto_stop_gen: u64,
 }
 
-/// How long a recorded meeting must stay gone before it auto-stops (×`retry_scale`, for tests).
-pub const AUTO_STOP_GRACE_MS: f64 = 3.0 * 60.0 * 1000.0;
+pub use super::auto_stop::GRACE_MS as AUTO_STOP_GRACE_MS;
 
 /// Outcome of saving a pipeline record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -498,6 +501,7 @@ impl State {
             manual_steps: HashSet::new(),
             seq: 0,
             auto_stop: None,
+            auto_stop_timer: None,
             auto_stop_gen: 0,
         }
     }
@@ -1068,18 +1072,13 @@ impl Shared {
                         )
                     }
                 };
-                let first = {
-                    let mut st = self.lock();
-                    if st.auto_stop.as_ref().is_some_and(|(k, id, _, _)| {
-                        *k == key || *id == super::prompt_dedupe::hash(&identity)
-                    }) {
-                        if let Some((_, _, _, Some(t))) = st.auto_stop.take() {
-                            t.abort();
-                        }
-                        tracing::info!("meeting back: auto-stop disarmed");
-                    }
-                    st.prompted.observe(&key, &identity, now)
-                };
+                if is_capturing(s.phase) {
+                    let id_hash = super::prompt_dedupe::hash(&identity);
+                    let cal = super::prompt_dedupe::calendar_event(&identity).is_some();
+                    let a = self.with_watch(&s, |w| w.detected(&key, id_hash, cal));
+                    self.auto_stop_apply(a);
+                }
+                let first = self.lock().prompted.observe(&key, &identity, now);
                 let meeting = qrtz_model::DetectedMeeting {
                     key,
                     title: title.clone(),
@@ -1106,49 +1105,20 @@ impl Shared {
             }
             HelperInput::MeetingEnded { key } => {
                 let now = self.now();
-                let identity = {
-                    let mut st = self.lock();
-                    // The identity (hash) the key was detected under: calendar event or the key itself.
-                    let id = st
-                        .prompted
-                        .identity_of(&key)
-                        .unwrap_or_else(|| super::prompt_dedupe::hash(&key));
-                    st.prompted.ended(&key, now);
-                    id
-                };
-                if is_capturing(s.phase) && s.detected.as_ref().is_some_and(|d| d.key == key) {
-                    // Never stop on the helper's short grace (a tab flip): arm a long one instead.
+                if is_capturing(s.phase) && s.detected.is_some() {
+                    // Never stop on the helper's short grace (a tab flip): arm a long one once the recorded
+                    // meeting's last live key is gone.
+                    let grace = (AUTO_STOP_GRACE_MS * self.scale()).round() as EpochMs;
                     let gen = {
                         let mut st = self.lock();
-                        if st.auto_stop.as_ref().is_some_and(|(k, _, _, _)| *k == key) {
-                            return; // already armed: keep the first deadline
-                        }
                         st.auto_stop_gen += 1;
                         st.auto_stop_gen
                     };
-                    let t = self.set_timeout(AUTO_STOP_GRACE_MS * self.scale(), move |sh| {
-                        let fire = {
-                            let mut st = sh.lock();
-                            let mine = st.auto_stop.as_ref().is_some_and(|(_, _, g, _)| *g == gen);
-                            if mine {
-                                st.auto_stop = None;
-                            }
-                            let m = st.machine.state();
-                            mine && is_capturing(m.phase) && m.detected.as_ref().is_some_and(|d| d.key == key)
-                        };
-                        if fire {
-                            let sh2 = sh.clone();
-                            sh.spawn(async move {
-                                let _ = sh2.stop(StopReason::MeetingEnded).await;
-                            });
-                        }
-                    });
-                    let mut st = self.lock();
-                    if st.auto_stop_gen == gen {
-                        st.auto_stop = Some((s.detected.as_ref().unwrap().key.clone(), identity, gen, t));
-                    }
-                    tracing::info!("meeting gone: auto-stop armed");
+                    let a = self.with_watch(&s, |w| w.ended(&key, now, grace, gen));
+                    self.lock().prompted.ended(&key, now);
+                    self.auto_stop_apply(a);
                 } else {
+                    self.lock().prompted.ended(&key, now);
                     self.send(LifecycleEvent::MeetingEnded { key });
                 }
             }
@@ -2194,12 +2164,96 @@ impl Shared {
         tracing::info!(part, "recording resumed after helper restart");
     }
 
+    // ------------------------------------------------------------------ auto-stop (meeting ended)
+
+    /// Runs `f` on the current recording's watch, creating it for the recorded meeting first.
+    fn with_watch(
+        &self,
+        s: &RecordingState,
+        f: impl FnOnce(&mut super::auto_stop::Watch) -> super::auto_stop::Action,
+    ) -> super::auto_stop::Action {
+        let (Some(mid), Some(d)) = (s.meeting_id.as_ref(), s.detected.as_ref()) else {
+            return super::auto_stop::Action::None;
+        };
+        let mut st = self.lock();
+        if st.auto_stop.as_ref().is_none_or(|w| w.meeting_id != *mid) {
+            let key_hash = super::prompt_dedupe::hash(&d.key);
+            let id = st.prompted.identity_of(&d.key).unwrap_or(key_hash);
+            st.auto_stop = Some(super::auto_stop::Watch::new(mid, &d.key, id, id != key_hash));
+        }
+        f(st.auto_stop.as_mut().unwrap())
+    }
+
+    fn auto_stop_apply(self: &Arc<Self>, a: super::auto_stop::Action) {
+        use super::auto_stop::Action;
+        match a {
+            Action::None => {}
+            Action::Clear => {
+                if let Some(t) = self.lock().auto_stop_timer.take() {
+                    t.abort();
+                }
+                tracing::info!("meeting back: auto-stop disarmed");
+                self.emit(CoreEvent::AutoStop { deadline_at: None });
+            }
+            Action::Arm(gen, deadline) => {
+                let ms = (deadline - self.now()).max(0) as f64;
+                let t = self.set_timeout(ms, move |sh| {
+                    let fire = {
+                        let mut st = sh.lock();
+                        let mine = st
+                            .auto_stop
+                            .as_ref()
+                            .and_then(|w| w.armed)
+                            .is_some_and(|(g, _)| g == gen);
+                        if mine {
+                            st.auto_stop_timer = None;
+                        }
+                        mine && is_capturing(st.machine.state().phase)
+                    };
+                    if fire {
+                        let sh2 = sh.clone();
+                        sh.spawn(async move {
+                            let _ = sh2.stop(StopReason::MeetingEnded).await;
+                        });
+                    }
+                });
+                if let Some(old) = std::mem::replace(&mut self.lock().auto_stop_timer, t) {
+                    old.abort();
+                }
+                tracing::info!("meeting gone: auto-stop armed");
+                self.emit(CoreEvent::AutoStop {
+                    deadline_at: Some(deadline),
+                });
+            }
+        }
+    }
+
+    /// "keep recording": disarms and resets the re-arm count.
+    fn keep_recording(self: &Arc<Self>) {
+        let a = match self.lock().auto_stop.as_mut() {
+            Some(w) => w.keep(),
+            None => super::auto_stop::Action::None,
+        };
+        self.auto_stop_apply(a);
+    }
+
+    fn auto_stop_drop(&self) {
+        let (w, t) = {
+            let mut st = self.lock();
+            (st.auto_stop.take(), st.auto_stop_timer.take())
+        };
+        if let Some(t) = t {
+            t.abort();
+        }
+        if w.is_some_and(|w| w.armed.is_some()) {
+            self.emit(CoreEvent::AutoStop { deadline_at: None });
+        }
+    }
+
     // ------------------------------------------------------------------ stop
 
     async fn stop(self: Arc<Self>, reason: StopReason) -> Result<SessionView, CoreError> {
-        if let Some((_, _, _, Some(t))) = self.lock().auto_stop.take() {
-            t.abort(); // any stop (manual, tray, the grace itself) ends the armed auto-stop
-        }
+        self.auto_stop_drop(); // any stop (manual, tray, the grace itself) ends the watch
         let s = self.lock().machine.state().clone();
         // Idempotent: a second stop (double-click, tray + hotkey, meeting.ended racing a click) is a no-op.
         if s.meeting_id.is_some() && matches!(s.phase, RecordingPhase::Stopping | RecordingPhase::Processing)

@@ -93,6 +93,7 @@ impl RuntimePort for NoteRuntimePort {
             "note:start" => to_json(rt.start(opt_str(&p, "title")).await.map_err(app_error)?),
             "note:stop" => to_json(rt.stop(StopReason::Manual).await.map_err(app_error)?),
             "note:dismiss" => to_json(rt.dismiss()),
+            "note:keep-recording" => to_json(rt.keep_recording()),
             "note:pause" => to_json(rt.pause(p["paused"].as_bool()).map_err(app_error)?),
             // `{id, deferMs?}`: refuses the live meeting before any tombstone; 0/absent deletes now.
             "note:delete" => {

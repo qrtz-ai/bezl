@@ -17,6 +17,7 @@ pub const RUNTIME_CHANNELS: &[&str] = &[
     "note:start",
     "note:stop",
     "note:dismiss",
+    "note:keep-recording",
     // The runtime owns the full delete (pipeline, rows, audio; refuses the meeting being recorded).
     "note:delete",
     // Tombstones live in the runtime (N17).
