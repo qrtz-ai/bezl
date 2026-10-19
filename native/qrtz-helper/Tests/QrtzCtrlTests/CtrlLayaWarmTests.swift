@@ -103,6 +103,7 @@ final class CtrlLayaWarmTests: XCTestCase {
             func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] { [] }
             func act(_ action: CtrlAction, sig: String?) throws {}
             func observe(arm: Bool?) -> CtrlObserved { CtrlObserved() }
+            func mayAct() -> Bool { false }
             func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] { throw CtrlFailure("laya.no_model") }
             func warmLaya(model: String) throws -> CtrlLayaWarmer.State { try warmer.start(model, env: [:]) }
         }

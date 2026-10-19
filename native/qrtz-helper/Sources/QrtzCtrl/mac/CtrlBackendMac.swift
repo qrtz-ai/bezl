@@ -10,6 +10,7 @@
 // log or to disk. Before acting, the element is looked up by the handle this helper created and its fingerprint is
 // re-checked against the one the host saw (`act.stale`), and a secure field is refused again.
 import AppKit
+import Carbon.HIToolbox
 import ApplicationServices
 import CoreGraphics
 import CoreML
@@ -111,7 +112,8 @@ public final class MacCtrlBackend: CtrlBackend {
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
 
-    public init() {}
+    /// Review M5: one 1 s AX messaging timeout for every element (set on the system-wide element).
+    public init() { AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0) }
 
     // MARK: apps
 
@@ -255,6 +257,17 @@ public final class MacCtrlBackend: CtrlBackend {
         return h.el
     }
 
+    /// The target is focused, its app's focused element, and its app frontmost (`act.not_focused` otherwise).
+    static func mustHaveFocus(_ el: AXUIElement) throws {
+        var pid: pid_t = 0
+        AXUIElementGetPid(el, &pid)
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 1.0)
+        let focused = MacAXSource.element(MacAXSource.raw(app, kAXFocusedUIElementAttribute))
+        guard MacAXSource.bool(el, kAXFocusedAttribute) == true, let focused, CFEqual(focused, el),
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { throw CtrlFailure("act.not_focused") }
+    }
+
     static func perform(_ el: AXUIElement, _ action: String) throws {
         guard AXUIElementPerformAction(el, action as CFString) == .success else { throw CtrlFailure("act.failed") }
     }
@@ -314,9 +327,15 @@ public final class MacCtrlBackend: CtrlBackend {
         case let .setValue(h, text, submit):
             let el = try live(h, sig: sig)
             guard CtrlTreeRules.textRoles.contains(ax.role(el) ?? "") else { throw CtrlFailure("act.refused") }
-            _ = AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            // Review H3: the focus result counts. Rulings 3 / (c): right before typing (and again before Return) the
+            // target has kAXFocused, it is its app's focused element, and its app is frontmost; else refused.
+            guard AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success else { throw CtrlFailure("act.failed") }
+            try Self.mustHaveFocus(el)
             guard AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, text as CFString) == .success else { throw CtrlFailure("act.failed") }
             if submit {
+                // M5: the watcher again before Return.
+                guard ctrlStopWatch.mayAct else { throw CtrlFailure("guard.stopped") }
+                try Self.mustHaveFocus(el)
                 var pid: pid_t = 0
                 AXUIElementGetPid(el, &pid)
                 try Self.post(combo: "return", to: pid)
@@ -364,16 +383,27 @@ public final class MacCtrlBackend: CtrlBackend {
         return true
     }
 
+    /// Review (d): the tap only counts with the permission it needs and no secure event input.
+    static func mayListen() -> Bool {
+        (CGPreflightListenEventAccess() || AXIsProcessTrusted()) && !IsSecureEventInputEnabled()
+    }
+
+    public func mayAct() -> Bool {
+        if IsSecureEventInputEnabled() { ctrlStopWatch.lost() }
+        return ctrlStopWatch.mayAct
+    }
+
     func stopTap() {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
     }
 
     public func observe(arm: Bool?) -> CtrlObserved {
         switch arm {
-        case true?: ctrlStopWatch.arm(started: startTap())
+        case true?: ctrlStopWatch.arm(started: Self.mayListen() && startTap())
         case false?: ctrlStopWatch.disarm(); stopTap()
         case nil: break
         }
+        if IsSecureEventInputEnabled() { ctrlStopWatch.lost() }
         let f = ctrlStopWatch.flags
         return CtrlObserved(frontmost: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, focused: nil,
                             stopped: f.stopped, userInput: f.userInput, armed: f.armed)

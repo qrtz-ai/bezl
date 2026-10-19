@@ -208,6 +208,8 @@ public protocol CtrlBackend: AnyObject {
     /// After `CtrlDoPolicy.check`; `sig` is the fingerprint the host saw (`act.stale` when the element changed).
     func act(_ action: CtrlAction, sig: String?) throws
     func observe(arm: Bool?) -> CtrlObserved
+    /// The stop watcher is armed and nothing tripped it (checked before every act, review C2).
+    func mayAct() -> Bool
     func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double]
     func warmLaya(model: String) throws -> CtrlLayaWarmer.State
 }
@@ -236,6 +238,10 @@ public final class CtrlServer {
                 return ["type": "ctrl.menu.shortcuts.result", "id": id,
                         "items": items.map { ["id": $0.id, "path": $0.path, "combo": $0.combo, "enabled": $0.enabled] }]
             case let .act(_, _, action, sig):
+                // Review C2: the watcher is checked first; a stop (or no watcher) refuses with `guard.stopped`.
+                guard backend.mayAct() else {
+                    return ["type": "ctrl.ax.act.result", "id": id, "ok": false, "err": "guard.stopped"]
+                }
                 do {
                     try CtrlDoPolicy.check(action)
                     try backend.act(action, sig: sig)

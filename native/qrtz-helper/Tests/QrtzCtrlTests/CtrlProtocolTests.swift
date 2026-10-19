@@ -43,6 +43,8 @@ private final class Fake: CtrlBackend {
         acted.append(action); sigs.append(sig)
     }
     func observe(arm: Bool?) -> CtrlObserved { CtrlObserved(frontmost: "com.apple.Safari", armed: true) }
+    let watcher: CtrlStopWatch = { let w = CtrlStopWatch(); w.arm(started: true); return w }()
+    func mayAct() -> Bool { watcher.mayAct }
     func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
         layaModels.append(model)
         return [0.75, 0.25]
@@ -51,6 +53,22 @@ private final class Fake: CtrlBackend {
 }
 
 final class CtrlProtocolTests: XCTestCase {
+    /// Review C2: after Esc the helper refuses every act with `guard.stopped` and never reaches the backend.
+    func testAStoppedWatcherRefusesEveryActWithGuardStopped() throws {
+        let f = Fake()
+        let s = CtrlServer(backend: f)
+        let act = try XCTUnwrap(lines().first { ($0["type"] as? String) == "ctrl.ax.act" })
+        XCTAssertEqual(obj(s.handle(line: line(act)))["ok"] as? Bool, true)
+        f.watcher.record(.keyDown(code: CtrlKeys.escape, marker: 0))
+        let r = obj(s.handle(line: line(act)))
+        XCTAssertEqual(r["ok"] as? Bool, false)
+        XCTAssertEqual(r["err"] as? String, "guard.stopped")
+        XCTAssertEqual(f.acted.count, 1)
+        let u = Fake(); u.watcher.disarm()  // nothing watches: refuses too
+        XCTAssertEqual(obj(CtrlServer(backend: u).handle(line: line(act)))["err"] as? String, "guard.stopped")
+        XCTAssertTrue(u.acted.isEmpty)
+    }
+
     func testEveryHostLineOfTheFixtureParses() throws {
         let host = try lines().filter { o in
             let t = o["type"] as! String

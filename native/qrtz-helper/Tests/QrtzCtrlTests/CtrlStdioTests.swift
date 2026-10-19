@@ -22,6 +22,7 @@ private final class Echoing: CtrlBackend {
     func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] { [] }
     func act(_ action: CtrlAction, sig: String?) throws {}
     func observe(arm: Bool?) -> CtrlObserved { CtrlObserved(armed: arm ?? false) }
+    func mayAct() -> Bool { true }
     func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] { throw CtrlFailure("laya.no_model") }
 }
 

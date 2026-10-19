@@ -67,6 +67,7 @@ public final class UnsupportedCtrlBackend: CtrlBackend {
     public func act(_ action: CtrlAction, sig: String?) throws { throw Self.no }
     /// No watcher here, so the host never acts.
     public func observe(arm: Bool?) -> CtrlObserved { CtrlObserved(armed: false) }
+    public func mayAct() -> Bool { false }
     public func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] { throw Self.no }
     public func warmLaya(model: String) throws -> CtrlLayaWarmer.State { throw Self.no }
 }

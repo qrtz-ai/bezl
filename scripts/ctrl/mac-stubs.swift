@@ -143,3 +143,5 @@ open class MLModel: NSObject { public init(contentsOf url: URL, configuration: M
     open class func compileModel(at modelURL: URL) throws -> URL { modelURL }
     open class func compileModel(at modelURL: URL) async throws -> URL { modelURL }
     open func prediction(from input: MLFeatureProvider) throws -> MLFeatureProvider { input } }
+public func CGPreflightListenEventAccess() -> Bool { false }
+public func IsSecureEventInputEnabled() -> Bool { false }
