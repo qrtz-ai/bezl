@@ -6,6 +6,7 @@
 // where that consent is already granted (titles and URLs only, without the page script; nothing but counts is
 // printed). No protected folder (Desktop, Downloads, Documents, ~/.Trash) is touched: that could prompt. Run 47: if
 // qrtz installed model.laya, its fixed first questions are asked through the shipped Core ML runtime (read-only).
+// Run 48: how many background windows read as minimized (AX read only, counts only; ADR 0187).
 import AppKit
 import ApplicationServices
 import Foundation
@@ -85,6 +86,24 @@ for id in ids {
     browsers[id] = b
 }
 out["browsers"] = browsers
+
+// Run 48 (ADR 0187): can ctrl read which windows are minimized? Read-only: `AXMinimized` read (never written) on the
+// windows of each running regular app except the frontmost; counts only, no names or titles. Without Accessibility
+// trust: "not trusted", nothing read. The active minimize probe is QrtzCtrlTests' opt-in
+// testMacProbeMinimizeRoundTripOnABackgroundWindow (QRTZ_CTRL_MAC_PROBES=1), never this check.
+if axTrusted {
+    let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    var appsRead = 0, minimizedWindows = 0, appsWithMinimized = 0
+    for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular && app.processIdentifier != front {
+        guard let n = CtrlMinimizeProbeMac.minimizedCount(app.processIdentifier) else { continue }
+        appsRead += 1
+        minimizedWindows += n
+        if n > 0 { appsWithMinimized += 1 }
+    }
+    out["minimized"] = ["apps_read": appsRead, "minimized_windows": minimizedWindows, "apps_with_minimized": appsWithMinimized]
+} else {
+    out["minimized"] = "not trusted"
+}
 
 // Run 47: the first real Laya questions, when qrtz has installed model.laya with ctrl (or QRTZ_CTRL_LAYA_PACKAGE
 // names a package). Read-only: qrtz's own store, the shipped runtime's as-is load (nothing compiled or written into

@@ -102,6 +102,12 @@ const INTENTS = {
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
   hide_app: opt('intent.hide_app', 'hide an app', 0.07),
   show_app: opt('intent.show_app', 'show a hidden app', 0.07),
+  unminimize_app: opt(
+    'intent.unminimize_app',
+    'bring back minimized windows',
+    0.07,
+  ),
+  minimize_app: opt('intent.minimize_app', 'minimize windows', 0.07),
   open_folder: opt('intent.open_folder', 'open a folder', 0.07),
   focus_mode: opt(
     'intent.focus_mode',
@@ -149,6 +155,8 @@ type Intent =
   | 'hide_others'
   | 'hide_app'
   | 'show_app'
+  | 'unminimize_app'
+  | 'minimize_app'
   | 'open_folder'
   | 'focus_mode'
   | 'focus_off'
@@ -353,6 +361,25 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.system.display_sleep',
         'put the displays to sleep, the mac stays awake',
+        0.97,
+      ),
+    ]),
+  ],
+  // ADR 0187: held until the mac probe shows an AXMinimized write raises nothing; no app question, asked out.
+  unminimize_app: [
+    act('choose_move', [
+      opt(
+        'route.windows.unminimize_hold',
+        'leave them in the dock, not checked on a mac yet',
+        0.97,
+      ),
+    ]),
+  ],
+  minimize_app: [
+    act('choose_move', [
+      opt(
+        'route.windows.minimize_hold',
+        'leave the windows as they are, not checked on a mac yet',
         0.97,
       ),
     ]),
@@ -729,7 +756,33 @@ const systemSleepOf = (text: string): Intent | null => {
   return 'system_sleep';
 };
 
+// ADR 0187: un-minimize ("unminimize slack", "restore slack windows", "show my minimized windows", "bring slack back
+// from the dock") or minimize ("minimize slack"); never the dock's minimize settings.
+const windowsOf = (text: string): Intent | null => {
+  if (
+    /\b(effect|genie|scale|animation|settings?|preferences?|icon|double-click)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  const minimized = /\b(minimi[sz](e|es|ed|ing))\b/i.test(text);
+  if (
+    /\b(un-?minimi[sz]e[ds]?|deminimi[sz]e|deminiaturize)\b/i.test(text) ||
+    (minimized &&
+      /\b(restores?|bring|back|show|get|open|reopen|unhide|return)\b/i.test(
+        text,
+      )) ||
+    (/\brestores?\b/i.test(text) && /\bwindows?\b/i.test(text)) ||
+    (/\bdock\b/i.test(text) &&
+      /\b(bring|get|take|pull)\b/i.test(text) &&
+      /\b(back|out|from)\b/i.test(text))
+  )
+    return 'unminimize_app';
+  return minimized ? 'minimize_app' : null;
+};
+
 const intentOf = (text: string): Intent | null =>
+  windowsOf(text) ??
   ejectOf(text) ??
   displaySleepOf(text) ??
   systemSleepOf(text) ??
@@ -1061,6 +1114,12 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
             ? 'automation-denied'
             : 'focus-no-shortcut',
       });
+      push(r, 'task.finished', { finished: 'asked-out' });
+      return;
+    }
+    if (intent === 'unminimize_app' || intent === 'minimize_app') {
+      // ADR 0187: held before anything is read or sent, until the mac probe; the run ends asked out.
+      push(r, 'exec.held', { held: 'no-route' });
       push(r, 'task.finished', { finished: 'asked-out' });
       return;
     }

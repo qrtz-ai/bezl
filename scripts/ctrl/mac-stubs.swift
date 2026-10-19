@@ -35,7 +35,8 @@ public let kAXRoleAttribute = "AXRole", kAXSubroleAttribute = "AXSubrole", kAXTi
     kAXDescriptionAttribute = "AXDescription", kAXChildrenAttribute = "AXChildren", kAXWindowsAttribute = "AXWindows",
     kAXFocusedWindowAttribute = "AXFocusedWindow", kAXMainWindowAttribute = "AXMainWindow",
     kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement",
-    kAXRoleDescriptionAttribute = "AXRoleDescription", kAXDocumentAttribute = "AXDocument"
+    kAXRoleDescriptionAttribute = "AXRoleDescription", kAXDocumentAttribute = "AXDocument",
+    kAXMinimizedAttribute = "AXMinimized"
 // LaunchServices / AE
 public struct LSRolesMask: OptionSet { public let rawValue: UInt32; public init(rawValue: UInt32) { self.rawValue = rawValue }; public static let all = LSRolesMask(rawValue: 0xFFFFFFFF) }
 public final class CFError {}
@@ -129,6 +130,7 @@ public typealias kern_return_t = Int32
 public let KERN_SUCCESS: kern_return_t = 0
 public let kIOMainPortDefault: mach_port_t = 0
 public let kCFBooleanTrue: CFTypeRef! = NSNumber(value: true)
+public let kCFBooleanFalse: CFTypeRef! = NSNumber(value: false)
 public func IORegistryEntryFromPath(_ mainPort: mach_port_t, _ path: UnsafePointer<CChar>!) -> io_registry_entry_t { 0 }
 public func IORegistryEntrySetCFProperty(_ entry: io_registry_entry_t, _ propertyName: CFString!, _ property: CFTypeRef!) -> kern_return_t { 0 }
 @discardableResult public func IOObjectRelease(_ object: io_object_t) -> kern_return_t { 0 }

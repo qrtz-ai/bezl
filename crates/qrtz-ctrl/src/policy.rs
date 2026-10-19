@@ -5,6 +5,8 @@
 pub const FORBIDDEN_AX_ACTIONS: &[&str] = &["AXRaise", "AXShowMenu", "AXPick"];
 
 /// AX attributes whose write activates an app, moves focus, or moves/resizes a window on the user's screen.
+/// ADR 0187: `AXMinimized` too, both ways, until a Mac probe shows the write raises nothing: un-minimizing puts a
+/// window back on the user's screen (AppKit's deminiaturize orders it front), minimizing takes one off it.
 pub const FORBIDDEN_AX_SET_ATTRIBUTES: &[&str] = &[
     "AXFocused",
     "AXMain",
@@ -12,6 +14,7 @@ pub const FORBIDDEN_AX_SET_ATTRIBUTES: &[&str] = &[
     "AXPosition",
     "AXSize",
     "AXFullScreen",
+    "AXMinimized",
 ];
 
 /// Roles where `AXPress` opens a menu (which grabs mouse tracking) or drives the menu bar, which always belongs to

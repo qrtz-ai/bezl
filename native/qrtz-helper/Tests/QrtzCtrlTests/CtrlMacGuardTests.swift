@@ -218,6 +218,48 @@ final class CtrlMacGuardTests: XCTestCase {
         XCTAssertTrue(k.outcome.clean || k.outcome.userInput, "postToPid to a background app took over: \(k.outcome.violations)")
     }
 
+    /// ADR 0187, opt-in measurement for a real Mac (QRTZ_CTRL_MAC_PROBES=1; never in CI): minimize a background
+    /// TextEdit document window and bring it back, three rounds, each write between guard snapshots. Prints one
+    /// `[ctrl-minimize]` line with the verdicts; only `lifts_hold=true` lets an ADR 0187 amendment lift the hold.
+    /// Like the probe above it skips if TextEdit is running (none of Jared's documents are touched) and force-quits
+    /// the TextEdit it launched. Don't touch the mouse or keyboard while it runs (~15 s).
+    func testMacProbeMinimizeRoundTripOnABackgroundWindow() throws {
+        guard ProcessInfo.processInfo.environment["QRTZ_CTRL_MAC_PROBES"] == "1" else { throw XCTSkip("opt-in: QRTZ_CTRL_MAC_PROBES=1") }
+        guard CtrlProbe.axTrusted else { throw XCTSkip("needs Accessibility trust (AXIsProcessTrusted() == false)") }
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.TextEdit").isEmpty else {
+            throw XCTSkip("TextEdit is running; quit it first so the probe can't touch your documents")
+        }
+        guard let textEdit = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit") else { throw XCTSkip("no TextEdit") }
+        let doc = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-ctrl-minimize-\(UUID().uuidString).txt")
+        try Data("minimize probe\n".utf8).write(to: doc)
+        var launched: NSRunningApplication?
+        var finished = false
+        CtrlActions.open([doc], withApp: textEdit) { app, _ in
+            launched = app
+            finished = true
+        }
+        spin(10) { finished }
+        defer {
+            if let app = launched {
+                app.forceTerminate()
+                spin(5) { app.isTerminated }
+            }
+            try? FileManager.default.removeItem(at: doc)
+        }
+        guard let app = launched else { return XCTFail("TextEdit did not open") }
+        let pid = app.processIdentifier
+        spin(10) { !CtrlActions.windows(pid).isEmpty }
+        guard let window = CtrlActions.windows(pid).first else { return XCTFail("no window") }
+        if fresh().frontmostPid == pid || CtrlProbe.frontWindow()?.pid == pid {
+            throw XCTSkip("TextEdit came forward on open; a raise can't be measured (bring your app back and rerun)")
+        }
+        let verdicts = CtrlMinimizeProbeMac.rounds(CtrlMinimizeProbe.roundsNeeded, window: window, pid: pid, probe: fresh) { seconds, done in
+            spin(seconds, until: done)
+        }
+        print(CtrlMinimizeProbe.report(verdicts, os: ProcessInfo.processInfo.operatingSystemVersionString))
+        XCTAssertFalse(verdicts.isEmpty)
+    }
+
     /// The executor refuses forbidden AX actions before they reach the target.
     func testForbiddenAXActionsAreRefusedBeforeTheCall() throws {
         try requireActive()
@@ -230,6 +272,10 @@ final class CtrlMacGuardTests: XCTestCase {
         }
         XCTAssertThrowsError(try CtrlActions.set("AXFrontmost", kCFBooleanTrue, on: el)) { e in
             XCTAssertEqual(e as? CtrlActions.Failure, .refused(.forbiddenAttribute("AXFrontmost")))
+        }
+        // ADR 0187: both ways, refused before the call.
+        XCTAssertThrowsError(try CtrlActions.set("AXMinimized", kCFBooleanFalse, on: el)) { e in
+            XCTAssertEqual(e as? CtrlActions.Failure, .refused(.forbiddenAttribute("AXMinimized")))
         }
     }
 }

@@ -100,6 +100,12 @@ pub const FOCUS_HOLD_MOVE: &str = "route.system.focus_hold";
 /// ADR 0158: `route.system.focus.<mode>` (a [`FocusMode`] spelling) runs the focus shortcut.
 pub const FOCUS_MOVE_PREFIX: &str = "route.system.focus.";
 
+/// ADR 0187: the only move for "unminimize slack" / "restore my minimized windows", and for "minimize slack". They
+/// plan nothing: the executor holds the run with `no-route` (asked out) and sends nothing to the helper, until a Mac
+/// probe shows an `AXMinimized` write raises no window over the user's and activates nothing.
+pub const UNMINIMIZE_HOLD_MOVE: &str = "route.windows.unminimize_hold";
+pub const MINIMIZE_HOLD_MOVE: &str = "route.windows.minimize_hold";
+
 /// ADR 0166: "open my downloads" shows one of the user's folders in a Finder window.
 pub const OPEN_FOLDER_MOVE: &str = "route.workspace.open_folder";
 
@@ -134,6 +140,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     let mv = chosen.get(&Node::ChooseMove)?.as_str();
     // ADR 0155: Focus / Do Not Disturb has no background route yet; asked out before anything is read or acted.
     if mv == FOCUS_HOLD_MOVE {
+        return Some(Step::Hold(HoldReason::NoRoute));
+    }
+    // ADR 0187: minimize / un-minimize are held until the Mac probe; asked out before anything is read or acted.
+    if mv == UNMINIMIZE_HOLD_MOVE || mv == MINIMIZE_HOLD_MOVE {
         return Some(Step::Hold(HoldReason::NoRoute));
     }
     // ADR 0158: the user's "qrtz Set Focus" shortcut through Shortcuts Events. The mode is parsed strictly from the

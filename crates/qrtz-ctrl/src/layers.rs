@@ -497,6 +497,21 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0187: bring an app's minimized windows back out of the Dock / minimize them. Recognised so they never turn into
+    // a hidden launch that reports done (or a close-windows question); each one move is a hold that asks out until a
+    // Mac probe shows an AXMinimized write raises nothing. No app question while held: the hold is the same for any app.
+    IntentDef {
+        id: "unminimize_app",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
+    IntentDef {
+        id: "minimize_app",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0155: turn Focus / Do Not Disturb on or off. No background route yet, so its one move is a hold that asks out.
     IntentDef {
         id: "focus_mode",
@@ -880,6 +895,70 @@ fn ejects_all(toks: &[Tok]) -> bool {
             .any(|w| w[0].w == "every" && (EJECT_ONE_WORDS.contains(&w[1].w.as_str())))
 }
 
+/// ADR 0187: the words that ask for a window to come back out of the Dock.
+const UNMINIMIZE_WORDS: &[&str] = &[
+    "unminimize",
+    "unminimise",
+    "un-minimize",
+    "un-minimise",
+    "unminimized",
+    "unminimised",
+    "deminimize",
+    "deminimise",
+    "deminiaturize",
+];
+/// ADR 0187: the words for minimizing (or a window that is minimized).
+const MINIMIZE_WORDS: &[&str] = &[
+    "minimize",
+    "minimise",
+    "minimizes",
+    "minimises",
+    "minimized",
+    "minimised",
+    "minimizing",
+    "minimising",
+];
+/// ADR 0187: words that turn a minimized window into one that comes back ("show slack's minimized windows", "restore
+/// my minimized window").
+const UNMINIMIZE_BACK_WORDS: &[&str] = &[
+    "restore", "restores", "bring", "back", "show", "get", "open", "reopen", "unhide", "return",
+];
+/// ADR 0187: the Dock's minimize settings ("minimize windows into the app icon", "the genie effect") are settings,
+/// not a window task: neither intent.
+const MINIMIZE_SETTING_WORDS: &[&str] = &[
+    "effect",
+    "genie",
+    "scale",
+    "animation",
+    "setting",
+    "settings",
+    "preference",
+    "preferences",
+    "icon",
+    "double-click",
+    "double-clicking",
+];
+
+/// ADR 0187: "unminimize slack", "restore slack windows", "show my minimized windows", "bring slack back from the
+/// dock", "get my windows out of the dock".
+fn unminimize_task(toks: &[Tok]) -> bool {
+    if has(toks, MINIMIZE_SETTING_WORDS) {
+        return false;
+    }
+    let windows = has(toks, &["window", "windows"]);
+    has(toks, UNMINIMIZE_WORDS)
+        || (has(toks, MINIMIZE_WORDS) && has(toks, UNMINIMIZE_BACK_WORDS))
+        || (has(toks, &["restore", "restores"]) && windows)
+        || (has(toks, &["dock"])
+            && has(toks, &["bring", "get", "take", "pull"])
+            && has(toks, &["back", "out", "from"]))
+}
+
+/// ADR 0187: "minimize slack", "minimise all my windows", "every evening minimize textedit". Not one that comes back.
+fn minimize_task(toks: &[Tok]) -> bool {
+    has(toks, MINIMIZE_WORDS) && !has(toks, MINIMIZE_SETTING_WORDS) && !unminimize_task(toks)
+}
+
 const FOLDER_WORDS: &[&str] = &[
     "downloads",
     "download",
@@ -1057,6 +1136,24 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             // ADR 0173: "show the dock" turns its auto-hide off, it doesn't unhide the Dock app.
             if asks && named_app && !group && (!site || full_named) && !dock_task(toks) {
                 p += 9000;
+            }
+        }
+        // ADR 0187: above show_app ("show slack minimized windows" is not an unhide) and close_windows (a window word
+        // alone). Without the words both sit well below the rest, like quit_unused.
+        "unminimize_app" => {
+            p -= 3000;
+            // "restore slack": one named app and "restore" (no window word) is its windows coming back too, never a
+            // hidden launch that reports done.
+            let restore_app =
+                has(toks, &["restore"]) && named_app && !site && !has(toks, MINIMIZE_SETTING_WORDS);
+            if unminimize_task(toks) || restore_app {
+                p += 12000;
+            }
+        }
+        "minimize_app" => {
+            p -= 3000;
+            if minimize_task(toks) {
+                p += 12000;
             }
         }
         "focus_mode" => {
@@ -1671,6 +1768,10 @@ fn move_question(
         "hide_app" => vec![route("workspace.hide_app", 4500)],
         // ADR 0152: `NSRunningApplication.unhide()` of the one named app; no activation, no key event.
         "show_app" => vec![route("workspace.show_app", 4500)],
+        // ADR 0187: one move each, a hold: asked out, nothing read or written, until the Mac probe shows an AXMinimized
+        // write leaves the user's front window, app, focus and cursor alone.
+        "unminimize_app" => vec![route("windows.unminimize_hold", 4500)],
+        "minimize_app" => vec![route("windows.minimize_hold", 4500)],
         // ADR 0166: the folder in a Finder window through LaunchServices (`activates = false`); no key event, no
         // AX action, so nothing to backtrack into.
         "open_folder" => vec![route("workspace.open_folder", 4500)],
@@ -1958,6 +2059,8 @@ fn intent_label(id: &str) -> &'static str {
         "hide_others" => "hide your other apps",
         "hide_app" => "hide an app",
         "show_app" => "show a hidden app",
+        "unminimize_app" => "bring back minimized windows",
+        "minimize_app" => "minimize windows",
         "open_folder" => "open a folder",
         "focus_mode" => "turn focus or do not disturb on or off",
         "clear_clipboard" => "clear your clipboard",
@@ -1993,6 +2096,8 @@ fn route_label(id: &str) -> &'static str {
         "workspace.show_app" => "show its windows, the app you're in stays in front",
         "workspace.open_folder" => "show it in a finder window, nothing comes forward",
         "system.focus_hold" => "leave focus as it is, not supported yet",
+        "windows.unminimize_hold" => "leave them in the dock, not checked on a mac yet",
+        "windows.minimize_hold" => "leave the windows as they are, not checked on a mac yet",
         "system.focus.off" => "turn focus off",
         "system.focus.do_not_disturb" => "turn on do not disturb",
         m if m.starts_with("system.focus.") => "turn on that focus",

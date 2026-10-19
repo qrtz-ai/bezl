@@ -1064,6 +1064,49 @@ test('ctrl: stop the screensaver stops it without a card', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+// ADR 0187: "unminimize slack" / "minimize textedit" are understood and held (asked out) until the mac probe; no
+// card, no question, nothing done.
+test('ctrl: unminimize slack and minimize textedit are held without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, intent, move] of [
+    [
+      'unminimize slack',
+      'bring back minimized windows',
+      'leave them in the dock, not checked on a mac yet',
+    ],
+    [
+      'minimize textedit',
+      'minimize windows',
+      'leave the windows as they are, not checked on a mac yet',
+    ],
+  ]) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('needs you');
+    await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
+      'no way to do it in the background',
+    );
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText(intent);
+    await expect(decisions).toContainText(move);
+    await expect(decisions).not.toContainText('open an app');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    await expect(ctrl.getByTestId('ctrl-ask')).toHaveCount(0);
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0176: "eject my disks" / "eject the usb drive" unmount the ejectable disks in the helper, never forced, no card.
 test('ctrl: eject my disks and eject the usb drive eject without a card', async ({
   page,

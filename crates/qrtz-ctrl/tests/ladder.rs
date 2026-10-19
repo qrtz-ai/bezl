@@ -153,6 +153,8 @@ fn ax_actions_that_raise_open_menus_or_move_focus_are_refused() {
         "AXPosition",
         "AXSize",
         "AXFullScreen",
+        // ADR 0187: held until the Mac probe; both ways.
+        "AXMinimized",
     ] {
         assert!(matches!(
             refused(&judge(&ax_set(SAFARI, "AXWindow", attr), &env)),

@@ -5,7 +5,8 @@ import Foundation
 
 public enum CtrlPolicy {
     public static let forbiddenAXActions = ["AXRaise", "AXShowMenu", "AXPick"]
-    public static let forbiddenAXSetAttributes = ["AXFocused", "AXMain", "AXFrontmost", "AXPosition", "AXSize", "AXFullScreen"]
+    /// ADR 0187: `AXMinimized` (both ways) until the Mac probe shows the write raises nothing.
+    public static let forbiddenAXSetAttributes = ["AXFocused", "AXMain", "AXFrontmost", "AXPosition", "AXSize", "AXFullScreen", "AXMinimized"]
     public static let menuOpeningRoles = ["AXMenuBar", "AXMenuBarItem", "AXMenuItem", "AXMenuButton", "AXPopUpButton", "AXComboBox"]
     public static let secureRoles = ["AXSecureTextField"]
     public static let focusIntentShortcuts = [
