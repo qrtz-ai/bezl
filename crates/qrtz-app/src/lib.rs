@@ -30,6 +30,7 @@ pub mod ports;
 #[cfg(feature = "runtime")]
 pub mod runtime_port;
 pub mod secrets;
+pub mod self_update;
 pub mod service;
 #[cfg(feature = "runtime")]
 pub mod setup;

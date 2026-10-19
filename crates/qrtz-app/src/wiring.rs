@@ -378,6 +378,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     use crate::runtime_port::{HelperAvailability, NoteRuntimePort};
     let dirs = AppDirs::prepare(&b.data_dir)?;
     let app_version = b.info.version.clone();
+    let service_version = b.info.version.clone();
     let config: SharedConfig = crate::ConfigStore::open(dirs.data.join("config.json")).into();
     let events = Events::new();
     // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
@@ -556,6 +557,18 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 .with_app_version(app_version),
         ));
     }
+    // ADR 0180: qrtz's own updater, over the pinned host; quiet checks start with the app (`start_app_update_checks`).
+    service.set_self_update(
+        crate::self_update::SelfUpdate::new(
+            service_version.clone(),
+            crate::self_update::pinned_key().map(str::to_owned),
+            Arc::new(crate::self_update::PinnedBackend {
+                transport: crate::module_hosting::HttpTransport::pinned(),
+            }),
+        )
+        .with_high_water(dirs.data.join(crate::self_update::HIGH_WATER_FILE))
+        .with_events(service.events.clone()),
+    );
     if b.modules_from_lock {
         let views = model_views.then(|| {
             crate::local_models::LocalModels::new(dirs.data.join("models"), b.knobs.local_models_base.clone())

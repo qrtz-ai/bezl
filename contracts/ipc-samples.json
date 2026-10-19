@@ -799,7 +799,14 @@
           "blobs": 0,
           "bytes": 0
         },
-        "pendingRestart": []
+        "pendingRestart": [],
+        "bundled": {
+          "echo": {
+            "seed": "0.2.0",
+            "version": "0.2.0",
+            "update": "0.2.1"
+          }
+        }
       },
       "idle": {
         "packages": [],
@@ -810,7 +817,8 @@
           "blobs": 0,
           "bytes": 0
         },
-        "pendingRestart": []
+        "pendingRestart": [],
+        "bundled": {}
       }
     },
     "packages:refresh": {
@@ -964,7 +972,14 @@
           "blobs": 0,
           "bytes": 0
         },
-        "pendingRestart": []
+        "pendingRestart": [],
+        "bundled": {
+          "echo": {
+            "seed": "0.2.0",
+            "version": "0.2.0",
+            "update": "0.2.1"
+          }
+        }
       }
     },
     "packages:check-update": {
@@ -974,6 +989,61 @@
         "state": "not-set-up",
         "latest": null,
         "sizeBytes": null
+      }
+    },
+    "app-update:status": {
+      "request": null,
+      "response": {
+        "current": "0.2.0",
+        "state": "idle",
+        "latest": null,
+        "notes": null,
+        "sizeBytes": null,
+        "doneBytes": null,
+        "error": null,
+        "checkedAtMs": null
+      },
+      "idle": {
+        "current": "0.2.0",
+        "state": "idle",
+        "latest": null,
+        "notes": null,
+        "sizeBytes": null,
+        "doneBytes": null,
+        "error": null,
+        "checkedAtMs": null
+      }
+    },
+    "app-update:check": {
+      "request": null,
+      "response": {
+        "current": "0.2.0",
+        "state": "available",
+        "latest": "0.2.1",
+        "notes": "qrtz updates itself from settings.",
+        "sizeBytes": 31400000,
+        "doneBytes": null,
+        "error": null,
+        "checkedAtMs": 1792400000000
+      }
+    },
+    "app-update:download": {
+      "request": null,
+      "response": {
+        "current": "0.2.0",
+        "state": "downloading",
+        "latest": "0.2.1",
+        "notes": "qrtz updates itself from settings.",
+        "sizeBytes": 31400000,
+        "doneBytes": 0,
+        "error": null,
+        "checkedAtMs": 1792400000000
+      }
+    },
+    "app-update:restart": {
+      "request": null,
+      "response": {
+        "restarting": true
       }
     },
     "packages:plan": {
@@ -1844,6 +1914,16 @@
     "packages:progress": {
       "doneBytes": 314000000,
       "totalBytes": 628500000
+    },
+    "app-update:state": {
+      "current": "0.2.0",
+      "state": "available",
+      "latest": "0.2.1",
+      "notes": "qrtz updates itself from settings.",
+      "sizeBytes": 31400000,
+      "doneBytes": null,
+      "error": null,
+      "checkedAtMs": 1792400000000
     }
   }
 }

@@ -7,6 +7,7 @@ import { LiveTranscriptDelta, PipelineView } from '../note/lifecycle';
 import { TalkView } from '../talk/contract';
 import { SpeechSetupStatus } from '../speech/setup';
 import { PackagesProgress } from '../packages/contract';
+import { AppUpdateStatus } from '../app-update/contract';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -81,6 +82,11 @@ export const eventContract = {
     capability: 'packages.read',
     payload: PackagesProgress,
     stream: true,
+  }),
+  /** ADR 0180: qrtz's own update state changed (checking, available, download progress, ready). */
+  'app-update:state': defineEvent({
+    capability: 'app.update.read',
+    payload: AppUpdateStatus,
   }),
   /** ctrl's scheduler recorded one or more runs (ADR 0105); the view reloads without polling. */
   'ctrl:changed': defineEvent({

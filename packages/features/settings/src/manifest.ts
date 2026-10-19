@@ -18,5 +18,6 @@ export const manifest = SubAppManifest.parse({
     'speech.manage',
     'logs.export',
     'app.update',
+    'app.update.read',
   ],
 });

@@ -31,6 +31,7 @@ import {
   CtrlModelState,
 } from '../ctrl/contract';
 import { SnapStatus } from '../snap/contract';
+import { AppUpdateStatus } from '../app-update/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -484,6 +485,37 @@ export const ipcContract = {
         sizeBytes: z.number().int().nonnegative().nullable(),
       })
       .strict(),
+  }),
+  /** ADR 0180: qrtz's own update state (no request is made). */
+  'app-update:status': defineChannel({
+    version: 1,
+    capability: 'app.update.read',
+    request: z.void(),
+    response: AppUpdateStatus,
+  }),
+  /** ADR 0180: "check for updates" for qrtz itself: asks modules.qrtz.ai/v1/app/latest.json; installs nothing. */
+  'app-update:check': defineChannel({
+    version: 1,
+    capability: 'app.update',
+    request: z.void(),
+    response: AppUpdateStatus,
+  }),
+  /**
+   * ADR 0180: "update": download, verify (signature, notarized Developer ID bundle) and put the new qrtz.app in
+   * place. Answers at once (`downloading`); `app-update:state` follows. Nothing new runs until a restart.
+   */
+  'app-update:download': defineChannel({
+    version: 1,
+    capability: 'app.update',
+    request: z.void(),
+    response: AppUpdateStatus,
+  }),
+  /** ADR 0180: "restart to update", only once the new version is in place (`ready`). */
+  'app-update:restart': defineChannel({
+    version: 1,
+    capability: 'app.update',
+    request: z.void(),
+    response: z.object({ restarting: z.boolean() }),
   }),
   /** What a change would add, remove and download; changes nothing. */
   'packages:plan': defineChannel({

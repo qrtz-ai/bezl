@@ -54,6 +54,15 @@ const SCRIPT = [
 ];
 
 export function createMockBridge(): TauriBridge {
+  let appUpdate: Json & { state: string; sizeBytes: number | null } =
+    params.get('mockAppUpdate') === 'available'
+      ? { ...ipcSamples['app-update:check'].response }
+      : { ...ipcSamples['app-update:status'].response };
+  const setAppUpdate = (p: Json) => {
+    appUpdate = { ...appUpdate, ...p };
+    emit('app-update:state', appUpdate as never);
+    return appUpdate as never;
+  };
   const listeners = new Set<(e: { payload: unknown }) => void>();
   const subs = new Map<EventName, Set<string>>();
   // ADR 0095 streams, as the Rust backend holds them for this one window: id → event + channel callback.
@@ -422,6 +431,30 @@ export function createMockBridge(): TauriBridge {
       return isModuleOn(config, name);
     }),
     'packages:check-update': () => ipcSamples['packages:check-update'].response,
+    // ADR 0180: qrtz's own update (?mockAppUpdate=available starts with a newer qrtz found; nothing downloads).
+    'app-update:status': () => appUpdate as never,
+    'app-update:check': () =>
+      setAppUpdate({
+        ...ipcSamples['app-update:check'].response,
+        checkedAtMs: Date.now(),
+      }),
+    'app-update:download': () => {
+      const total = appUpdate.sizeBytes ?? 0;
+      if (appUpdate.state !== 'available' && appUpdate.state !== 'failed')
+        return appUpdate as never;
+      let done = 0;
+      const r = setAppUpdate({ state: 'downloading', doneBytes: 0 });
+      const t = setInterval(() => {
+        done = Math.min(total, done + Math.ceil(total / 5));
+        if (done < total) setAppUpdate({ doneBytes: done });
+        else {
+          clearInterval(t);
+          setAppUpdate({ state: 'ready', doneBytes: null });
+        }
+      }, tickMs);
+      return r;
+    },
+    'app-update:restart': () => ({ restarting: appUpdate.state === 'ready' }),
     'note:session': () => session as never,
     'note:dismiss': () => {
       if (['done', 'error'].includes(String(session.phase)))

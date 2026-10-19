@@ -87,6 +87,8 @@ pub struct AppService {
     pub events: Events,
     setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
     packages: std::sync::OnceLock<Arc<dyn crate::ports::PackagesPort>>,
+    /// ADR 0180: qrtz's own updater (`app-update:*`).
+    self_update: std::sync::OnceLock<Arc<crate::self_update::SelfUpdate>>,
     ctrl: std::sync::OnceLock<Arc<qrtz_ctrl::service::CtrlService>>,
     /// ADR 0116: ctrl's Laya model (consent + download), behind `ctrl:model` / `ctrl:model-consent`.
     #[cfg(feature = "runtime")]
@@ -163,6 +165,7 @@ impl AppService {
             events: d.events,
             setup: std::sync::OnceLock::new(),
             packages: std::sync::OnceLock::new(),
+            self_update: std::sync::OnceLock::new(),
             ctrl: std::sync::OnceLock::new(),
             #[cfg(feature = "runtime")]
             ctrl_model: std::sync::OnceLock::new(),
@@ -288,6 +291,38 @@ impl AppService {
     /// the rest are `E_UNAVAILABLE`).
     pub fn set_packages(&self, p: Arc<dyn crate::ports::PackagesPort>) {
         let _ = self.packages.set(p);
+    }
+
+    /// ADR 0180: plug in qrtz's own updater (set once by `build_app`; without it `app-update:status` answers
+    /// "not set up").
+    pub fn set_self_update(&self, u: Arc<crate::self_update::SelfUpdate>) {
+        let _ = self.self_update.set(u);
+    }
+
+    /// ADR 0180: the quiet update checks (a minute after launch, then every 6 hours). Call once, inside tokio.
+    pub fn start_app_update_checks(&self) {
+        if let Some(u) = self.self_update.get() {
+            u.start_schedule();
+        }
+    }
+
+    async fn app_update_channel(&self, channel: &str) -> Result<Value, AppError> {
+        let Some(u) = self.self_update.get() else {
+            return match channel {
+                "app-update:status" | "app-update:check" => Ok(crate::self_update::to_json(
+                    &self.info.version,
+                    &crate::self_update::State::NotSetUp,
+                    None,
+                )),
+                "app-update:restart" => Ok(json!({"restarting": false})),
+                _ => Err(AppError::new(ErrorCode::Unavailable, "updates aren't set up in this build").retryable(false)),
+            };
+        };
+        if channel == "app-update:restart" {
+            // ADR 0172's pattern: only once the new version is in place, and only when the user asks.
+            return Ok(json!({"restarting": u.ready() && self.shell.restart()}));
+        }
+        u.call(channel).await
     }
 
     /// Plug in ctrl (set once by `build_app`; without it every `ctrl:*` call is `E_UNAVAILABLE`).
@@ -1034,6 +1069,8 @@ impl AppService {
             Some("snap")
         } else if channel.starts_with(PACKAGES_PREFIX) {
             Some("packages")
+        } else if channel.starts_with(APP_UPDATE_PREFIX) {
+            Some("app-update")
         } else {
             None
         }
@@ -1058,6 +1095,7 @@ impl Handler for AppService {
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,
             Some("ctrl") => self.ctrl_channel(channel, payload).await,
+            Some("app-update") => self.app_update_channel(channel).await,
             Some("snap") => {
                 if channel == "snap:request-access" {
                     // The banner's button: qrtz-app asks (macOS adds qrtz to the list and prompts) and opens the

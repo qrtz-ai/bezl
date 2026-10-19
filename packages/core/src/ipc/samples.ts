@@ -43,6 +43,26 @@ const speechDownloading = {
     total: 412_000_000,
   },
 };
+/** ADR 0180: qrtz's own update row before any check, and with a newer release found. */
+export const appUpdateIdle = {
+  current: '0.2.0',
+  state: 'idle',
+  latest: null,
+  notes: null,
+  sizeBytes: null,
+  doneBytes: null,
+  error: null,
+  checkedAtMs: null,
+} as const;
+export const appUpdateAvailable = {
+  ...appUpdateIdle,
+  state: 'available',
+  latest: '0.2.1',
+  notes: 'qrtz updates itself from settings.',
+  sizeBytes: 31_400_000,
+  checkedAtMs: 1_792_400_000_000,
+} as const;
+
 export const SAMPLE_MEETING_ID = '00000000-0000-4000-8000-000000000001';
 const meeting = {
   id: SAMPLE_MEETING_ID,
@@ -718,6 +738,13 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
       sizeBytes: null,
     },
   },
+  'app-update:status': { request: undefined, response: appUpdateIdle },
+  'app-update:check': { request: undefined, response: appUpdateAvailable },
+  'app-update:download': {
+    request: undefined,
+    response: { ...appUpdateAvailable, state: 'downloading', doneBytes: 0 },
+  },
+  'app-update:restart': { request: undefined, response: { restarting: true } },
   'packages:plan': {
     request: { op: 'install', names: ['echo'] },
     response: packagePlan,
@@ -774,10 +801,12 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'speech:status': speechDownloading,
   'ctrl:changed': { ids: ['task-0'] },
   'packages:progress': { doneBytes: 314_000_000, totalBytes: 628_500_000 },
+  'app-update:state': appUpdateAvailable,
 };
 
 /** Idle answers per channel (what an empty backend says); a channel absent here has no idle answer. */
 export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
+  'app-update:status': appUpdateIdle,
   'note:session': idleSession,
   'note:dismiss': idleSession,
   'note:list': [],

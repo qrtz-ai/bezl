@@ -34,8 +34,10 @@ export const Capability = z.enum([
   /** ADR 0157: the Extensions screen: list installed packages; check, plan, apply and prune. */
   'packages.read',
   'packages.manage',
-  /** Audit P1: "check for updates" in settings: refresh the signed index and compare its `qrtz`; installs nothing. */
+  /** "check for updates", "update" and "restart to update" for qrtz itself (ADR 0180), and the older index check. */
   'app.update',
+  /** ADR 0180: read qrtz's own update state (settings → qrtz, the sidebar dot); checks and downloads nothing. */
+  'app.update.read',
 ]);
 export type Capability = z.infer<typeof Capability>;
 

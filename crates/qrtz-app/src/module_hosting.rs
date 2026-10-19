@@ -138,6 +138,35 @@ impl HttpTransport {
     }
 }
 
+/// ADR 0180: qrtz's own update files (`v1/app/…`: the feed and the archives), from the pinned package host only,
+/// through the same fetcher. Nothing else is reachable here: a path outside `v1/app/` is refused.
+impl HttpTransport {
+    fn app_host(&self, path: &str) -> Result<&Downloader, String> {
+        if !path.starts_with(crate::self_update::APP_DIR) || path.contains("..") || path.contains("//") {
+            return Err(format!("{path}: not an app update file"));
+        }
+        if self.dir.is_some() || !self.configured {
+            return Err("the package hosts aren't set up yet".into());
+        }
+        self.hosts.first().ok_or_else(|| "no package host".to_string())
+    }
+    /// A small file (the feed), at most `max` bytes; `None` = not there.
+    pub async fn app_meta(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        let b = self.app_host(path)?.fetch_meta(path).await.map_err(|e| e.to_string())?;
+        match b {
+            Some(b) if b.len() > max => Err(format!("{path}: too large")),
+            b => Ok(b),
+        }
+    }
+    /// `len` bytes of an archive from `start`.
+    pub async fn app_range(&self, path: &str, start: u64, len: u64) -> Result<Vec<u8>, String> {
+        self.app_host(path)?
+            .fetch_range(path, start, len, &self.ctl)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
 #[async_trait::async_trait]
 impl Transport for HttpTransport {
     fn hosts(&self) -> usize {

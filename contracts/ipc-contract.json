@@ -6881,6 +6881,36 @@
                 "snap"
               ]
             }
+          },
+          "bundled": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "seed": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "update": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "seed",
+                "version",
+                "update"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -6888,7 +6918,8 @@
           "index",
           "available",
           "reclaimable",
-          "pendingRestart"
+          "pendingRestart",
+          "bundled"
         ],
         "additionalProperties": false
       }
@@ -7152,6 +7183,36 @@
                 "snap"
               ]
             }
+          },
+          "bundled": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "seed": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "update": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "seed",
+                "version",
+                "update"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -7159,7 +7220,8 @@
           "index",
           "available",
           "reclaimable",
-          "pendingRestart"
+          "pendingRestart",
+          "bundled"
         ],
         "additionalProperties": false
       }
@@ -7209,6 +7271,322 @@
           "state",
           "latest",
           "sizeBytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "app-update:status": {
+      "version": 1,
+      "capability": "app.update.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not-set-up",
+              "idle",
+              "checking",
+              "up-to-date",
+              "available",
+              "downloading",
+              "installing",
+              "ready",
+              "failed"
+            ]
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doneBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAtMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "current",
+          "state",
+          "latest",
+          "notes",
+          "sizeBytes",
+          "doneBytes",
+          "error",
+          "checkedAtMs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "app-update:check": {
+      "version": 1,
+      "capability": "app.update",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not-set-up",
+              "idle",
+              "checking",
+              "up-to-date",
+              "available",
+              "downloading",
+              "installing",
+              "ready",
+              "failed"
+            ]
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doneBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAtMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "current",
+          "state",
+          "latest",
+          "notes",
+          "sizeBytes",
+          "doneBytes",
+          "error",
+          "checkedAtMs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "app-update:download": {
+      "version": 1,
+      "capability": "app.update",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not-set-up",
+              "idle",
+              "checking",
+              "up-to-date",
+              "available",
+              "downloading",
+              "installing",
+              "ready",
+              "failed"
+            ]
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doneBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAtMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "current",
+          "state",
+          "latest",
+          "notes",
+          "sizeBytes",
+          "doneBytes",
+          "error",
+          "checkedAtMs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "app-update:restart": {
+      "version": 1,
+      "capability": "app.update",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "restarting": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restarting"
         ],
         "additionalProperties": false
       }
@@ -13794,6 +14172,101 @@
       },
       "stream": true
     },
+    "app-update:state": {
+      "capability": "app.update.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not-set-up",
+              "idle",
+              "checking",
+              "up-to-date",
+              "available",
+              "downloading",
+              "installing",
+              "ready",
+              "failed"
+            ]
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doneBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAtMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "current",
+          "state",
+          "latest",
+          "notes",
+          "sizeBytes",
+          "doneBytes",
+          "error",
+          "checkedAtMs"
+        ],
+        "additionalProperties": false
+      }
+    },
     "ctrl:changed": {
       "capability": "ctrl.read",
       "payload": {
@@ -13824,7 +14297,8 @@
         "note.record",
         "talk.read",
         "talk.dictate",
-        "log.write"
+        "log.write",
+        "app.update.read"
       ]
     },
     {
@@ -13895,7 +14369,8 @@
         "speech.read",
         "speech.manage",
         "logs.export",
-        "app.update"
+        "app.update",
+        "app.update.read"
       ]
     }
   ],
