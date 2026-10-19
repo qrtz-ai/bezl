@@ -1,0 +1,242 @@
+{
+  "readme": "Shared by crates/qrtz-dash/tests/shared_vectors.rs and services/dash-worker/test/vectors.test.ts. Both must agree.",
+  "scrub": [
+    {
+      "in": "key sk-abcdefghijklmnop1234 ok",
+      "out": "key [redacted] ok",
+      "hit": true
+    },
+    {
+      "in": "card 4111 1111 1111 1111 x",
+      "out": "card [redacted] x",
+      "hit": true
+    },
+    {
+      "in": "ssn 123-45-6789",
+      "out": "ssn [redacted]",
+      "hit": true
+    },
+    {
+      "in": "pr 1234 of 5678",
+      "out": "pr 1234 of 5678",
+      "hit": false
+    },
+    {
+      "in": "token=ghp_abcdefghijklmnopqrstuvwx",
+      "out": "token=[redacted]",
+      "hit": true
+    },
+    {
+      "in": "key:sk-abcdefghijklmnop1234",
+      "out": "key:[redacted]",
+      "hit": true
+    },
+    {
+      "in": "\"xoxb-123456789012-abcdef\"",
+      "out": "\"[redacted]\"",
+      "hit": true
+    },
+    {
+      "in": "('AKIAABCDEFGHIJKLMNOP')",
+      "out": "('[redacted]')",
+      "hit": true
+    },
+    {
+      "in": "[npm_abcdefghijklmnopqrst]",
+      "out": "[[redacted]]",
+      "hit": true
+    },
+    {
+      "in": "{hf_abcdefghijklmnopqrstu}",
+      "out": "{[redacted]}",
+      "hit": true
+    },
+    {
+      "in": "<ghu_abcdefghijklmnopqrstuv>",
+      "out": "<[redacted]>",
+      "hit": true
+    },
+    {
+      "in": "a;ghr_abcdefghijklmnopqrstuv,b",
+      "out": "a;[redacted],b",
+      "hit": true
+    },
+    {
+      "in": "line one\nghp_abcdefghijklmnopqrstuvwx",
+      "out": "line one\n[redacted]",
+      "hit": true
+    },
+    {
+      "in": "tab\tghp_abcdefghijklmnopqrstuvwx",
+      "out": "tab\t[redacted]",
+      "hit": true
+    },
+    {
+      "in": "x asiaABCDEFGH12345678 y",
+      "out": "x [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "x xoxs-ABCDEFGH12345678 y",
+      "out": "x [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "x xoxr-ABCDEFGH12345678 y",
+      "out": "x [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "x xapp-ABCDEFGH12345678 y",
+      "out": "x [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "x sk-ant-ABCDEFGH12345678 y",
+      "out": "x [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "x at_0123456789abcdef_0123456789abcdef y",
+      "out": "x [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "before -----BEGIN RSA PRIVATE KEY-----\nMIIEow IBAAK CAQEA\nabc def\n-----END RSA PRIVATE KEY----- after",
+      "out": "before [redacted] after",
+      "hit": true
+    },
+    {
+      "in": "x -----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1r ZXktdjEAAAA",
+      "out": "x [redacted]",
+      "hit": true
+    },
+    {
+      "in": "bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+      "out": "bearer [redacted]",
+      "hit": true
+    },
+    {
+      "in": "blob Zm9vYmFyYmF6cXV4M2tKZGw5UXpXcTdOeGI0UmY=",
+      "out": "blob [redacted]=",
+      "hit": true
+    },
+    {
+      "in": "aws wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "out": "aws [redacted]",
+      "hit": true
+    },
+    {
+      "in": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+      "out": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+      "hit": false
+    },
+    {
+      "in": "internationalizationlocalizations",
+      "out": "internationalizationlocalizations",
+      "hit": false
+    },
+    {
+      "in": "uploaded bank statement",
+      "out": "uploaded bank statement",
+      "hit": false
+    },
+    {
+      "in": "sha 0123456789abcdef0123456789abcdef.",
+      "out": "sha [redacted]",
+      "hit": true
+    },
+    {
+      "in": "see https://example.com/a?b=c for docs",
+      "out": "see https://example.com/a?b=c for docs",
+      "hit": false
+    },
+    {
+      "in": "ok.",
+      "out": "ok.",
+      "hit": false
+    },
+    {
+      "in": "",
+      "out": "",
+      "hit": false
+    }
+  ],
+  "https_url": [
+    {
+      "url": "https://example.com/x",
+      "ok": true
+    },
+    {
+      "url": "https://a.com:8443/x",
+      "ok": true
+    },
+    {
+      "url": "https://xn--pple-43d.com/",
+      "ok": true
+    },
+    {
+      "url": "https://a-b.c.io?q=1#f",
+      "ok": true
+    },
+    {
+      "url": "http://a.com",
+      "ok": false
+    },
+    {
+      "url": "javascript:alert(1)",
+      "ok": false
+    },
+    {
+      "url": "data:text/html,x",
+      "ok": false
+    },
+    {
+      "url": "https://user@a.com",
+      "ok": false
+    },
+    {
+      "url": "https://localhost",
+      "ok": false
+    },
+    {
+      "url": "https://a .com",
+      "ok": false
+    },
+    {
+      "url": "https://a.com:",
+      "ok": false
+    },
+    {
+      "url": "https://a.com:x80",
+      "ok": false
+    },
+    {
+      "url": "https://a.com:99999",
+      "ok": false
+    },
+    {
+      "url": "https://a.com:1:2",
+      "ok": false
+    },
+    {
+      "url": "https://a..com",
+      "ok": false
+    },
+    {
+      "url": "//a.com/x",
+      "ok": false
+    },
+    {
+      "url": "https://-a.com",
+      "ok": false
+    }
+  ],
+  "hmac": [
+    {
+      "key_hex": "4a656665",
+      "msg": "what do ya want for nothing?",
+      "mac_hex": "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    }
+  ]
+}

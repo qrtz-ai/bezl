@@ -8,6 +8,7 @@
     "spec/vectors/**",
     "spec/scenarios/**",
     "spec/fixtures/**",
-    "crates/qrtz-modules/roots/**"
+    "crates/qrtz-modules/roots/**",
+    "services/dash-worker/src/readme.gen.ts"
   ]
 }

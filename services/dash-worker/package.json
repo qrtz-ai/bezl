@@ -1,0 +1,23 @@
+{
+  "name": "@qrtz/dash-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent Dash server (ADR 0228 amendment): Cloudflare Worker + one SQLite Durable Object per dashboard. Not deployed.",
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/gen-readme.mjs --check && vitest run",
+    "typecheck": "tsc --noEmit",
+    "check:build": "bunx --bun wrangler deploy --dry-run --outdir dist",
+    "gen:readme": "node scripts/gen-readme.mjs"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.5",
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.2"
+  }
+}

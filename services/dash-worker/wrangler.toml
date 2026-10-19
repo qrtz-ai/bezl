@@ -1,0 +1,29 @@
+# Agent Dash server (ADR 0228 amendment). NOT DEPLOYED: Bozniak's dash findings 1-3 must be cleared first.
+# Check the build with `bunx wrangler deploy --dry-run --outdir dist`. Deploy steps are in the ADR.
+name = "qrtz-dash"
+main = "src/index.ts"
+compatibility_date = "2026-10-19"
+workers_dev = false
+preview_urls = false
+
+# The custom domain. Prepared only: nothing is applied until `wrangler deploy` (which also creates the DNS record
+# for dash.qrtz.ai in the qrtz.ai zone).
+routes = [{ pattern = "dash.qrtz.ai", custom_domain = true }]
+
+[[durable_objects.bindings]]
+name = "DASHBOARD"
+class_name = "Dashboard"
+
+[[durable_objects.bindings]]
+name = "ENROLL"
+class_name = "EnrollDirectory"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Dashboard", "EnrollDirectory"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+# Secrets (never in this file): DASH_PEPPER (64 hex) and DASH_SETUP_TOKEN, set with `wrangler secret put`.
