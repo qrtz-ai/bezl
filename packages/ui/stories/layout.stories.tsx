@@ -11,6 +11,7 @@ import {
   Page,
   SettingRow,
   SettingsSection,
+  SIDENAV_WIDTH,
   SideNav,
   SplitView,
   Stack,
@@ -40,7 +41,13 @@ function ShellDemo() {
               { id: 'ctrl', label: 'ctrl', icon: 'command' },
               { id: 'snap', label: 'snap', icon: 'grid' },
               { id: 'apps', label: 'apps', group: 'foot' },
-              { id: 'opts', label: 'opts', group: 'foot' },
+              {
+                id: 'opts',
+                label: 'opts',
+                group: 'foot',
+                dot: true,
+                dotLabel: 'qrtz update ready',
+              },
             ]}
             active={bar}
             onSelect={setBar}
@@ -48,7 +55,10 @@ function ShellDemo() {
         }
       >
         <Page title={bar}>
-          <Text muted>the {bar} page, in the shared page layout.</Text>
+          <Text muted>
+            the {bar} page, in the shared page layout. the side nav is{' '}
+            {SIDENAV_WIDTH}px: every label is four characters or fewer.
+          </Text>
         </Page>
       </AppFrame>
     </Frame>

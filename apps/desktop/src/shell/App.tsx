@@ -48,8 +48,10 @@ const Onboarding = lazy(() =>
   import('./Onboarding').then((m) => ({ default: m.Onboarding })),
 );
 
-/** Pinned to the bottom of the sidebar: apps and opts (the qrtz page's two halves, no icons), then the dev-only gallery. */
-export const SIDEBAR_FOOT = new Set(['gallery']);
+/** Pinned to the bottom of the sidebar: apps and opts (the qrtz page's two halves, no icons). */
+export const SIDEBAR_FOOT: ReadonlySet<string> = new Set<string>();
+/** Dev-only sub apps that keep their route (/gallery, for e2e and the dev mock) but get no sidebar row or palette entry. */
+export const HIDDEN_FROM_NAV: ReadonlySet<string> = new Set(['gallery']);
 /** The sidebar ids of the qrtz page's two halves: apps (/qrtz, the app manager) and opts (/qrtz/settings). */
 export const APPS = 'apps';
 export const OPTS = 'opts';
@@ -60,15 +62,18 @@ export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
 
 /**
  * The sidebar: the apps in registry order (echo, nano, ctrl, snap) at the top; pinned to the bottom "apps" (the
- * app manager at /qrtz) and "opts" (qrtz's own opts at /qrtz/settings), both plain text with no icon, then the
- * dev-only gallery.
+ * app manager at /qrtz) and "opts" (qrtz's own opts at /qrtz/settings), both plain text with no icon. The
+ * dev-only gallery has no row.
  */
 export function sidebarItems(
   visible: readonly { manifest: { id: string; name: string; icon?: string } }[],
   updateReady = false,
 ): SideNavItem[] {
   const rows: SideNavItem[] = visible
-    .filter(({ manifest }) => !QRTZ_PAGE_PARTS.has(manifest.id))
+    .filter(
+      ({ manifest }) =>
+        !QRTZ_PAGE_PARTS.has(manifest.id) && !HIDDEN_FROM_NAV.has(manifest.id),
+    )
     .map(({ manifest }) => ({
       id: manifest.id,
       label: manifest.name,

@@ -8,6 +8,8 @@ import { useModuleSwitches } from './useModuleSwitches';
 import { QRTZ, QRTZ_PARTS } from './routes';
 
 const QRTZ_PAGE_PARTS = new Set(Object.values(QRTZ_PARTS));
+/** Dev-only sub apps with a route but no palette entry (the gallery). */
+const HIDDEN_FROM_NAV = new Set(['gallery']);
 
 type Client = ReturnType<typeof shellClient>;
 const listMeetings = (c: Client, query: string) =>
@@ -99,7 +101,8 @@ export function Palette({
         .filter(
           ({ manifest }) =>
             isViewOn(switches, manifest.id) &&
-            !QRTZ_PAGE_PARTS.has(manifest.id),
+            !QRTZ_PAGE_PARTS.has(manifest.id) &&
+            !HIDDEN_FROM_NAV.has(manifest.id),
         )
         .map(({ manifest }) => ({
           id: `nav.${manifest.id}`,

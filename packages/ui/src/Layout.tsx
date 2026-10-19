@@ -168,6 +168,12 @@ export type SideNavItem = {
   dotLabel?: string;
 };
 
+/**
+ * The side nav's width: every row label is four characters or fewer (echo, nano, ctrl, snap, apps, opts), so it is
+ * sized to an icon + a four-letter Geist Pixel Square label + room for the update dot, inside 8px gutters.
+ */
+export const SIDENAV_WIDTH = 104;
+
 /** The app's main navigation: a vertical sidebar of icon + lowercase label rows. Each row gets data-testid `nav-<id>`. */
 export function SideNav({
   items,
@@ -176,6 +182,7 @@ export function SideNav({
   label = 'Apps',
   testIdPrefix = 'nav',
   embedded,
+  width = SIDENAV_WIDTH,
 }: {
   items: SideNavItem[];
   active: string;
@@ -184,6 +191,8 @@ export function SideNav({
   testIdPrefix?: string;
   /** Inside a preview frame: no room left for the window controls. */
   embedded?: boolean;
+  /** Sidebar width in px; defaults to SIDENAV_WIDTH. */
+  width?: number;
 }) {
   const t = useTheme();
   const row = (it: SideNavItem) => {
@@ -241,7 +250,8 @@ export function SideNav({
         display: 'flex',
         flexDirection: 'column',
         gap: 2,
-        width: 176,
+        width,
+        flex: '0 0 auto',
         boxSizing: 'border-box',
         padding: `${embedded ? t.space[2] : '40px'} ${t.space[2]} ${t.space[2]}`,
         borderRight: `1px solid ${t.color.border}`,

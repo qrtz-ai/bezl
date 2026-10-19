@@ -22,5 +22,10 @@ export async function go(page: Page, name: string) {
   if (name === 'marketplace' || name === 'qrtz' || name === 'apps')
     return openQrtz(page);
   if (name === 'settings' || name === 'opts') return openSettings(page);
+  // The dev-only gallery has no sidebar row; it is only reachable by its route.
+  if (name === 'gallery') {
+    await page.evaluate(() => (location.hash = '#/gallery'));
+    return;
+  }
   await page.getByTestId(`nav-${name}`).click();
 }

@@ -38,6 +38,12 @@ describe('manifests', () => {
     ]);
     expect(items.filter((i) => i.group === 'foot')).toHaveLength(2);
     expect(QRTZ_PAGE_PARTS).toEqual(new Set(['marketplace', 'settings']));
-    expect([...SIDEBAR_FOOT]).toEqual(['gallery']);
+    expect([...SIDEBAR_FOOT]).toEqual([]);
+    const withGallery = sidebarItems(
+      manifests
+        .filter((m) => m.id === 'gallery')
+        .map((manifest) => ({ manifest })),
+    );
+    expect(withGallery.map((i) => i.id)).toEqual(['apps', 'opts']);
   });
 });
