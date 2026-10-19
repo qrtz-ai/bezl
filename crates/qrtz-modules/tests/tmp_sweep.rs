@@ -216,3 +216,31 @@ fn a_symlinked_or_non_directory_tmp_is_not_swept() {
     assert_eq!(i2.prune().unwrap().blobs, 0);
     assert!(d2.path().join("store/.tmp").is_file());
 }
+
+/// N193 L1 (re-review): a symlinked `store/` is refused too, even when `.tmp` under it is a real directory.
+#[cfg(unix)]
+#[test]
+fn a_symlinked_store_is_not_swept() {
+    let d = tempfile::tempdir().unwrap();
+    let real = d.path().join("real-store");
+    std::fs::create_dir_all(real.join(".tmp")).unwrap();
+    part(&real.join(".tmp"), &sha('f'));
+    std::os::unix::fs::symlink(&real, d.path().join("store")).unwrap();
+    let i = installer(d.path(), TmpKeep::default());
+    assert_eq!(i.reclaimable().unwrap().blobs, 0);
+    assert_eq!(i.prune().unwrap().blobs, 0);
+    assert!(real.join(".tmp").join(format!("{}.part", sha('f'))).exists());
+}
+
+/// A symlink inside `.tmp` named like a part is never followed or counted (fstatat without following).
+#[cfg(unix)]
+#[test]
+fn a_symlink_inside_tmp_is_left_alone() {
+    let (d, tmp) = setup();
+    let victim = d.path().join("victim");
+    std::fs::write(&victim, b"keep me").unwrap();
+    std::os::unix::fs::symlink(&victim, tmp.join(format!("{}.part", sha('9')))).unwrap();
+    let i = installer(d.path(), TmpKeep::default());
+    assert_eq!(i.prune().unwrap().blobs, 0);
+    assert_eq!(std::fs::read(&victim).unwrap(), b"keep me");
+}

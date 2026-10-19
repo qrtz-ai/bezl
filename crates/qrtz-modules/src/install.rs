@@ -267,20 +267,6 @@ pub type TmpKeepFn = std::sync::Arc<dyn Fn() -> TmpKeep + Send + Sync>;
 /// may belong to a running insert or sideload and are kept.
 pub const TMP_LEFTOVER_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
-/// Bytes a file holds on disk: its allocated blocks, since a `.part` is preallocated sparse and holds only the
-/// ranges that landed.
-fn on_disk_bytes(m: &std::fs::Metadata) -> u64 {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        m.blocks().saturating_mul(512)
-    }
-    #[cfg(not(unix))]
-    {
-        m.len()
-    }
-}
-
 /// `<sha256>.part` / `<sha256>.done` -> the sha256.
 fn fetch_tmp_sha(name: &str) -> Option<&str> {
     let sha = name
@@ -1503,50 +1489,86 @@ impl Installer {
         delete: bool,
         out: &mut Pruned,
     ) -> Result<(), InstallError> {
-        // N193 L1: only a real directory is swept. A symlinked (or non-directory) `.tmp` could point the deletes
-        // anywhere, so it is left alone and nothing in it is counted.
-        let tmp = self.store.tmp();
-        match std::fs::symlink_metadata(&tmp) {
-            Ok(m) if m.file_type().is_dir() => {}
-            _ => return Ok(()),
-        }
-        let Ok(entries) = std::fs::read_dir(&tmp) else {
-            return Ok(());
-        };
-        let keep = self.tmp_keep.as_ref().map(|f| f()).unwrap_or_default();
-        let now = std::time::SystemTime::now();
-        for e in entries.flatten() {
-            let name = e.file_name().to_string_lossy().into_owned();
-            let Ok(m) = std::fs::symlink_metadata(e.path()) else {
-                continue;
+        // N193 L1 (Bozniak re-review): no path-based work after the check, so a symlink swapped in between can't
+        // redirect a delete. `store/` must not be a symlink; `.tmp` is opened once (O_DIRECTORY|O_NOFOLLOW), its
+        // dev/ino must match the lstat, and every stat and unlink is relative to that fd, never following links.
+        // The stat field types differ between macOS and Linux, so the casts are needed on one of them.
+        #[cfg(unix)]
+        #[allow(clippy::unnecessary_cast)]
+        {
+            use rustix::fs::{fstat, openat, statat, unlinkat, AtFlags, FileType, Mode, OFlags, CWD};
+            let tmp = self.store.tmp();
+            let Some(store_dir) = tmp.parent() else {
+                return Ok(());
             };
-            if !m.is_file() {
-                continue;
+            match std::fs::symlink_metadata(store_dir) {
+                Ok(m) if m.file_type().is_dir() => {}
+                _ => return Ok(()),
             }
-            let gone = if let Some(sha) = fetch_tmp_sha(&name) {
-                !keep.pending && !refs.contains_key(sha) && !keep.sha256.contains(sha)
-            } else if is_tmp_leftover(&name) {
-                m.modified()
-                    .ok()
-                    .and_then(|t| now.duration_since(t).ok())
-                    .is_some_and(|age| age > TMP_LEFTOVER_AGE)
-            } else {
-                false
+            let lst = match std::fs::symlink_metadata(&tmp) {
+                Ok(m) if m.file_type().is_dir() => m,
+                _ => return Ok(()),
             };
-            if !gone {
-                continue;
-            }
-            if delete {
-                match std::fs::remove_file(e.path()) {
-                    Ok(()) => {}
-                    Err(x) if x.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(x) => return Err(x.into()),
+            let Ok(fd) = openat(
+                CWD,
+                &tmp,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            ) else {
+                return Ok(());
+            };
+            {
+                use std::os::unix::fs::MetadataExt;
+                let st = fstat(&fd).map_err(std::io::Error::from)?;
+                if st.st_dev as u64 != lst.dev() || st.st_ino as u64 != lst.ino() {
+                    return Ok(()); // swapped between the lstat and the open
                 }
             }
-            out.blobs += 1;
-            out.bytes += on_disk_bytes(&m);
+            let keep = self.tmp_keep.as_ref().map(|f| f()).unwrap_or_default();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64);
+            let dir = rustix::fs::Dir::read_from(&fd).map_err(std::io::Error::from)?;
+            for e in dir.flatten() {
+                let cname = e.file_name();
+                let bytes = cname.to_bytes();
+                if bytes == b"." || bytes == b".." {
+                    continue;
+                }
+                let name = String::from_utf8_lossy(bytes).into_owned();
+                let Ok(st) = statat(&fd, cname, AtFlags::SYMLINK_NOFOLLOW) else {
+                    continue;
+                };
+                if FileType::from_raw_mode(st.st_mode as _) != FileType::RegularFile {
+                    continue;
+                }
+                let gone = if let Some(sha) = fetch_tmp_sha(&name) {
+                    !keep.pending && !refs.contains_key(sha) && !keep.sha256.contains(sha)
+                } else if is_tmp_leftover(&name) {
+                    now - (st.st_mtime as i64) > TMP_LEFTOVER_AGE.as_secs() as i64
+                } else {
+                    false
+                };
+                if !gone {
+                    continue;
+                }
+                if delete {
+                    match unlinkat(&fd, cname, AtFlags::empty()) {
+                        Ok(()) => {}
+                        Err(rustix::io::Errno::NOENT) => continue,
+                        Err(x) => return Err(std::io::Error::from(x).into()),
+                    }
+                }
+                out.blobs += 1;
+                out.bytes += (st.st_blocks as u64).saturating_mul(512);
+            }
+            Ok(())
         }
-        Ok(())
+        #[cfg(not(unix))]
+        {
+            let _ = (refs, delete, out);
+            Ok(()) // qrtz ships on macOS; no fd-relative sweep elsewhere
+        }
     }
 
     /// Every locked package, for `qrtz ls` and the extensions screen; a workspace request's users are unknown here
