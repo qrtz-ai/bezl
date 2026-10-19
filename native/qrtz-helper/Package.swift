@@ -9,8 +9,10 @@ import PackageDescription
 
 #if os(macOS)
 let platformDeps: [Package.Dependency] = [
-    // Pre-1.0: minor bumps may break API, so stay on 0.17.x (APIs checked against the v0.17.7 sources).
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", .upToNextMinor(from: "0.17.7"))
+    // Pinned exactly (audit P1-5): the reviewed v0.17.7 sources only (tag v0.17.7 = 503b4bd1bbf7220882de39fe8ae6716aae4132da,
+    // locked in the committed Package.resolved). A bump is a reviewed change: re-check the local-only loaders
+    // (no ModelHub / loadFromHuggingFace) and update both files together.
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7")
 ]
 let fluidAudio: [Target.Dependency] = [.product(name: "FluidAudio", package: "FluidAudio")]
 #else

@@ -47,6 +47,39 @@ for (const mod of fs.readdirSync(root)) {
     }
   }
 }
+// Audit P1-5: every remote package is pinned exactly in Package.swift and locked by revision in the committed
+// Package.resolved, at the same version, so a release build can't pick up unreviewed code.
+{
+  const pkgDir = path.join(root, '..');
+  const manifest = fs.readFileSync(path.join(pkgDir, 'Package.swift'), 'utf8');
+  const resolvedPath = path.join(pkgDir, 'Package.resolved');
+  const resolved = fs.existsSync(resolvedPath)
+    ? JSON.parse(fs.readFileSync(resolvedPath, 'utf8'))
+    : null;
+  const deps = [
+    ...manifest.matchAll(
+      /\.package\(\s*url:\s*"([^"]+)"\s*,\s*([^)]*\)?)\s*\)/g,
+    ),
+  ];
+  for (const [, url, req] of deps) {
+    const exact = /^exact:\s*"([^"]+)"/.exec(req.trim());
+    if (!exact) {
+      problems.push(
+        `Package.swift: ${url} must be pinned with exact: (got ${req.trim()})`,
+      );
+      continue;
+    }
+    const pin = resolved?.pins?.find((p) => p.location === url);
+    if (!pin) problems.push(`Package.resolved: no pin for ${url} (commit it)`);
+    else if (
+      pin.state?.version !== exact[1] ||
+      !/^[0-9a-f]{40}$/.test(pin.state?.revision ?? '')
+    )
+      problems.push(
+        `Package.resolved: ${url} is ${pin.state?.version}, Package.swift says ${exact[1]}`,
+      );
+  }
+}
 if (problems.length) {
   console.error('Swift source check failed:\n' + problems.join('\n'));
   process.exit(1);
