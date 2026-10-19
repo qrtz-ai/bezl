@@ -28,6 +28,11 @@ public final class NotchSurface: @unchecked Sendable {
     /// What is drawn now (nil: hidden or retracting).
     private var drawn: NotchEntry?
     private var hideGeneration = 0
+    /// Seams for NotchSurfaceSecureTests: the secure-input check (the system's by default) and what the last hide was.
+    var isSecureInput: () -> Bool = { IsSecureEventInputEnabled() }
+    private(set) var lastRetractSecure: Bool?
+    /// The content row's model opacity now (0 once a secure hide ran).
+    var contentOpacity: Float { stage.contentOpacity }
 
     /// `fontName`: the content's font (echo registers Geist Pixel Square); the system font when nil or unknown.
     public init(fontName: String?) {
@@ -110,7 +115,7 @@ public final class NotchSurface: @unchecked Sendable {
     /// The entry to draw: the arbiter's top one, except module content while secure input is on (a password prompt).
     private func target() -> NotchEntry? {
         guard let e = arbiter.visible else { return nil }
-        if e.priority == .module && IsSecureEventInputEnabled() { return nil }
+        if e.priority == .module && isSecureInput() { return nil }
         return e
     }
 
@@ -139,6 +144,7 @@ public final class NotchSurface: @unchecked Sendable {
     }
 
     private func retract(secure: Bool = false) {
+        lastRetractSecure = secure
         drawn = nil
         hideGeneration += 1
         let gen = hideGeneration
@@ -152,16 +158,19 @@ public final class NotchSurface: @unchecked Sendable {
     /// While module content holds the surface, re-check secure input twice a second (it can turn on at any time).
     private func watchSecureInput(_ on: Bool) {
         if on, secureTimer == nil {
-            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-                guard let self else { return }
-                let hidden = self.target() == nil
-                if hidden != (self.drawn == nil) { self.render() }
-            }
+            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.recheckSecureInput() }
             RunLoop.main.add(t, forMode: .common)
             secureTimer = t
         } else if !on {
             secureTimer?.invalidate(); secureTimer = nil
         }
+    }
+
+    /// The secure-input poll's tick: secure input turning on while module content is drawn hides it through
+    /// `retract(secure: true)` in this same call (the content's opacity is 0 when it returns).
+    func recheckSecureInput() {
+        let hidden = target() == nil
+        if hidden != (drawn == nil) { render() }
     }
 
     private func screensChanged() {
@@ -234,6 +243,7 @@ final class NotchStageView: NSView {
     private let font: NSFont
 
     var level = 0.0
+    var contentOpacity: Float { row.layer?.opacity ?? 0 }
     /// The springs, fades and corners (`NotchMotion`); read each time an animation is built, so a change applies on
     /// the next show, widen or hide.
     var motion = NotchMotion()

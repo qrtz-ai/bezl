@@ -57,6 +57,8 @@ let package = Package(
         .target(name: "QrtzEchoMac", dependencies: ["QrtzEcho", "QrtzMacShared", "QrtzShared"] + fluidAudio, swiftSettings: macSeams),
         .target(name: "QrtzNanoMac", dependencies: ["QrtzNano", "QrtzMacShared", "QrtzShared"] + fluidAudio, swiftSettings: macSeams),
         .executableTarget(name: "qrtz-helper", dependencies: execDeps, swiftSettings: macSeams),
+        // macOS only in practice (the sources are #if os(macOS)): the notch surface's secure-input hide.
+        .testTarget(name: "QrtzMacSharedTests", dependencies: ["QrtzMacShared", "QrtzShared"], swiftSettings: macSeams),
         .testTarget(name: "QrtzHelperCoreTests", dependencies: ["QrtzHelperCore", "QrtzShared", "QrtzEcho", "QrtzNano"]),
         // ctrl (ADR 0100): the never-takes-over-the-ui guard, policy and background actions. Its own module, kept
         // apart from the echo/nano code; Foundation-only parts build on Linux, Sources/QrtzCtrl/mac on macOS only.
