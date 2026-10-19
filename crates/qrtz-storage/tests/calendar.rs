@@ -264,3 +264,46 @@ fn m2_urls_in_titles_lose_query_and_fragment_and_cached_titles_are_scrubbed() {
     );
     assert_eq!(c.scrub_links().unwrap(), 0);
 }
+
+#[test]
+fn m2_scheme_less_hosts_tel_passcodes_and_full_width_marks() {
+    // Scheme-less meeting-host words are cut at ? / # too.
+    assert_eq!(
+        clean_title("sync zoom.us/j/1?pwd=s3cr3t now"),
+        "sync zoom.us/j/1 now"
+    );
+    assert_eq!(
+        clean_title("(us02web.zoom.us/j/9#success)"),
+        "(us02web.zoom.us/j/9"
+    );
+    assert_eq!(
+        clean_title("meet.google.com/abc-defg-hij?authuser=1"),
+        "meet.google.com/abc-defg-hij"
+    );
+    assert_eq!(clean_title("www.zoom.us/j/1?pwd=x"), "www.zoom.us/j/1");
+    // A word that isn't a meeting host keeps its ?.
+    assert_eq!(
+        clean_title("ready? example.com/a?b ok?"),
+        "ready? example.com/a?b ok?"
+    );
+    // tel: dial strings keep only the number.
+    assert_eq!(
+        clean_title("dial tel:+15551234567,,98765432# now"),
+        "dial tel:+15551234567 now"
+    );
+    assert_eq!(
+        clean_title("TEL:+1-555-123-4567;postd=1234#"),
+        "TEL:+1-555-123-4567"
+    );
+    assert_eq!(clean_title("tel:+15551234567"), "tel:+15551234567");
+    // Full-width ？ / ＃ count like ? / #.
+    assert_eq!(
+        clean_title("https://zoom.us/j/1？pwd=s3cr3t"),
+        "https://zoom.us/j/1"
+    );
+    assert_eq!(clean_title("zoom.us/j/1＃pwd"), "zoom.us/j/1");
+    assert_eq!(
+        clean_meeting_url(Some("https://zoom.us/j/1？pwd=s3cr3t")).as_deref(),
+        Some("https://zoom.us/j/1")
+    );
+}

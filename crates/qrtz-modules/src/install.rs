@@ -1501,27 +1501,35 @@ impl Installer {
             let Some(store_dir) = tmp.parent() else {
                 return Ok(());
             };
-            match std::fs::symlink_metadata(store_dir) {
-                Ok(m) if m.file_type().is_dir() => {}
-                _ => return Ok(()),
-            }
-            let lst = match std::fs::symlink_metadata(&tmp) {
-                Ok(m) if m.file_type().is_dir() => m,
+            // Bozniak nit: `store/` itself is opened O_DIRECTORY|O_NOFOLLOW and `.tmp` is stat'd and opened
+            // relative to it, so neither path component can be swapped for a symlink after the check.
+            let Some(tmp_name) = tmp.file_name() else {
+                return Ok(());
+            };
+            let Ok(sfd) = openat(
+                CWD,
+                store_dir,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            ) else {
+                return Ok(());
+            };
+            let lst = match statat(&sfd, tmp_name, AtFlags::SYMLINK_NOFOLLOW) {
+                Ok(m) if FileType::from_raw_mode(m.st_mode as _) == FileType::Directory => m,
                 _ => return Ok(()),
             };
             let Ok(fd) = openat(
-                CWD,
-                &tmp,
+                &sfd,
+                tmp_name,
                 OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
                 Mode::empty(),
             ) else {
                 return Ok(());
             };
             {
-                use std::os::unix::fs::MetadataExt;
                 let st = fstat(&fd).map_err(std::io::Error::from)?;
-                if st.st_dev as u64 != lst.dev() || st.st_ino as u64 != lst.ino() {
-                    return Ok(()); // swapped between the lstat and the open
+                if st.st_dev != lst.st_dev || st.st_ino != lst.st_ino {
+                    return Ok(()); // swapped between the stat and the open
                 }
             }
             let keep = self.tmp_keep.as_ref().map(|f| f()).unwrap_or_default();

@@ -48,12 +48,35 @@ pub struct CalendarEvent {
     pub meeting_url: Option<String>,
 }
 
-/// ADR 0217 M2: a word holding `://` is cut before its first `?` or `#` (scheme + host + path stay).
+/// ADR 0217 M2: where a word's query / fragment starts. Full-width `？` / `＃` count like `?` / `#`.
+const QUERY_MARKS: [char; 4] = ['?', '#', '\u{FF1F}', '\u{FF03}'];
+
+/// ADR 0217 M2: a word holding `://`, or a scheme-less word naming a meeting host (`zoom.us/j/1?pwd=…`), is cut
+/// before its first `?` or `#` (or `？` / `＃`): host + path stay. A `tel:` dial string keeps only the number
+/// (`tel:+15551234,,98765#` → `tel:+15551234`): pauses, `;` params and the passcode after them go.
 pub fn strip_url_query(word: &str) -> &str {
-    if !word.contains("://") {
+    if word.len() >= 4 && word[..4].eq_ignore_ascii_case("tel:") {
+        let end = word[4..]
+            .find(|c: char| !(c.is_ascii_digit() || "+-.()".contains(c)))
+            .map_or(word.len(), |i| i + 4);
+        return &word[..end];
+    }
+    let hosty = !word.contains("://") && {
+        let w = word.trim_start_matches(|c: char| "(<[\"'".contains(c));
+        let authority = w
+            .split(|c: char| c == '/' || QUERY_MARKS.contains(&c))
+            .next()
+            .unwrap_or("");
+        let host = authority.split(':').next().unwrap_or("").to_ascii_lowercase();
+        let host = host.trim_start_matches("www.");
+        MEETING_HOSTS
+            .iter()
+            .any(|h| host == *h || host.ends_with(&format!(".{h}")))
+    };
+    if !word.contains("://") && !hosty {
         return word;
     }
-    word.split(['?', '#']).next().unwrap_or(word)
+    word.split(QUERY_MARKS).next().unwrap_or(word)
 }
 
 /// Drops control, format (tag, bidi) and private-use characters, collapses whitespace, and caps the length.
@@ -114,7 +137,7 @@ pub fn clean_meeting_url(url: Option<&str>) -> Option<String> {
         return None;
     }
     meeting_host(u)?;
-    Some(u.split(['?', '#']).next().unwrap_or(u).to_string())
+    Some(u.split(QUERY_MARKS).next().unwrap_or(u).to_string())
 }
 
 /// The platform a link's host belongs to, in `MeetingPlatform` names (`zoom`, `google-meet`, `teams`, `webex`).
