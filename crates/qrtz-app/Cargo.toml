@@ -62,10 +62,11 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 minisign-verify = "0.3.0"
 base64 = "0.22"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-# ADR 0181: the self-update stage dir next to qrtz.app.
+# ADR 0181: the self-update download and stage dirs; RENAME_SWAP's errno.
 tempfile.workspace = true
 libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
 # ADR 0078: only to delete Keychain items an older build saved (qrtz stores no keys).
 security-framework = "3"
 

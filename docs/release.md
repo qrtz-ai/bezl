@@ -128,7 +128,9 @@ checks the archive's size and sha256 (the feed's), its minisign signature agains
 in (`crates/qrtz-app/src/app_update_key.pub`, its trusted comment naming the same version), that the new qrtz.app is
 `ai.qrtz.desktop` at that version, signed by Developer ID team MR26CCZ496 and notarized (`codesign -R … and
 notarized`, `spctl`), and that the version is above both this build and the highest one it ever accepted (the
-high-water mark in its data dir). Never a downgrade, never a reinstall.
+high-water mark in its data dir). Never a downgrade, never a reinstall. `latest.json` is signed by the app-update
+key and expires 30 days after it was signed; `app-feed-refresh.yml` re-signs it every Monday. If that workflow stops,
+update checks fail quietly ("expired") until it runs again: run it by hand with `gh workflow run app-feed-refresh.yml`.
 
 On R2 (bucket `qrtz-modules`, never touched by the module publish: hydrate-out.sh and publish.sh exclude `app/**`):
 

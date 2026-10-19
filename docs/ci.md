@@ -36,7 +36,7 @@ file and the CHANGELOG section; a commit that leaves the version alone never rel
    `qrtz-<version>-macos-aarch64-dmg` (30 days) on every run.
 3. Only with the app-update key (`APP_UPDATE_KEY` secret + the committed `crates/qrtz-app/src/app_update_key.pub`):
    the `.app.tar.gz` is signed with `tauri signer sign --app-version`, verified with `minisign` against the committed
-   public key, `scripts/app/feed.mjs` writes `latest.json`, `scripts/app/upload.sh` uploads to R2 `v1/app/`,
+   public key, `scripts/app/feed.mjs` writes the feed (expires in 30 days) and `scripts/app/sign-feed.sh` signs it into `latest.json`, `scripts/app/upload.sh` uploads to R2 `v1/app/`,
    `scripts/app/verify-live.sh` compares what modules.qrtz.ai serves, and `version.mjs tag --push` tags
    `app-v<version>`. Without the key the run ends after the artifact with a warning: nothing is published.
 

@@ -198,8 +198,12 @@ jobs:
           grep -q "version:$VERSION" "$out/k.sig"
           rm -f "$out/k.pub" "$out/k.sig"
           bun scripts/release-notes.mjs "$VERSION" >"$out/notes.md" 2>/dev/null || : >"$out/notes.md"
-          node scripts/app/feed.mjs --version "$VERSION" --archive "$tgz" --sig "$tgz.sig" --notes-file "$out/notes.md" >"$out/latest.json"
-          cat "$out/latest.json"
+          # The feed expires in 30 days (app-feed-refresh.yml re-signs it weekly); its signature covers every byte.
+          node scripts/app/feed.mjs --version "$VERSION" --archive "$tgz" --sig "$tgz.sig" --notes-file "$out/notes.md" \
+            --expires-days 30 >"$out/feed.json"
+          cat "$out/feed.json"
+          bash scripts/app/sign-feed.sh "$out/feed.json" "$out/latest.json"
+          rm -f "$out/feed.json"
 
       - name: upload to modules.qrtz.ai (R2 v1/app/)
         if: env.PUBLISH == '1'

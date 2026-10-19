@@ -1,0 +1,87 @@
+# ADR 0181 (P3.7): keep qrtz.app's update feed fresh. latest.json carries an `expires` 30 days out, covered by the
+# app-update key's signature, and the app refuses an expired feed (so a replayed old feed can hide an update for weeks
+# at most). Once a week this re-signs the live feed, unchanged but for a new expires, after checking that the live one
+# verifies against the committed public key (it never signs anything it didn't sign before). It shares app-release's
+# concurrency group, so it never runs during a release. Without the app-update key or R2 secrets it does nothing.
+name: app-feed-refresh
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: re-sign latest.json with a new expires
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HAVE_KEY: ${{ secrets.APP_UPDATE_KEY != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
+      HOST: https://modules.qrtz.ai
+    steps:
+      - uses: actions/checkout@v7
+      - name: set up?
+        id: gate
+        run: |
+          if [[ "$HAVE_KEY" != true ]] || ! node scripts/app/feed.mjs --check-key crates/qrtz-app/src/app_update_key.pub; then
+            echo "::warning::no app-update key or R2 secrets yet (scripts/ci/setup-secrets.sh app-update): nothing to refresh"
+            echo "go=0" >>"$GITHUB_OUTPUT"
+          elif ! curl -fsS -o "$RUNNER_TEMP/live.json" -H 'Cache-Control: no-cache' "$HOST/v1/app/latest.json?r=$GITHUB_RUN_ID"; then
+            echo "::notice::no feed on $HOST yet: nothing to refresh"
+            echo "go=0" >>"$GITHUB_OUTPUT"
+          else
+            echo "go=1" >>"$GITHUB_OUTPUT"
+          fi
+      - uses: oven-sh/setup-bun@v2
+        if: steps.gate.outputs.go == '1'
+        with:
+          bun-version-file: package.json
+      - name: tools
+        if: steps.gate.outputs.go == '1'
+        run: |
+          bun install --frozen-lockfile
+          sudo apt-get install -y -qq minisign rclone >/dev/null
+      - name: the live feed is ours
+        if: steps.gate.outputs.go == '1'
+        run: |
+          d="$RUNNER_TEMP/f"
+          mkdir -p "$d"
+          node -e 'const e=JSON.parse(require("fs").readFileSync(process.argv[1]));require("fs").writeFileSync(process.argv[2],Buffer.from(e.feed,"base64"));require("fs").writeFileSync(process.argv[3],Buffer.from(e.signature,"base64"))' \
+            "$RUNNER_TEMP/live.json" "$d/live-feed.json" "$d/live.sig"
+          grep -v '^#' crates/qrtz-app/src/app_update_key.pub | tr -d '[:space:]' | base64 --decode >"$d/k.pub"
+          minisign -V -p "$d/k.pub" -x "$d/live.sig" -m "$d/live-feed.json"
+      - name: re-sign with a new expires
+        if: steps.gate.outputs.go == '1'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.APP_UPDATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: |
+          d="$RUNNER_TEMP/f"
+          node scripts/app/feed.mjs --unwrap "$RUNNER_TEMP/live.json" --expires-days 30 >"$d/feed.json"
+          bash scripts/app/sign-feed.sh "$d/feed.json" "$d/latest.json"
+      - name: upload and check
+        if: steps.gate.outputs.go == '1'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          d="$RUNNER_TEMP/f"
+          . scripts/ci/r2-env.sh
+          rclone copyto "$d/latest.json" "qrtzr2:${R2_BUCKET:-qrtz-modules}/v1/app/latest.json" --ignore-times \
+            --header-upload "Cache-Control: public, max-age=60" --header-upload "Content-Type: application/json" -v
+          want="$(sha256sum "$d/latest.json" | cut -d' ' -f1)"
+          for i in $(seq 1 20); do
+            got="$(curl -fsS -H 'Cache-Control: no-cache' "$HOST/v1/app/latest.json?r=$GITHUB_RUN_ID-$i" | sha256sum | cut -d' ' -f1)"
+            [[ "$got" == "$want" ]] && { echo "app-feed-refresh: live"; exit 0; }
+            sleep 15
+          done
+          echo "::error::$HOST/v1/app/latest.json isn't the re-signed feed"
+          exit 1

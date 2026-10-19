@@ -1,9 +1,14 @@
 //! ADR 0181: qrtz updates itself, the way the marketplace updates apps, from the same pinned host.
 //!
-//! The feed is `https://modules.qrtz.ai/v1/app/latest.json` (Tauri's static updater JSON, plus `sha256` and `size`):
-//! one `darwin-aarch64` release whose archive is the immutable `v1/app/<version>/qrtz_<version>_aarch64.app.tar.gz`
-//! of a notarized, stapled qrtz.app. A release is taken only if, in this order:
+//! The feed is `https://modules.qrtz.ai/v1/app/latest.json`, a signed envelope `{"feed": <base64>, "signature":
+//! <base64 minisign>}` ([`open_feed`]). The signature (the **app-update key**) covers the feed's exact bytes, and the
+//! feed (Tauri's static updater JSON plus `sha256`, `size` and `expires`) names one `darwin-aarch64` release whose
+//! archive is the immutable `v1/app/<version>/qrtz_<version>_aarch64.app.tar.gz` of a notarized, stapled qrtz.app.
+//! A release is taken only if, in this order:
 //!
+//! 0. the envelope's signature verifies and the feed hasn't expired (`expires`, at most [`MAX_FEED_LIFETIME`] ahead;
+//!    `app-feed-refresh.yml` re-signs it weekly), so a host or network replaying an old feed can hide an update for
+//!    weeks at most, never forever (a freeze attack, [`check_fresh`]);
 //! 1. the feed parses and names exactly that archive path on the pinned host ([`parse_feed`]);
 //! 2. its version is strictly newer than this build (plain `x.y.z`, never a downgrade or a re-install, [`is_update`]);
 //! 3. the archive has the feed's size and sha256, and its minisign signature verifies against the **app-update key**
@@ -11,7 +16,10 @@
 //!    version (the signature's trusted comment) equal to the feed's ([`verify_signature`]);
 //! 4. unpacked, it is `qrtz.app` with identifier `ai.qrtz.desktop`, that version, a valid Developer ID signature of
 //!    team MR26CCZ496 and a notarization ticket (`codesign -R` with `notarized`, and Gatekeeper's verdict
-//!    "Notarized Developer ID"); only then is it swapped into place ([`install_bundle`]).
+//!    "Notarized Developer ID"); only then is the high-water mark raised and the bundle swapped into place
+//!    ([`install_bundle`]): a download or check that fails leaves the version free to retry.
+//!
+//! The archive is streamed to a file (never held in memory) and hashed and signature-checked from there.
 //!
 //! Nothing runs from the new bundle until the user presses "restart to update" (ADR 0172's pattern): the swap
 //! leaves the running process on its mapped code, and the relaunch opens the new one. The quiet check runs once a
@@ -32,6 +40,8 @@ pub const TARGET: &str = "darwin-aarch64";
 pub const APP_IDENTIFIER: &str = "ai.qrtz.desktop";
 pub const MAX_FEED_BYTES: usize = 64 * 1024;
 pub const MAX_ARCHIVE_BYTES: u64 = 1 << 30;
+/// The furthest ahead a feed's `expires` may be: one that claims longer is refused (a mis-signed or forged lifetime).
+pub const MAX_FEED_LIFETIME: Duration = Duration::from_secs(60 * 24 * 3600);
 const MAX_NOTES: usize = 4000;
 pub const FIRST_CHECK_AFTER: Duration = Duration::from_secs(60);
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
@@ -74,6 +84,8 @@ pub struct Release {
     pub signature: String,
     pub sha256: String,
     pub size: u64,
+    /// When the feed that announced it stops being trusted (unix seconds).
+    pub expires: u64,
 }
 
 fn plain_version(v: &str) -> Result<semver::Version, String> {
@@ -120,6 +132,10 @@ pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
     if size == 0 || size > MAX_ARCHIVE_BYTES {
         return Err("the update feed's archive size is missing or too large".into());
     }
+    let expires = v["expires"]
+        .as_str()
+        .and_then(parse_utc)
+        .ok_or("the update feed has no expires (YYYY-MM-DDTHH:MM:SSZ)")?;
     let notes = v["notes"]
         .as_str()
         .map(|n| n.chars().take(MAX_NOTES).collect::<String>());
@@ -130,7 +146,85 @@ pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
         signature: signature.to_owned(),
         sha256: sha256.to_owned(),
         size,
+        expires,
     })
+}
+
+/// `YYYY-MM-DDTHH:MM:SSZ` (UTC, no fraction) as unix seconds.
+pub fn parse_utc(s: &str) -> Option<u64> {
+    let b = s.as_bytes();
+    if b.len() != 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'Z'
+    {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| -> Option<i64> {
+        let t = s.get(r)?;
+        t.bytes().all(|c| c.is_ascii_digit()).then(|| t.parse().ok())?
+    };
+    let (y, mo, d, h, mi, se) = (n(0..4)?, n(5..7)?, n(8..10)?, n(11..13)?, n(14..16)?, n(17..19)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || se > 59 {
+        return None;
+    }
+    // Days from civil (Howard Hinnant's algorithm).
+    let y2 = if mo <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + h * 3600 + mi * 60 + se).ok()
+}
+
+/// The feed is still good at `now` (unix seconds): not expired, and not claiming more than [`MAX_FEED_LIFETIME`].
+pub fn check_fresh(expires: u64, now: u64) -> Result<(), String> {
+    if expires <= now {
+        return Err("the update feed has expired (modules.qrtz.ai serves an old one)".into());
+    }
+    if expires - now > MAX_FEED_LIFETIME.as_secs() {
+        return Err("the update feed claims to be good for too long".into());
+    }
+    Ok(())
+}
+
+/// Open the signed envelope `latest.json` is (`{"feed": <base64 of the feed's bytes>, "signature": <base64 of the
+/// minisign signature of those bytes>}`): the feed's bytes, if the signature verifies against `key_b64`.
+pub fn open_feed(envelope: &[u8], key_b64: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    if envelope.len() > MAX_FEED_BYTES {
+        return Err("the update feed is too large".into());
+    }
+    let v: Value =
+        serde_json::from_slice(envelope).map_err(|e| format!("the update feed isn't json: {e}"))?;
+    let feed = v["feed"]
+        .as_str()
+        .and_then(|f| base64::engine::general_purpose::STANDARD.decode(f).ok())
+        .ok_or("the update feed isn't signed (no feed)")?;
+    let sig = v["signature"].as_str().ok_or("the update feed isn't signed")?;
+    let (key, sig) = decode_key_and_sig(key_b64, sig)?;
+    key.verify(&feed, &sig, false)
+        .map_err(|e| format!("the update feed's signature doesn't verify: {e}"))?;
+    Ok(feed)
+}
+
+fn decode_key_and_sig(
+    key_b64: &str,
+    sig_b64: &str,
+) -> Result<(minisign_verify::PublicKey, minisign_verify::Signature), String> {
+    let key = minisign_verify::PublicKey::decode(
+        &decode_b64_text(key_b64).map_err(|e| format!("app-update key: {e}"))?,
+    )
+    .map_err(|e| format!("app-update key: {e}"))?;
+    let sig =
+        minisign_verify::Signature::decode(&decode_b64_text(sig_b64).map_err(|e| format!("signature: {e}"))?)
+            .map_err(|e| format!("signature: {e}"))?;
+    Ok((key, sig))
 }
 
 /// `latest` is strictly newer than `current` (both plain `x.y.z`). Equal, older or unparsable is never an update:
@@ -154,14 +248,29 @@ fn decode_b64_text(s: &str) -> Result<String, String> {
 /// `key_b64`, and the version it was signed for (`version:` in its trusted comment, covered by the signature) is
 /// `version`. A signature without a signed version is refused.
 pub fn verify_signature(bytes: &[u8], sig_b64: &str, key_b64: &str, version: &str) -> Result<(), String> {
-    let key = minisign_verify::PublicKey::decode(
-        &decode_b64_text(key_b64).map_err(|e| format!("app-update key: {e}"))?,
-    )
-    .map_err(|e| format!("app-update key: {e}"))?;
-    let sig =
-        minisign_verify::Signature::decode(&decode_b64_text(sig_b64).map_err(|e| format!("signature: {e}"))?)
-            .map_err(|e| format!("signature: {e}"))?;
-    key.verify(bytes, &sig, false)
+    verify_signature_from(bytes, sig_b64, key_b64, version)
+}
+
+/// [`verify_signature`] over a stream (the downloaded archive file), 1 MiB at a time.
+pub fn verify_signature_from(
+    mut r: impl std::io::Read,
+    sig_b64: &str,
+    key_b64: &str,
+    version: &str,
+) -> Result<(), String> {
+    let (key, sig) = decode_key_and_sig(key_b64, sig_b64)?;
+    let mut v = key
+        .verify_stream(&sig)
+        .map_err(|e| format!("the update's signature doesn't verify: {e}"))?;
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = r.read(&mut buf).map_err(|e| format!("reading the update: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        v.update(&buf[..n]);
+    }
+    v.finalize()
         .map_err(|e| format!("the update's signature doesn't verify: {e}"))?;
     let signed = sig
         .trusted_comment()
@@ -270,16 +379,76 @@ pub fn to_json(current: &str, s: &State, checked_at_ms: Option<u64>) -> Value {
 pub trait Backend: Send + Sync {
     /// The feed's bytes (`None` = the host has no feed yet).
     async fn fetch_feed(&self) -> Result<Option<Vec<u8>>, String>;
-    /// The archive's bytes; `progress(done, total)`.
+    /// Stream the archive into the new file `dest` (never all in memory); `progress(done, total)`.
     async fn fetch_archive(
         &self,
         r: &Release,
+        dest: &std::path::Path,
         progress: &(dyn Fn(u64, u64) + Send + Sync),
-    ) -> Result<Vec<u8>, String>;
-    /// Unpack, check (step 4 of the module doc) and swap the new qrtz.app in. Only called with verified bytes.
-    async fn install(&self, r: &Release, archive: Vec<u8>) -> Result<(), String>;
+    ) -> Result<(), String>;
+    /// Unpack, check (step 4 of the module doc) and swap the new qrtz.app in. Only called with a verified archive.
+    /// `commit` raises the high-water mark: call it after every check passed, right before the swap, and swap only
+    /// if it succeeds (ADR 0181).
+    async fn install(
+        &self,
+        r: &Release,
+        archive: &std::path::Path,
+        commit: HighWaterCommit,
+    ) -> Result<(), String>;
     /// The pinned host (`https://modules.qrtz.ai`) the archive URL must be on.
     fn host(&self) -> String;
+}
+
+/// Raises the high-water mark to one version; handed to [`Backend::install`] to call right before the swap.
+pub struct HighWaterCommit {
+    path: Option<std::path::PathBuf>,
+    current: String,
+    version: String,
+}
+
+impl HighWaterCommit {
+    /// For a backend test: a commit that keeps no mark.
+    pub fn none(version: &str) -> Self {
+        Self {
+            path: None,
+            current: String::new(),
+            version: version.to_owned(),
+        }
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// Raise the mark to the version (only ever raised; written atomically). Errs, and then nothing may be swapped
+    /// in, when the version isn't above the build and the mark.
+    pub fn raise(self) -> Result<(), String> {
+        let Some(p) = &self.path else {
+            return Ok(());
+        };
+        let floor = floor_of(&self.current, Some(p));
+        if !is_update(&floor, &self.version) {
+            return Err(format!(
+                "{} isn't above the highest version accepted ({floor})",
+                self.version
+            ));
+        }
+        let tmp = p.with_extension("tmp");
+        std::fs::write(&tmp, format!("{}\n", self.version))
+            .and_then(|()| std::fs::rename(&tmp, p))
+            .map_err(|e| format!("couldn't keep the update's version: {e}"))
+    }
+}
+
+fn floor_of(current: &str, high_water: Option<&std::path::PathBuf>) -> String {
+    let hw = high_water
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| plain_version(s).is_ok());
+    match hw {
+        Some(h) if is_update(current, &h) => h,
+        _ => current.to_owned(),
+    }
 }
 
 struct Inner {
@@ -294,8 +463,12 @@ pub struct SelfUpdate {
     backend: Arc<dyn Backend>,
     inner: Mutex<Inner>,
     events: Option<Events>,
-    /// Where the highest version whose signature this install ever accepted is kept (`app-update-high-water`).
+    /// Where the highest version this install ever swapped in is kept (`app-update-high-water`).
     high_water: Option<std::path::PathBuf>,
+    /// Where downloads are streamed to (a private temp dir under it per download).
+    work_dir: std::path::PathBuf,
+    /// Unix seconds now (a test sets it).
+    clock: Arc<dyn Fn() -> u64 + Send + Sync>,
 }
 
 /// ADR 0181: the high-water mark file, in qrtz's data dir.
@@ -326,7 +499,23 @@ impl SelfUpdate {
             }),
             events: None,
             high_water: None,
+            work_dir: std::env::temp_dir(),
+            clock: Arc::new(|| now_ms() / 1000),
         })
+    }
+
+    /// Stream downloads into a temp dir under `dir` (the app's data dir) instead of the system temp dir.
+    pub fn with_work_dir(self: Arc<Self>, dir: impl Into<std::path::PathBuf>) -> Arc<Self> {
+        let mut me = Arc::try_unwrap(self).unwrap_or_else(|_| panic!("with_work_dir before sharing"));
+        me.work_dir = dir.into();
+        Arc::new(me)
+    }
+
+    /// The clock feed expiry is judged by (unix seconds).
+    pub fn with_clock(self: Arc<Self>, clock: impl Fn() -> u64 + Send + Sync + 'static) -> Arc<Self> {
+        let mut me = Arc::try_unwrap(self).unwrap_or_else(|_| panic!("with_clock before sharing"));
+        me.clock = Arc::new(clock);
+        Arc::new(me)
     }
 
     /// ADR 0181: keep the highest signed version accepted in `path`; a feed or archive below it is refused even
@@ -339,31 +528,7 @@ impl SelfUpdate {
 
     /// The floor any update must be strictly above: this build, or the high-water mark if higher.
     pub fn floor(&self) -> String {
-        let hw = self
-            .high_water
-            .as_ref()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .map(|s| s.trim().to_owned())
-            .filter(|s| plain_version(s).is_ok());
-        match hw {
-            Some(h) if is_update(&self.current, &h) => h,
-            _ => self.current.clone(),
-        }
-    }
-
-    /// Raise the high-water mark to `v`, the newest accepted version (only ever raised; written atomically).
-    fn raise_high_water(&self, v: &str) -> Result<(), String> {
-        let Some(p) = &self.high_water else {
-            return Ok(());
-        };
-        let floor = self.floor();
-        if !is_update(&floor, v) {
-            return Err(format!("{v} isn't above the highest version accepted ({floor})"));
-        }
-        let tmp = p.with_extension("tmp");
-        std::fs::write(&tmp, format!("{v}\n"))
-            .and_then(|()| std::fs::rename(&tmp, p))
-            .map_err(|e| format!("couldn't keep the update's version: {e}"))
+        floor_of(&self.current, self.high_water.as_ref())
     }
 
     pub fn with_events(self: Arc<Self>, events: Events) -> Arc<Self> {
@@ -410,7 +575,10 @@ impl SelfUpdate {
             let Some(b) = self.backend.fetch_feed().await? else {
                 return Ok(None);
             };
-            parse_feed(&b, &self.backend.host()).map(Some)
+            let key = self.key.as_deref().ok_or("updates aren't set up")?;
+            let r = parse_feed(&open_feed(&b, key)?, &self.backend.host())?;
+            check_fresh(r.expires, (self.clock)())?;
+            Ok(Some(r))
         }
         .await;
         self.lock().checked_at_ms = Some(now_ms());
@@ -500,22 +668,52 @@ impl SelfUpdate {
                 });
             }
         };
-        let bytes = self.backend.fetch_archive(r, &progress).await?;
+        check_fresh(r.expires, (self.clock)())?;
+        std::fs::create_dir_all(&self.work_dir).map_err(|e| format!("{}: {e}", self.work_dir.display()))?;
+        let dl = tempfile::Builder::new()
+            .prefix(".qrtz-update-download-")
+            .tempdir_in(&self.work_dir)
+            .map_err(|e| format!("no room for the download: {e}"))?;
+        let file = dl.path().join("update.tar.gz");
+        self.backend.fetch_archive(r, &file, &progress).await?;
         self.set(State::Installing(r.clone()));
-        if bytes.len() as u64 != r.size {
-            return Err(format!(
-                "the update is {} bytes, the feed says {}",
-                bytes.len(),
-                r.size
-            ));
+        let (size, sha) = {
+            let file = file.clone();
+            tokio::task::spawn_blocking(move || qrtz_modules::fsutil::sha256_file(&file))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| format!("the update: {e}"))?
+        };
+        if size != r.size {
+            return Err(format!("the update is {size} bytes, the feed says {}", r.size));
         }
-        if qrtz_modules::sha256_hex(&bytes) != r.sha256 {
+        if sha != r.sha256 {
             return Err("the update's sha256 isn't the feed's".into());
         }
-        verify_signature(&bytes, &r.signature, key, &r.version)?;
-        // Signed and newer: from now on nothing below it is accepted, even if this install fails.
-        self.raise_high_water(&r.version)?;
-        self.backend.install(r, bytes).await
+        {
+            let (file, sig, key, v) = (
+                file.clone(),
+                r.signature.clone(),
+                key.to_owned(),
+                r.version.clone(),
+            );
+            tokio::task::spawn_blocking(move || {
+                let f = std::fs::File::open(&file).map_err(|e| format!("the update: {e}"))?;
+                verify_signature_from(std::io::BufReader::new(f), &sig, &key, &v)
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+        }
+        // The mark is raised by the install itself, after the new bundle passed every check and right before the
+        // swap: a failure anywhere before leaves this version free to retry.
+        let commit = HighWaterCommit {
+            path: self.high_water.clone(),
+            current: self.current.clone(),
+            version: r.version.clone(),
+        };
+        let res = self.backend.install(r, &file, commit).await;
+        drop(dl);
+        res
     }
 
     /// `true` when the new version is in place and qrtz may restart into it.
@@ -579,27 +777,40 @@ impl Backend for PinnedBackend {
     async fn fetch_archive(
         &self,
         r: &Release,
+        dest: &std::path::Path,
         progress: &(dyn Fn(u64, u64) + Send + Sync),
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(), String> {
+        use std::io::Write;
         const CHUNK: u64 = 8 << 20;
-        let mut out = Vec::with_capacity(usize::try_from(r.size).map_err(|_| "too large")?);
-        while (out.len() as u64) < r.size {
-            let start = out.len() as u64;
-            let len = CHUNK.min(r.size - start);
-            let b = self.transport.app_range(&r.path, start, len).await?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(dest)
+            .map_err(|e| format!("{}: {e}", dest.display()))?;
+        let mut done = 0u64;
+        while done < r.size {
+            let len = CHUNK.min(r.size - done);
+            let b = self.transport.app_range(&r.path, done, len).await?;
             if b.len() as u64 != len {
                 return Err(format!("{}: short read", r.path));
             }
-            out.extend_from_slice(&b);
-            progress(out.len() as u64, r.size);
+            f.write_all(&b).map_err(|e| format!("{}: {e}", dest.display()))?;
+            done += len;
+            progress(done, r.size);
         }
-        Ok(out)
+        f.sync_all().map_err(|e| format!("{}: {e}", dest.display()))
     }
-    async fn install(&self, r: &Release, archive: Vec<u8>) -> Result<(), String> {
+    async fn install(
+        &self,
+        r: &Release,
+        archive: &std::path::Path,
+        commit: HighWaterCommit,
+    ) -> Result<(), String> {
         let version = r.version.clone();
+        let archive = archive.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let bundle = running_bundle()?;
-            install_bundle(&archive, &version, &bundle)
+            install_bundle(&archive, &version, &bundle, commit)
         })
         .await
         .map_err(|e| e.to_string())?
@@ -634,10 +845,15 @@ pub fn bundle_of(exe: &std::path::Path) -> Result<std::path::PathBuf, String> {
 }
 
 /// Unpack `archive` next to `bundle` (same volume), check the new qrtz.app (identifier, `version`, Developer ID of
-/// team MR26CCZ496, notarized) and swap it with `bundle` atomically (`renamex_np(RENAME_SWAP)`); the old bundle is
-/// deleted. Nothing of the new bundle runs here.
+/// team MR26CCZ496, notarized), raise the high-water mark (`commit`), and swap it with `bundle` atomically
+/// (`renamex_np(RENAME_SWAP)`); the old bundle is deleted. Nothing of the new bundle runs here.
 #[cfg(target_os = "macos")]
-pub fn install_bundle(archive: &[u8], version: &str, bundle: &std::path::Path) -> Result<(), String> {
+pub fn install_bundle(
+    archive: &std::path::Path,
+    version: &str,
+    bundle: &std::path::Path,
+    commit: HighWaterCommit,
+) -> Result<(), String> {
     let parent = bundle.parent().ok_or("no folder above qrtz.app")?;
     let stage = tempfile::Builder::new()
         .prefix(".qrtz-update-")
@@ -648,13 +864,13 @@ pub fn install_bundle(archive: &[u8], version: &str, bundle: &std::path::Path) -
                 parent.display()
             )
         })?;
-    let tgz = stage.path().join("update.tar.gz");
-    std::fs::write(&tgz, archive).map_err(|e| e.to_string())?;
     let out = stage.path().join("x");
     std::fs::create_dir(&out).map_err(|e| e.to_string())?;
     // bsdtar refuses absolute paths and `..` by default.
-    run_tool("/usr/bin/tar", &["-xzf", path_str(&tgz)?, "-C", path_str(&out)?])?;
-    let _ = std::fs::remove_file(&tgz);
+    run_tool(
+        "/usr/bin/tar",
+        &["-xzf", path_str(archive)?, "-C", path_str(&out)?],
+    )?;
     let names: Vec<_> = std::fs::read_dir(&out)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
@@ -668,6 +884,11 @@ pub fn install_bundle(archive: &[u8], version: &str, bundle: &std::path::Path) -
         return Err("the update's qrtz.app isn't a folder".into());
     }
     check_new_bundle(&new, version)?;
+    if commit.version() != version {
+        return Err("the high-water mark is for another version".into());
+    }
+    // ADR 0181 (U1): the mark goes up only now, with every check passed, right before the swap.
+    commit.raise()?;
     swap(&new, bundle)?;
     // `new` now holds the old bundle; the running process keeps its mapped pages.
     let _ = std::fs::remove_dir_all(stage.path());
@@ -675,7 +896,12 @@ pub fn install_bundle(archive: &[u8], version: &str, bundle: &std::path::Path) -
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn install_bundle(_archive: &[u8], _version: &str, _bundle: &std::path::Path) -> Result<(), String> {
+pub fn install_bundle(
+    _archive: &std::path::Path,
+    _version: &str,
+    _bundle: &std::path::Path,
+    _commit: HighWaterCommit,
+) -> Result<(), String> {
     Err("qrtz updates itself only on macOS".into())
 }
 
@@ -750,7 +976,14 @@ pub fn check_new_bundle(app: &std::path::Path, version: &str) -> Result<(), Stri
     Ok(())
 }
 
-/// Swap two paths in one step (APFS `RENAME_SWAP`); on a volume without it, two renames with a rollback.
+/// What a failed `renamex_np(RENAME_SWAP)` allows (ADR 0181, U2): only a volume that doesn't support the swap
+/// (`ENOTSUP`) gets the two-rename fallback; any other error fails the update and leaves the old app untouched.
+pub fn swap_fallback_allowed(errno: i32) -> bool {
+    errno == libc::ENOTSUP
+}
+
+/// Swap two paths in one step (APFS `RENAME_SWAP`). Only where the volume can't (`ENOTSUP`): two renames with a
+/// rollback, which isn't atomic (a crash between them leaves `qrtz.old` and no qrtz.app).
 #[cfg(target_os = "macos")]
 fn swap(new: &std::path::Path, old: &std::path::Path) -> Result<(), String> {
     use std::ffi::CString;
@@ -760,6 +993,10 @@ fn swap(new: &std::path::Path, old: &std::path::Path) -> Result<(), String> {
     // SAFETY: two valid NUL-terminated paths; renamex_np only reads them.
     if unsafe { libc::renamex_np(a.as_ptr(), b.as_ptr(), libc::RENAME_SWAP) } == 0 {
         return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    if !err.raw_os_error().is_some_and(swap_fallback_allowed) {
+        return Err(format!("can't swap the new qrtz.app in: {err}"));
     }
     let aside = new.with_extension("old");
     std::fs::rename(old, &aside).map_err(|e| format!("can't move the running qrtz.app aside: {e}"))?;
@@ -842,6 +1079,43 @@ mod tests {
             "/private/var/folders/x/AppTranslocation/1/d/qrtz.app/Contents/MacOS/qrtz-app"
         ))
         .is_err());
+    }
+
+    #[test]
+    fn only_an_unsupported_swap_falls_back_to_two_renames() {
+        assert!(swap_fallback_allowed(libc::ENOTSUP));
+        for e in [
+            libc::EACCES,
+            libc::EPERM,
+            libc::ENOENT,
+            libc::EXDEV,
+            libc::EBUSY,
+            libc::EINVAL,
+        ] {
+            assert!(!swap_fallback_allowed(e), "{e}");
+        }
+    }
+
+    #[test]
+    fn feed_times_parse_and_expire() {
+        assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_utc("2026-10-19T05:00:00Z"), Some(1_792_386_000));
+        assert_eq!(parse_utc("2024-02-29T23:59:59Z"), Some(1_709_251_199));
+        for bad in [
+            "2026-10-19",
+            "2026-10-19T05:00:00.000Z",
+            "2026-13-01T00:00:00Z",
+            "2026-10-19T05:00:00+00:00",
+            "+026-10-19T05:00:00Z",
+        ] {
+            assert_eq!(parse_utc(bad), None, "{bad}");
+        }
+        let now = 1_000_000_000;
+        assert!(check_fresh(now + 1, now).is_ok());
+        assert!(check_fresh(now, now).unwrap_err().contains("expired"));
+        assert!(check_fresh(now - 1, now).is_err());
+        assert!(check_fresh(now + MAX_FEED_LIFETIME.as_secs(), now).is_ok());
+        assert!(check_fresh(now + MAX_FEED_LIFETIME.as_secs() + 1, now).is_err());
     }
 
     #[test]

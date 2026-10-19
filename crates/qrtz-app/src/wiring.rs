@@ -567,6 +567,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             }),
         )
         .with_high_water(dirs.data.join(crate::self_update::HIGH_WATER_FILE))
+        .with_work_dir(dirs.data.clone())
         .with_events(service.events.clone()),
     );
     if b.modules_from_lock {
