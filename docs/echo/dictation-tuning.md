@@ -1063,3 +1063,55 @@ that and score the text old vs new on the same raw recognitions:
 Same harness, one setting per run (for example `consecutiveBlankLimit` 5 → 8, or `maxSymbolsPerStep`), on the same
 build: `releaseToStopped` p95 delta must be ≤ 0 within the baseline spread, and per-clip raw WER and tail-word loss
 (`tailWordsLost`) no worse on any clip, including `--clips` with short last words. Anything else stays at default.
+
+## 31. Cycle 58: a filler's comma, and spoken amounts as figures (ADRs 0192, 0193, `5625562`)
+
+| Run               | Exact   | Edit distance      | Regressions | False-positive hits |
+| ----------------- | ------- | ------------------ | ----------- | ------------------- |
+| 85bc513, 56 cases | 41 / 56 | 100 chars (6.07 %) | -           | 0 / 94              |
+| 5625562, same 56  | 48 / 56 | 50 chars (3.04 %)  | 0           | -                   |
+| 85bc513, 68 cases | 41 / 68 | 195 chars (9.88 %) | -           | -                   |
+| 5625562, 68 cases | 60 / 68 | 50 chars (2.53 %)  | 0           | 0 / 143             |
+
+Regressions are counted against 85bc513's own output for every case (`polish-baseline.json` refreshed); 19 cases
+better, none worse.
+
+- ADR 0192: a filler set off by commas takes the comma before it along, only after a word no comma can follow: "Can
+  you, um, send me the deck?" → "Can you send me the deck?" (was "Can you, send …"), "The demo is, um, basically done."
+  → "The demo is basically done.", "talk to the, um, design team" → "talk to the design team", "and, uh, we think" →
+  "and we think". A comma the sentence needs stays: "So, uh, the build", "If we can, um, we ship", "Yes we can, um,
+  Sam", "The thing is, um, we're late", "Plan A, um, then". 10 positives, 23 new keep vectors.
+- ADR 0193: spoken amounts in their one-reading forms: "twenty five dollars" → "$25", "two thousand five hundred
+  dollars" → "$2,500", "fifteen percent" / "15 percent" → "15%", "three thirty p.m." → "3:30 p.m.", "ten oh five a.m."
+  → "10:05 a.m.". Ranges, decimals in words, cents, scales, "a hundred", "fifteen hundred", sentence starts, the
+  singular "dollar" and digits before "dollars" stay as spoken. 9 positives, 26 new keep vectors.
+- Cost (release, box CPU): each rule ~0.03 ms on 495 words with ~40 triggers, ~1-3 µs on one sentence; whole chain on
+  one sentence with both rules 0.045 ms. `cleanup_budget.rs` (495 words, both rules' triggers added), interleaved 3×:
+  old 1.558 / 1.838 / 1.538 ms median, new 1.616 / 1.626 / 1.621 ms; 2 ms budget holds. Nothing in capture,
+  segmenting, the decode schedule or Parakeet's settings moved; the cleanup runs once on the final text
+  (`service.rs:1437`, `:1444`, `:1541`), never on partials.
+- Path review: no capture, VAD, model config, drain, insert, pill or timing change since 85bc513 (origin moved only by
+  ctrl run 49, `5671bb3`, ADR 0191). Findings list unchanged; backlog P1-P8 above still open (polish took the cycle).
+
+Still not exact (8 of 68): p10 "So we, we can" (repeat across a comma), p15 spoken "comma"/"period", p19/p20 email and
+URL, p38/p39 an unpunctuated question, p41 a numbered list with a 4-word line, p49 commas before "new line" in a list.
+
+Next polish candidates, ranked: (1) "?" for a dictation that ends with no mark at all and starts like a yes/no
+question (auxiliary + subject pronoun: "Do you want to grab lunch", p39), measured against declaratives that start
+with an auxiliary; (2) ranges as figures when both ends are amounts ("ten to fifteen percent" → "10-15%"?) only if a
+single unambiguous form exists; (3) the comma before a spoken "new line" when every line of a short list has one
+(p49), against salutations and verse; (4) warming dictionary patterns off the press path.
+
+### Measurement plan for Jared's Mac (cycle 58; proves no added latency and no worse transcript)
+
+Talk-only change (`5625562`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `5625562`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget -- --nocapture`: median under 2 ms (box 1.62 ms).
+3. `bash native/qrtz-helper/scripts/echo-bench.sh --quick` twice: `releaseToStopped` p50/p90 and `firstPartial` within
+   the spread of the last recorded run.
+4. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c57 85bc513 &&
+   cd /tmp/qrtz-c57 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c57`.
+5. If any clip gets worse: revert `5625562` (talk-only commit).
