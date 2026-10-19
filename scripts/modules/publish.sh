@@ -9,6 +9,16 @@
 #                                                       e.g. through the Cloudflare connector). --no-upload = same.
 #   scripts/modules/publish.sh --timestamp              re-sign the timestamp and upload only it (at least weekly)
 #   scripts/modules/publish.sh --timestamp --out-only   re-sign it and list only the timestamp pair
+#   scripts/modules/publish.sh --release [--force-bump]  the whole module release in one command: bump each module
+#                       (nano, ctrl, snap) whose code or manifest changed since its `<m>-v<x.y.z>` tag (all of
+#                       them with --force-bump) with scripts/modules/version.mjs (qrtz.json, module.json,
+#                       modules.lock.json, CHANGELOG.md), commit and push that to main, build the packages
+#                       (build-packages.sh), publish them and the models they depend on, upload, then tag
+#                       `<m>-v<version>` and push the tags. Needs a clean checkout of main. Combines with --out-only
+#                       (then nothing is tagged: tag with `version.mjs tag --push` after your upload).
+#
+# Every package build fetches the live index from $QRTZ_PRIMARY_URL and passes it to `qrtz-publish build
+# --live-index`, which refuses a (package, version) the live index already has with other content.
 #
 # ADR 0171: modules.qrtz.ai hosts module packages, the root, the index and the timestamp only. Model files are never
 # uploaded: the signed index lists each one's sha256, size and pinned Hugging Face URL (a commit, never `main`) and
@@ -51,19 +61,26 @@ die() {
 }
 mode=all
 out_only=0
+release=0
+force_bump=""
 for a in "$@"; do
   case "$a" in
     --no-upload | --out-only) out_only=1 ;;
+    --release) release=1 ;;
+    --force-bump) force_bump=--force ;;
     --timestamp) mode=timestamp ;;
     -h | --help)
       sed -n '2,50p' "$0"
       exit 0
       ;;
-    *) die "unknown option $a (--out-only, --no-upload, --timestamp)" ;;
+    *) die "unknown option $a (--out-only, --no-upload, --timestamp, --release, --force-bump)" ;;
   esac
 done
 
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
+[[ "$release" == 0 || "$mode" != timestamp ]] || die "--release and --timestamp don't combine"
+[[ -n "$force_bump" && "$release" == 0 ]] && die "--force-bump needs --release"
+node_bin="$(command -v node || command -v bun || true)"
 keys="${QRTZ_KEYS:-$HOME/.qrtz-keys}"
 out="${QRTZ_PUBLISH_OUT:-$HOME/qrtz-publish-out}"
 models_dir="${QRTZ_MODELS_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/models}"
@@ -85,6 +102,31 @@ fi
 [[ "$pin" =~ ^[0-9a-f]{64}$ ]] || die "no root1Sha256 (module_hosts.json, QRTZ_ROOT1_SHA256 or $out/ROOT1_SHA256)"
 if [[ "$(shasum -a 256 "$out/v1/root/1.root.json" 2>/dev/null || sha256sum "$out/v1/root/1.root.json")" != "$pin"* ]]; then
   die "$out/v1/root/1.root.json doesn't match root1Sha256 $pin"
+fi
+
+if [[ "$release" == 1 ]]; then
+  [[ -n "$node_bin" ]] || die "--release needs node or bun for scripts/modules/version.mjs"
+  cd "$repo"
+  [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "--release: commit or stash your changes first"
+  [[ "$(git rev-parse --abbrev-ref HEAD)" == main ]] || die "--release: run it on main"
+  git fetch -q --tags origin
+  [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "--release: main isn't origin/main (pull first)"
+  changed="$("$node_bin" scripts/modules/version.mjs bump $force_bump | sort -u)"
+  if [[ -n "$changed" ]]; then
+    msg="modules: release $(for m in nano ctrl snap; do printf '%s %s, ' "$m" "$(plutil -extract version raw -o - "modules/$m/qrtz.json" 2>/dev/null || sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "modules/$m/qrtz.json" | head -1)"; done | sed 's/, $//')"
+    # shellcheck disable=SC2086
+    git commit -q -m "$msg" -- $changed
+    git push -q origin HEAD:main
+    echo "publish: $msg (pushed $(git rev-parse --short HEAD))"
+  fi
+  pkgs="${QRTZ_PACKAGES_OUT:-$HOME/qrtz-packages}"
+  SWIFT_BUILD_FLAGS="${SWIFT_BUILD_FLAGS:---disable-keychain}" bash "$repo/scripts/modules/build-packages.sh" --out "$pkgs" nano ctrl snap
+  QRTZ_PUBLISH_PACKAGES="$pkgs/packages/nano $pkgs/packages/ctrl $pkgs/packages/snap"
+  if [[ -z "${QRTZ_PUBLISH_MODELS:-}" ]]; then
+    # The models the packages depend on (their qrtz.json `model.*` names).
+    QRTZ_PUBLISH_MODELS="$(cat "$pkgs"/packages/{nano,ctrl,snap}/qrtz.json | grep -o '"model\.[a-z0-9-]*"' | tr -d '"' | sort -u | tr '\n' ' ')"
+  fi
+  export QRTZ_PUBLISH_PACKAGES QRTZ_PUBLISH_MODELS
 fi
 
 bin="${QRTZ_PUBLISH_BIN:-}"
@@ -212,7 +254,23 @@ else
   echo "publish: models:${wanted:- none}; packages: ${QRTZ_PUBLISH_PACKAGES:-none}"
   # qrtz-publish re-reads each package's cdhash (codesign) and asks notarytool for the submission's log before it
   # signs the records into the index (902bcab review, design call (c)).
-  QRTZ_NOTARY_PROFILE="$notary_profile" "$bin" build --out "$out" --spec "$spec" --keys "$keys"
+  # The live index: a (package, version) it already has must not change (qrtz-publish build --live-index).
+  primary="${QRTZ_PRIMARY_URL:-https://modules.qrtz.ai}"
+  live=()
+  live_ts="$(curl -fsS --max-time 20 "$primary/v1/timestamp.json?nocache=$RANDOM" 2>/dev/null || true)"
+  if [[ -n "$live_ts" ]]; then
+    live_sha="$(grep -o '"sha256": *"[0-9a-f]\{64\}"' <<<"$live_ts" | grep -o '[0-9a-f]\{64\}' | head -1)"
+    [[ -n "$live_sha" ]] || die "$primary/v1/timestamp.json: no index sha256"
+    live_file="$(dirname "$spec")/live-index.json"
+    curl -fsS --max-time 60 -o "$live_file" "$primary/v1/index/$live_sha.json" || die "couldn't fetch the live index $live_sha"
+    got="$(shasum -a 256 "$live_file" 2>/dev/null | cut -d' ' -f1 || sha256sum "$live_file" | cut -d' ' -f1)"
+    [[ "$got" == "$live_sha" ]] || die "the live index doesn't hash to $live_sha"
+    live=(--live-index "$live_file")
+    echo "publish: checking against the live index $live_sha"
+  else
+    echo "publish: note: $primary serves no timestamp yet (first publish): no live-index check" >&2
+  fi
+  QRTZ_NOTARY_PROFILE="$notary_profile" "$bin" build --out "$out" --spec "$spec" --keys "$keys" "${live[@]+"${live[@]}"}"
 fi
 "$bin" verify --out "$out" --root-sha256 "$pin"
 
@@ -239,6 +297,7 @@ if [[ "$out_only" == 1 ]]; then
   echo "publish: built and verified in $out (not uploaded)"
   echo "publish: upload list $list: $new new object(s), $bytes bytes; upload them in order from $out/<key>, the"
   echo "publish:   timestamp pair last (Cache-Control per line), then check $primary/v1/timestamp.json"
+  [[ "$release" == 1 ]] && echo "publish: after the upload, tag the release: $node_bin $repo/scripts/modules/version.mjs tag --push"
   exit 0
 fi
 
@@ -272,5 +331,10 @@ if [[ "$got" == "$want" ]]; then
   echo "publish: $primary serves the new timestamp"
 else
   echo "publish: WARNING: $primary doesn't serve the new timestamp yet (cache or DNS); check $primary/v1/timestamp.json in a few minutes" >&2
+fi
+if [[ "$release" == 1 ]]; then
+  [[ "$got" == "$want" ]] || die "not tagging: the host doesn't serve the new timestamp yet; tag later with version.mjs tag --push"
+  tags="$(cd "$repo" && "$node_bin" scripts/modules/version.mjs tag --push | tr '\n' ' ')"
+  echo "publish: tagged and pushed: ${tags:-nothing new}"
 fi
 echo "publish: done"

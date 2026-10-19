@@ -7,11 +7,13 @@ const USAGE: &str = "qrtz-publish <command> [options]
   keygen    --dir <keys> --role <root-a|root-b|timestamp|index>   new key (0600) + .pub; never overwrites
   root      --out <dir> [--keys <dir>] [--prev-keys <dir>] [--threshold 1]
                                       write root N+1 (or 1) and print its sha256 (pin 1.root.json's in the app)
-  build     --out <dir> --spec <publish.json> [--keys <dir>] [--dev-index]
+  build     --out <dir> --spec <publish.json> [--keys <dir>] [--dev-index] [--live-index <index.json>]
                                       add packages (each dir has its qrtz.json, or a pinned model set and the dir
                                       of its downloaded files), sign index + timestamp. On macOS each package's
                                       notarization record is checked against its code (cdhash via codesign, and
                                       `notarytool log` with QRTZ_NOTARY_PROFILE); elsewhere code can't be published.
+                                      --live-index: refuse a (package, version) the live index has with other
+                                      content (publish.sh fetches it from the host)
                                       --dev-index: a dev index's FAKE records only (scripts/modules/build-packages.sh)
   timestamp --out <dir> [--keys <dir>]                              re-sign the timestamp (at least weekly)
   pack      --out <dir> --name <package> --version <v> --to <file.qrtzpkg>
@@ -86,7 +88,21 @@ fn run() -> Result<(), String> {
             } else {
                 qrtz_publish::notary::Notarized::Checked(&evidence)
             };
-            let b = qrtz_publish::build_with(&PathBuf::from(need("--out")?), &spec, &keys()?, now, &how)?;
+            let live = match opt("--live-index") {
+                Some(f) => Some(
+                    qrtz_modules::index::Index::parse(&std::fs::read(&f).map_err(|e| format!("{f}: {e}"))?)
+                        .map_err(|e| format!("{f}: {e}"))?,
+                ),
+                None => None,
+            };
+            let b = qrtz_publish::build_against(
+                &PathBuf::from(need("--out")?),
+                &spec,
+                &keys()?,
+                now,
+                &how,
+                live.as_ref(),
+            )?;
             println!(
                 "index {} ({}) and timestamp {}; added: {}",
                 b.index_version,

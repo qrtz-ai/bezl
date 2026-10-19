@@ -541,6 +541,35 @@ pub fn build(out: &Path, spec: &Spec, keys: &Keys, now: u64) -> Result<Built> {
 
 /// [`build`], with every package's notarization record checked as `how` says before the index is signed.
 pub fn build_with(out: &Path, spec: &Spec, keys: &Keys, now: u64, how: &notary::Notarized) -> Result<Built> {
+    build_against(out, spec, keys, now, how, None)
+}
+
+/// Refuse any built (package, version) that the live index already lists with a different entry: a published
+/// version is immutable, so changed content needs a new version. Entries the live index doesn't have pass.
+pub fn check_live(live: &Index, built: &[(String, String, PackageEntry)]) -> Result<()> {
+    for (name, version, e) in built {
+        if let Some(have) = live.packages.get(name).and_then(|vs| vs.get(version)) {
+            if have != e {
+                return Err(format!(
+                    "{name}@{version}: the live index (version {}) already has this version with other content; \
+                     bump the version",
+                    live.version
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// [`build_with`], also checked against the live index (see [`check_live`]) when one is given.
+pub fn build_against(
+    out: &Path,
+    spec: &Spec,
+    keys: &Keys,
+    now: u64,
+    how: &notary::Notarized,
+    live: Option<&Index>,
+) -> Result<Built> {
     if !is_team_id(&spec.team_id) {
         return Err("teamId: 10 uppercase letters or digits".into());
     }
@@ -574,6 +603,9 @@ pub fn build_with(out: &Path, spec: &Spec, keys: &Keys, now: u64, how: &notary::
             src.version.clone(),
             model_entry(out, &spec.team_id, src, &m.dir)?,
         ));
+    }
+    if let Some(live) = live {
+        check_live(live, &built)?;
     }
     for (name, version, e) in built {
         let slot = packages.entry(name.clone()).or_insert_with(BTreeMap::new);

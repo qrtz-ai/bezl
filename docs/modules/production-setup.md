@@ -146,6 +146,11 @@ commit can't install packages, so cut a new signed build afterwards (A4).
 one-time download from Hugging Face into `~/qrtz-publish-models`); none is uploaded. Without rclone or an R2 token:
 
 ```sh
+scripts/modules/publish.sh --release      # module release in one command: bump each changed module's patch
+                                          # (version.mjs: qrtz.json, module.json, modules.lock.json, CHANGELOG.md),
+                                          # push, build, notarize, sign, upload, then tag <m>-v<x.y.z> and push the
+                                          # tags; --force-bump bumps all three. A (package, version) the live
+                                          # index has with other content is refused (qrtz-publish --live-index).
 scripts/modules/publish.sh --out-only     # build + verify, then ~/qrtz-publish-out.upload.tsv: upload each `new`
                                           # key in order (timestamp pair last) with its Cache-Control, e.g. via
                                           # the Cloudflare connector
