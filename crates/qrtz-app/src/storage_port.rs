@@ -35,6 +35,14 @@ pub trait StorageShell: Send + Sync {
     fn backup_open_path(&self) -> Option<PathBuf> {
         None
     }
+    /// ADR 0220 `vault:choose`: a folder panel for the notes folder. `None` = cancelled (headless: no panel).
+    fn pick_notes_folder(&self) -> Option<PathBuf> {
+        None
+    }
+    /// ADR 0220: the notes folder qrtz suggests (`~/Documents/qrtz Notes` in the app). `None` = `<data>/notes`.
+    fn default_notes_dir(&self) -> Option<PathBuf> {
+        None
+    }
 }
 
 /// `qrtz-backup-<UTC ISO[0..16] with ':' and 'T' → '-'>.zip`, e.g. `qrtz-backup-2026-10-17-14-32.zip` (backup.ts).

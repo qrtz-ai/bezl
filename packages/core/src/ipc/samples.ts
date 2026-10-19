@@ -315,6 +315,51 @@ const calendarSamples = {
   [C in Extract<IpcChannel, `calendar:${string}`>]: ChannelSample<C>;
 };
 
+/** ADR 0220: the notes vault. */
+const vaultInfo = {
+  path: '/Users/me/Documents/qrtz Notes',
+  isDefault: true,
+  count: 1,
+};
+const doc = {
+  id: '0192a1b2c3d4e5f60718293a',
+  title: 'interview prep',
+  path: 'interview prep.md',
+  updatedAt: 1_790_000_000_000,
+  meetings: [],
+  body: '# interview prep\n\nask about the team\n',
+  hash: '00112233445566778899aabbccddeeff',
+};
+const { body: _b, hash: _h, ...docSummary } = doc;
+const docSamples = {
+  'vault:get': { request: undefined, response: vaultInfo },
+  'vault:choose': {
+    request: undefined,
+    response: { ...vaultInfo, canceled: false },
+  },
+  'doc:list': { request: { query: 'team' }, response: [docSummary] },
+  'doc:get': { request: { id: doc.id }, response: doc },
+  'doc:create': { request: { title: 'interview prep' }, response: doc },
+  'doc:save': {
+    request: { id: doc.id, body: doc.body, baseHash: doc.hash },
+    response: doc,
+  },
+  'doc:trash': { request: { id: doc.id }, response: { ok: true } },
+  'doc:link-meeting': {
+    request: { id: doc.id, meetingId: SAMPLE_MEETING_ID },
+    response: { ...doc, meetings: [SAMPLE_MEETING_ID] },
+  },
+  'doc:unlink-meeting': {
+    request: { id: doc.id, meetingId: SAMPLE_MEETING_ID },
+    response: doc,
+  },
+  'doc:rebuild-index': { request: undefined, response: { count: 1 } },
+} satisfies {
+  [
+    C in Extract<IpcChannel, `doc:${string}` | `vault:${string}`>
+  ]: ChannelSample<C>;
+};
+
 const packagesState = {
   packages: [
     {
@@ -701,6 +746,7 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   ...ctrlSamples,
   ...snapSamples,
   ...calendarSamples,
+  ...docSamples,
 };
 
 export const eventSamples: { [E in EventName]: EventPayload<E> } = {
@@ -718,6 +764,7 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
     partial: null,
   },
   'note:changed': { id: SAMPLE_MEETING_ID },
+  'doc:changed': { ids: [doc.id] },
   'data:backup-progress': { kind: 'export', phase: 'write', done: 1, total: 2 },
   'talk:state': talkIdle,
   'talk:history-changed': { id: 't1' },
@@ -735,6 +782,7 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'note:dismiss': idleSession,
   'note:list': [],
   'note:list-notes': [],
+  'doc:list': [],
   'note:pipeline': null,
   'note:live-transcript': null,
   'permissions:get': unknownPermissions,

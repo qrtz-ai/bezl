@@ -3620,6 +3620,7 @@ version = "0.2.3"
 dependencies = [
  "indexmap 2.14.2",
  "qrtz-model",
+ "rand 0.8.8",
  "regex",
  "rusqlite",
  "serde",

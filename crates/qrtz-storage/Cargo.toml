@@ -17,8 +17,9 @@ unicode-normalization.workspace = true
 indexmap.workspace = true
 regex = "1"
 tokio = { version = "1", features = ["sync"] }
+sha2 = "0.10"
+rand.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "macros"] }

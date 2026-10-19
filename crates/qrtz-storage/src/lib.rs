@@ -21,6 +21,7 @@ mod notes;
 mod pending_deletes;
 pub mod recordings;
 mod row;
+pub mod vault;
 
 pub use calendar::{CalendarEvent, CalendarInfo, CalendarRepo};
 pub use db::{Db, DbHealth, ImportHooks, ImportReport};

@@ -82,7 +82,7 @@ export function Hud({
           {...(onPause ? { onPause } : {})}
           onStop={onStop}
         />
-        <Notes compact />
+        <Notes compact {...(s.meetingId ? { meetingId: s.meetingId } : {})} />
       </Stack>
     );
   }

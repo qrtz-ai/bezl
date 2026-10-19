@@ -10680,6 +10680,493 @@
         ],
         "additionalProperties": false
       }
+    },
+    "vault:get": {
+      "version": 1,
+      "capability": "note.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "path",
+          "isDefault",
+          "count"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "vault:choose": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "canceled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "isDefault",
+          "count",
+          "canceled"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:list": {
+      "version": 1,
+      "capability": "note.read",
+      "request": {
+        "optional": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "number"
+            },
+            "meetings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "path",
+            "updatedAt",
+            "meetings"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "doc:get": {
+      "version": 1,
+      "capability": "note.read",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "meetings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "path",
+          "updatedAt",
+          "meetings",
+          "body",
+          "hash"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:create": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "optional": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "meetings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "path",
+          "updatedAt",
+          "meetings",
+          "body",
+          "hash"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:save": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 1000000
+            },
+            "baseHash": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "force": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "body",
+            "baseHash"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "meetings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "path",
+          "updatedAt",
+          "meetings",
+          "body",
+          "hash"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:trash": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:link-meeting": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id",
+            "meetingId"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "meetings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "path",
+          "updatedAt",
+          "meetings",
+          "body",
+          "hash"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:unlink-meeting": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id",
+            "meetingId"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "meetings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "path",
+          "updatedAt",
+          "meetings",
+          "body",
+          "hash"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "doc:rebuild-index": {
+      "version": 1,
+      "capability": "note.write",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {
@@ -11927,6 +12414,25 @@
         "additionalProperties": false
       },
       "stream": true
+    },
+    "doc:changed": {
+      "capability": "note.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false
+      }
     },
     "note:changed": {
       "capability": "note.read",

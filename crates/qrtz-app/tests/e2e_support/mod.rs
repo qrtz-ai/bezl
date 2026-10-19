@@ -502,7 +502,7 @@ pub fn synthetic_segments(minutes: u64) -> Vec<qrtz_model::Segment> {
         .collect()
 }
 
-fn seed_db(data: &Path, f: impl FnOnce(&qrtz_storage::NoteRepo)) {
+pub fn seed_db(data: &Path, f: impl FnOnce(&qrtz_storage::NoteRepo)) {
     std::fs::create_dir_all(data).unwrap();
     let db = qrtz_storage::Db::open(data.join("qrtz.db")).unwrap();
     f(&qrtz_storage::NoteRepo::new(db.connection()));

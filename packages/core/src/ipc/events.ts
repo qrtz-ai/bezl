@@ -54,6 +54,11 @@ export const eventContract = {
     payload: LiveTranscriptDelta,
     stream: true,
   }),
+  /** ADR 0220: notes changed on disk or through qrtz (ids of changed or removed notes). */
+  'doc:changed': defineEvent({
+    capability: 'note.read',
+    payload: z.object({ ids: z.array(z.string()).max(1000) }),
+  }),
   'note:changed': defineEvent({
     capability: 'note.read',
     payload: z.object({ id: z.string() }),

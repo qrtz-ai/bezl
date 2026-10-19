@@ -34,6 +34,8 @@ export function NotesApp({
   onDelete,
   editorLabel = 'note',
   emptyTitle = 'no notes yet',
+  banner,
+  tools,
 }: {
   notes: NotesAppItem[];
   /** Selected note id, `'new'` for an unsaved new note, or null when nothing is open. */
@@ -51,6 +53,10 @@ export function NotesApp({
   onDelete: () => void;
   editorLabel?: string;
   emptyTitle?: string;
+  /** Above the editor (e.g. "changed outside qrtz" with its choices). */
+  banner?: ReactNode;
+  /** In the editor's footer, before delete (e.g. the note's meeting links). */
+  tools?: ReactNode;
 }) {
   const t = useTheme();
   const editor = useRef<HTMLTextAreaElement>(null);
@@ -142,6 +148,16 @@ export function NotesApp({
       >
         {open ? (
           <>
+            {banner ? (
+              <div
+                style={{
+                  padding: t.space[2],
+                  borderBottom: `1px solid ${t.color.border}`,
+                }}
+              >
+                {banner}
+              </div>
+            ) : null}
             <textarea
               ref={editor}
               aria-label={editorLabel}
@@ -182,6 +198,16 @@ export function NotesApp({
                   {status}
                 </Text>
               )}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: t.space[1],
+                  minWidth: 0,
+                }}
+              >
+                {tools}
+              </div>
               <IconButton
                 icon="trash"
                 label="delete note"

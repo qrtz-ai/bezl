@@ -107,6 +107,9 @@ pub struct AppService {
     snap: std::sync::OnceLock<Arc<crate::snap::SnapHost>>,
     #[cfg(feature = "runtime")]
     calendar: std::sync::OnceLock<Arc<crate::calendar::NanoCalendar>>,
+    /// ADR 0220: nano's notes vault (`doc:*`, `vault:*`).
+    #[cfg(feature = "runtime")]
+    vault: std::sync::OnceLock<Arc<crate::vault_port::NotesVault>>,
     /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
     echo_hello: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
@@ -179,6 +182,8 @@ impl AppService {
             snap: std::sync::OnceLock::new(),
             #[cfg(feature = "runtime")]
             calendar: std::sync::OnceLock::new(),
+            #[cfg(feature = "runtime")]
+            vault: std::sync::OnceLock::new(),
             echo_hello: std::sync::OnceLock::new(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
@@ -532,6 +537,42 @@ impl AppService {
             _ => Err(no_handler(channel)),
         }
     }
+
+    /// ADR 0220: nano's notes vault (set once by `build_app`).
+    #[cfg(feature = "runtime")]
+    pub fn set_vault(&self, v: Arc<crate::vault_port::NotesVault>) {
+        let _ = self.vault.set(v);
+    }
+
+    #[cfg(feature = "runtime")]
+    async fn vault_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
+        match self.vault.get() {
+            Some(v) => v.call(channel, p).await,
+            None => Err(
+                AppError::new(ErrorCode::Unavailable, "notes are not available in this build")
+                    .retryable(false),
+            ),
+        }
+    }
+    #[cfg(not(feature = "runtime"))]
+    async fn vault_channel(&self, channel: &str, _p: Value) -> Result<Value, AppError> {
+        Err(no_handler(channel))
+    }
+
+    /// ADR 0220: the mini HUD's quick add also lands in the meeting's note in the vault (best effort: the line is
+    /// stored in the meeting already; a vault failure is logged, never the HUD's error).
+    #[cfg(feature = "runtime")]
+    async fn after_add_note(&self, r: &Value, p: &Value) {
+        let (Some(v), Some(m)) = (self.vault.get(), r["meetingId"].as_str()) else {
+            return;
+        };
+        let text = p["text"].as_str().unwrap_or_default().to_owned();
+        if let Err(e) = v.hud_line(m.to_owned(), text).await {
+            tracing::warn!(error = %e.message, "vault: quick add not appended");
+        }
+    }
+    #[cfg(not(feature = "runtime"))]
+    async fn after_add_note(&self, _r: &Value, _p: &Value) {}
 
     #[cfg(not(feature = "runtime"))]
     async fn calendar_channel(&self, channel: &str) -> Result<Value, AppError> {
@@ -1158,6 +1199,8 @@ impl AppService {
             Some("app-update")
         } else if channel.starts_with(crate::ports::CALENDAR_PREFIX) {
             Some("calendar")
+        } else if channel.starts_with("doc:") || channel.starts_with("vault:") {
+            Some("vault")
         } else {
             None
         }
@@ -1177,7 +1220,13 @@ impl Handler for AppService {
             Some("runtime") if channel.starts_with("permissions:") => {
                 self.permissions_channel(channel, payload).await
             }
+            Some("runtime") if channel == "note:add-note" => {
+                let r = self.runtime.call(channel, payload.clone()).await?;
+                self.after_add_note(&r, &payload).await;
+                Ok(r)
+            }
             Some("runtime") => self.runtime.call(channel, payload).await,
+            Some("vault") => self.vault_channel(channel, payload).await,
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,

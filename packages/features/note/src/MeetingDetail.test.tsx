@@ -37,8 +37,7 @@ describe('MeetingDetail tabs', () => {
       invoke: async (channel: string) => {
         calls.push(channel);
         if (channel === 'note:session') return idleSession;
-        if (channel === 'note:list-notes')
-          return ipcSamples['note:get'].response.notes;
+        if (channel === 'doc:list') return ipcSamples['doc:list'].response;
         return (ipcSamples as Record<string, { response: unknown }>)[channel]
           ?.response;
       },
@@ -72,7 +71,7 @@ describe('MeetingDetail tabs', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
     });
-    const noteLoads = calls.filter((c) => c === 'note:list-notes').length;
+    const noteLoads = calls.filter((c) => c === 'doc:list').length;
     const gets = calls.filter((c) => c === 'note:get').length;
     expect(noteLoads).toBe(1);
     for (const t of ['summary', 'transcript', 'notes', 'summary']) {
@@ -84,7 +83,7 @@ describe('MeetingDetail tabs', () => {
       ).toBeGreaterThan(0);
     }
     click('notes');
-    expect(calls.filter((c) => c === 'note:list-notes').length).toBe(noteLoads);
+    expect(calls.filter((c) => c === 'doc:list').length).toBe(noteLoads);
     expect(calls.filter((c) => c === 'note:get').length).toBe(gets);
     act(() => root.unmount());
   });

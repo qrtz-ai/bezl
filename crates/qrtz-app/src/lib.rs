@@ -51,6 +51,8 @@ pub mod summary;
 pub mod talk;
 pub mod tcc;
 #[cfg(feature = "runtime")]
+pub mod vault_port;
+#[cfg(feature = "runtime")]
 pub mod wiring;
 
 pub use config::ConfigStore;

@@ -215,6 +215,18 @@ export function createMockBridge(): TauriBridge {
     }, tickMs);
   };
 
+  const docs = new Map<
+    string,
+    {
+      id: string;
+      title: string;
+      path: string;
+      updatedAt: number;
+      meetings: string[];
+      body: string;
+      hash: string;
+    }
+  >();
   const emit = (event: EventName, payload: unknown) => {
     const parsed = eventContract[event].payload.parse(payload);
     if (isStreamEvent(event)) {
@@ -659,6 +671,92 @@ export function createMockBridge(): TauriBridge {
       if (!d) throw new AppError('E_NOT_FOUND', `meeting ${id} not found`);
       return d as never;
     },
+    // ADR 0220: an in-memory notes vault (the real one is .md files on the host).
+    'vault:get': () => ({
+      path: '~/Documents/qrtz Notes',
+      isDefault: true,
+      count: docs.size,
+    }),
+    'vault:choose': () => ({
+      path: '~/Documents/qrtz Notes',
+      isDefault: true,
+      count: docs.size,
+      canceled: true,
+    }),
+    'doc:list': (req) => {
+      const q = req?.query?.toLowerCase();
+      return [...docs.values()]
+        .filter(
+          (d) =>
+            (!q || d.body.toLowerCase().includes(q)) &&
+            (!req?.meetingId || d.meetings.includes(req.meetingId)),
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map(({ body: _b, hash: _h, ...s }) => s) as never;
+    },
+    'doc:get': ({ id }) => {
+      const d = docs.get(id);
+      if (!d) throw new AppError('E_NOT_FOUND', `note ${id} not found`);
+      return d as never;
+    },
+    'doc:create': (req) => {
+      const id = crypto.randomUUID().replaceAll('-', '');
+      const body = req?.title ? `# ${req.title}\n\n` : '';
+      const d = {
+        id,
+        title: req?.title ?? 'untitled',
+        path: `${req?.title ?? 'untitled'}.md`,
+        updatedAt: Date.now(),
+        meetings: req?.meetingId ? [req.meetingId] : [],
+        body,
+        hash: String(Math.random()),
+      };
+      docs.set(id, d);
+      emit('doc:changed', { ids: [id] });
+      return d as never;
+    },
+    'doc:save': ({ id, body, baseHash, force }) => {
+      const d = docs.get(id);
+      if (!d) throw new AppError('E_NOT_FOUND', `note ${id} not found`);
+      if (d.hash !== baseHash && !force)
+        throw new AppError('E_VALIDATION', 'the note changed outside qrtz', {
+          details: { conflict: true },
+        });
+      const title =
+        body
+          .split('\n')
+          .map((l) => l.replace(/^#+/, '').trim())
+          .find(Boolean) ?? 'untitled';
+      const n = {
+        ...d,
+        body,
+        title,
+        updatedAt: Date.now(),
+        hash: String(Math.random()),
+      };
+      docs.set(id, n);
+      emit('doc:changed', { ids: [id] });
+      return n as never;
+    },
+    'doc:trash': ({ id }) => {
+      docs.delete(id);
+      emit('doc:changed', { ids: [id] });
+      return { ok: true };
+    },
+    'doc:link-meeting': ({ id, meetingId }) => {
+      const d = docs.get(id);
+      if (!d) throw new AppError('E_NOT_FOUND', `note ${id} not found`);
+      if (!d.meetings.includes(meetingId))
+        d.meetings = [...d.meetings, meetingId];
+      return d as never;
+    },
+    'doc:unlink-meeting': ({ id, meetingId }) => {
+      const d = docs.get(id);
+      if (!d) throw new AppError('E_NOT_FOUND', `note ${id} not found`);
+      d.meetings = d.meetings.filter((m) => m !== meetingId);
+      return d as never;
+    },
+    'doc:rebuild-index': () => ({ count: docs.size }),
     'note:list-notes': ({ meetingId }) =>
       (details.get(meetingId ?? String(session.meetingId))?.notes as never) ??
       [],

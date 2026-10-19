@@ -118,6 +118,23 @@ export const CalendarStatus = z.object({
 });
 export type CalendarStatus = z.infer<typeof CalendarStatus>;
 
+/** ADR 0220: the notes vault. */
+export const VaultInfo = z.object({
+  path: z.string(),
+  isDefault: z.boolean(),
+  count: z.number().int().nonnegative(),
+});
+export const DocSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  path: z.string(),
+  updatedAt: z.number(),
+  meetings: z.array(z.string()),
+});
+export type DocSummary = z.infer<typeof DocSummary>;
+export const Doc = DocSummary.extend({ body: z.string(), hash: z.string() });
+export type Doc = z.infer<typeof Doc>;
+
 export const ipcContract = {
   'app:get-info': defineChannel({
     version: 1,
@@ -780,6 +797,92 @@ export const ipcContract = {
     capability: 'note.read',
     request: z.void(),
     response: z.object({ events: z.array(CalendarEvent).max(20) }),
+  }),
+  /** ADR 0220: nano's notes vault (a folder of .md files the user can see; the host only). */
+  'vault:get': defineChannel({
+    version: 1,
+    capability: 'note.read',
+    request: z.void(),
+    response: VaultInfo,
+  }),
+  /** ADR 0220: pick another notes folder (the host's folder panel; the renderer never names a path). */
+  'vault:choose': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z.void(),
+    response: VaultInfo.extend({ canceled: z.boolean() }),
+  }),
+  'doc:list': defineChannel({
+    version: 1,
+    capability: 'note.read',
+    request: z
+      .object({
+        query: z.string().max(200).optional(),
+        meetingId: z.string().max(64).optional(),
+        limit: z.number().int().min(1).max(10000).optional(),
+      })
+      .optional(),
+    response: z.array(DocSummary),
+  }),
+  'doc:get': defineChannel({
+    version: 1,
+    capability: 'note.read',
+    request: z.object({ id: z.string().max(64) }),
+    response: Doc,
+  }),
+  'doc:create': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z
+      .object({
+        title: z.string().max(200).optional(),
+        meetingId: z.string().max(64).optional(),
+      })
+      .optional(),
+    response: Doc,
+  }),
+  /** `baseHash` = the hash the editor loaded; a file changed since is E_CONFLICT unless `force` (keep mine). */
+  'doc:save': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z.object({
+      id: z.string().max(64),
+      body: z.string().max(1_000_000),
+      baseHash: z.string().max(64),
+      force: z.boolean().optional(),
+    }),
+    response: Doc,
+  }),
+  /** Moves the file into the vault's hidden .trash folder. */
+  'doc:trash': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  'doc:link-meeting': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z.object({
+      id: z.string().max(64),
+      meetingId: z.string().max(64),
+    }),
+    response: Doc,
+  }),
+  'doc:unlink-meeting': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z.object({
+      id: z.string().max(64),
+      meetingId: z.string().max(64),
+    }),
+    response: Doc,
+  }),
+  'doc:rebuild-index': defineChannel({
+    version: 1,
+    capability: 'note.write',
+    request: z.void(),
+    response: z.object({ count: z.number().int().nonnegative() }),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

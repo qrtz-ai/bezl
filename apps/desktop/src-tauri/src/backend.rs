@@ -184,6 +184,24 @@ impl StorageShell for TauriStorageShell {
             .blocking_pick_file()
             .and_then(|p| p.into_path().ok())
     }
+    /// ADR 0220 `vault:choose`: the notes folder panel (the renderer never names the path).
+    fn pick_notes_folder(&self) -> Option<PathBuf> {
+        let app = self.0.get()?;
+        let mut d = app.dialog().file().set_title("choose a notes folder");
+        if let Ok(docs) = app.path().document_dir() {
+            d = d.set_directory(docs);
+        }
+        d.blocking_pick_folder().and_then(|p| p.into_path().ok())
+    }
+    /// ADR 0220: qrtz's suggested notes folder, `~/Documents/qrtz Notes`. A debug build on its own data dir (`QRTZ_USER_DATA`: e2e, side-by-side runs) keeps it
+    /// in their own data dir.
+    fn default_notes_dir(&self) -> Option<PathBuf> {
+        if cfg!(debug_assertions) && std::env::var_os("QRTZ_USER_DATA").is_some() {
+            return None;
+        }
+        let app = self.0.get()?;
+        app.path().document_dir().ok().map(|d| d.join("qrtz Notes"))
+    }
 }
 
 #[derive(Default)]

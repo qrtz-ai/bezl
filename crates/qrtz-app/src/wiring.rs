@@ -578,7 +578,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         talk,
         shell: b.shell,
         helper: supervisor.clone(),
-        events,
+        events: events.clone(),
     });
     service.set_setup(setup.clone());
     // ADR 0157: the Extensions screen's package manager, on the app's data dir (nothing is reached until the user
@@ -694,6 +694,17 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     service.set_ctrl(Arc::new(ctrl));
     let _ = voice_ctrl.set(Arc::downgrade(&service));
     service.set_calendar(calendar.clone());
+    // ADR 0220: the notes vault (host only; opened on first use, then polled for outside edits).
+    let vault = crate::vault_port::NotesVault::new(
+        dirs.data.clone(),
+        booted.db.clone(),
+        events.clone(),
+        b.storage_shell.clone(),
+    );
+    if tokio::runtime::Handle::try_current().is_ok() {
+        vault.spawn_watcher();
+    }
+    service.set_vault(vault);
     if tokio::runtime::Handle::try_current().is_ok() {
         calendar.spawn();
     }
