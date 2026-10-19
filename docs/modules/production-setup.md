@@ -130,9 +130,14 @@ Root 1 needs both root keys (threshold 2), so one lost or stolen key can't chang
 `root1Sha256 = <64 hex>`. **Send us** that line (it's public). Then eject the stick(s) and keep root-a and root-b in
 different places. Never send any `*.key` file.
 
-**B5. Pin the root.** Ours: once you send the hash, we commit it as `root1Sha256` in
-`crates/qrtz-app/src/module_hosts.json` (checked by `offline_graph`). Nothing for you to do, but a build made before
-that commit can't install packages, so cut a new signed build afterwards (A4).
+**Done 2026-10-18** (Jared's Mac, run with `QRTZ_KEYS_ALLOW_ONLINE=1`, so the offline check was skipped):
+`root1Sha256 = 02dbb15f7927e343c5747a4d085a564775a49aecec2f854c7d028c4935afaa7d`, root 1 expires 2027-10-18.
+
+**B5. Pin the root. Done 2026-10-18.** `root1Sha256` is set in `crates/qrtz-app/src/module_hosts.json` (checked by
+`offline_graph`). The public `1.root.json` and `.sig` are checked in at `crates/qrtz-modules/roots/`, and
+`crates/qrtz-modules/tests/pinned_root.rs` checks that they hash to the pin and carry threshold 2 met by both root
+keys. They are also live at `https://modules.qrtz.ai/v1/root/1.root.json` (+ `.sig`). A build made before that
+commit can't install packages, so cut a new signed build afterwards (A4).
 
 **B6. The first publish (models only).** On the release Mac: `brew install rclone`, open qrtz once so it downloads its
 models (onboarding, and ctrl's model in its settings), then:

@@ -495,14 +495,20 @@ fn only_setup_and_the_package_fetcher_call_the_downloader() {
         serde_json::json!(["https://huggingface.co"]),
         "module_hosts.json modelMirrors"
     );
+    // Root 1 is pinned (2026-10-18 key ceremony). Its public copy is checked in next to the verifier, and
+    // crates/qrtz-modules/tests/pinned_root.rs checks that it hashes to this pin and meets threshold 2.
     let pin = &hosts["root1Sha256"];
     assert!(
-        pin.is_null()
-            || pin
-                .as_str()
-                .is_some_and(|p| p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit())),
-        "root1Sha256: null or a sha256"
+        pin.as_str()
+            .is_some_and(|p| p.len() == 64 && p.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))),
+        "root1Sha256: a lowercase sha256, got {pin}"
     );
+    for f in ["1.root.json", "1.root.json.sig"] {
+        assert!(
+            r.join("crates/qrtz-modules/roots").join(f).is_file(),
+            "the pinned root's public {f} is checked in at crates/qrtz-modules/roots/"
+        );
+    }
     // ADR 0116: ctrl's model is fetched through the pinned path, not a downloader of its own.
     let ctrl = std::fs::read_to_string(r.join("crates/qrtz-app/src/ctrl_model.rs")).unwrap();
     assert!(
