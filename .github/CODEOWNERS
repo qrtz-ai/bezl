@@ -5,3 +5,7 @@
 /crates/qrtz-lifecycle/tests/offline_graph.rs @jlgrimes
 /scripts/release/verify-bundle.sh             @jlgrimes
 /contracts/ipc-contract.json                  @jlgrimes
+/crates/qrtz-dash-net/entitlements/ai.qrtz.dash-net.entitlements @jlgrimes
+/scripts/release/verify-bundle.test.mjs       @jlgrimes
+/scripts/release/sign-mac.sh                  @jlgrimes
+/.github/CODEOWNERS                           @jlgrimes

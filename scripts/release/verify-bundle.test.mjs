@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
+import { deflateRawSync, gzipSync } from 'node:zlib';
 import path from 'node:path';
 
 const root = path.join(import.meta.dirname, '..', '..');
@@ -18,6 +19,8 @@ const script = path.join(import.meta.dirname, 'verify-bundle.sh');
 const read = (p) => readFileSync(path.join(root, p), 'utf8');
 
 describe('verify-bundle.sh', () => {
+  const verify = (app) =>
+    spawnSync('bash', [script, app], { encoding: 'utf8' });
   it('fails nonzero on something that is not an app bundle', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vb-'));
     const r = spawnSync('bash', [script, dir], { encoding: 'utf8' });
@@ -85,6 +88,103 @@ describe('verify-bundle.sh', () => {
     );
   });
 
+  // Bozniak M5: a compressed copy hides the marker, so archives fail by magic bytes, whatever their name.
+  const helperBlob = () => {
+    const marker = read('crates/qrtz-dash-net/src/lib.rs').match(
+      /BUNDLE_MARKER: &str = "([^"]+)"/,
+    )[1];
+    return Buffer.concat([
+      Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1]),
+      Buffer.from(marker),
+      Buffer.alloc(4096, 0x41),
+    ]);
+  };
+  const bareApp = () => {
+    const app = path.join(
+      mkdtempSync(path.join(os.tmpdir(), 'vb-')),
+      'qrtz.app',
+    );
+    mkdirSync(path.join(app, 'Contents/MacOS'), { recursive: true });
+    mkdirSync(path.join(app, 'Contents/Resources'), { recursive: true });
+    return app;
+  };
+
+  it('fails on a gzip copy of the helper under an innocent name (M5)', () => {
+    const app = bareApp();
+    const gz = gzipSync(helperBlob());
+    expect(gz.includes(Buffer.from('qrtz-dash-net:adr-0231'))).toBe(false);
+    writeFileSync(path.join(app, 'Contents/Resources/fonts.dat'), gz);
+    const r = verify(app);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(
+      'Contents/Resources/fonts.dat: gzip archive in the bundle',
+    );
+    expect(r.stderr).not.toContain('contains the qrtz-dash-net marker');
+  });
+
+  it('fails on a zip (deflate) copy of the helper under an innocent name (M5)', () => {
+    const app = bareApp();
+    // A one-entry zip: local file header, deflated data, central directory, end record.
+    const data = deflateRawSync(helperBlob());
+    expect(data.includes(Buffer.from('qrtz-dash-net:adr-0231'))).toBe(false);
+    const name = Buffer.from('tool');
+    const lfh = Buffer.alloc(30);
+    lfh.writeUInt32LE(0x04034b50, 0);
+    lfh.writeUInt16LE(20, 4);
+    lfh.writeUInt16LE(8, 8);
+    lfh.writeUInt32LE(data.length, 18);
+    lfh.writeUInt32LE(helperBlob().length, 22);
+    lfh.writeUInt16LE(name.length, 26);
+    const eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(0x06054b50, 0);
+    writeFileSync(
+      path.join(app, 'Contents/Resources/readme.txt'),
+      Buffer.concat([lfh, name, data, eocd]),
+    );
+    const r = verify(app);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(
+      'Contents/Resources/readme.txt: zip archive in the bundle',
+    );
+  });
+
+  it('fails on xz, bzip2, zstd, 7z, xar and tar by magic bytes (M5)', () => {
+    const tar = Buffer.alloc(512);
+    tar.write('ustar', 257);
+    const cases = {
+      xz: Buffer.from([0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00, 1, 2]),
+      bzip2: Buffer.from('BZh91AY&SY'),
+      zstd: Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 0, 0]),
+      '7z': Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0, 4]),
+      xar: Buffer.from('xar!\0\x1c'),
+      tar,
+    };
+    const app = bareApp();
+    for (const [k, b] of Object.entries(cases))
+      writeFileSync(path.join(app, `Contents/Resources/f-${k}`), b);
+    writeFileSync(path.join(app, 'Contents/Resources/plain.txt'), 'hello\n');
+    const r = verify(app);
+    expect(r.status).not.toBe(0);
+    for (const k of Object.keys(cases))
+      expect(r.stderr).toContain(`Contents/Resources/f-${k}: ${k} archive`);
+    expect(r.stderr).not.toContain('plain.txt');
+  });
+
+  it('finds Mach-Os by magic bytes anywhere and checks every identifier against the allowlist (M5)', () => {
+    const s = read('scripts/release/verify-bundle.sh');
+    expect(s).toContain('is not on the allowlist for this path');
+    expect(s).toMatch(/feedfacf \| cefaedfe \| cffaedfe \| cafebabe/);
+    const app = bareApp();
+    writeFileSync(
+      path.join(app, 'Contents/Resources/no-extension'),
+      Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1, 0, 0, 0, 0]),
+    );
+    const r = verify(app);
+    expect(r.stderr).toContain(
+      'unknown Mach-O in the bundle: Contents/Resources/no-extension',
+    );
+  });
+
   it('is called by release:mac, publish-local.sh and app-release.yml', () => {
     expect(read('scripts/release/sign-notarize.sh')).toContain(
       'scripts/release/verify-bundle.sh" "$APP"',
@@ -129,8 +229,6 @@ describe('verify-bundle.sh', () => {
     if (extra) extra(app);
     return app;
   }
-  const verify = (app) =>
-    spawnSync('bash', [script, app], { encoding: 'utf8' });
   const base = () => ({ 'qrtz-app': APP, 'qrtz-echo': [APP[2]], qrtz: [] });
 
   it.runIf(mac)(

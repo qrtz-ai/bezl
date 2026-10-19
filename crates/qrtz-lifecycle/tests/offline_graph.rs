@@ -2105,7 +2105,16 @@ fn codeowners_gates_the_confinement_and_release_files() {
         "/crates/qrtz-lifecycle/tests/offline_graph.rs",
         "/scripts/release/verify-bundle.sh",
         "/contracts/ipc-contract.json",
+        // Bozniak M4: the helper's entitlements, the release-gate test, the signing script and this file itself.
+        "/crates/qrtz-dash-net/entitlements/ai.qrtz.dash-net.entitlements",
+        "/scripts/release/verify-bundle.test.mjs",
+        "/scripts/release/sign-mac.sh",
+        "/.github/CODEOWNERS",
     ] {
+        assert!(
+            root().join(&f[1..]).exists(),
+            "CODEOWNERS names a file that doesn't exist: {f}"
+        );
         assert!(
             s.lines()
                 .any(|l| l.split_whitespace().next() == Some(f) && l.contains("@jlgrimes")),

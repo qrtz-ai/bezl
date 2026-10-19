@@ -198,10 +198,86 @@ pub const ACCESS_GROUP: &str = "MR26CCZ496.ai.qrtz.dash-net";
 #[cfg(target_os = "macos")]
 pub struct KeychainStore;
 
+/// One Keychain account, raw: what [`TwoPhase`] builds a safe save on (the Keychain on macOS, a fake in tests).
+pub trait RawKeychain: Send + Sync {
+    fn get(&self, account: &str) -> Result<Option<Vec<u8>>, String>;
+    /// Adds a new item; fails if `account` already holds one.
+    fn add(&self, account: &str, secret: &[u8]) -> Result<(), String>;
+    /// Deletes the item; a missing item is `Ok`.
+    fn delete(&self, account: &str) -> Result<(), String>;
+}
+
+/// Where a new owner key waits until it has replaced the old one (Bozniak M6).
+pub const KEYCHAIN_PENDING_ACCOUNT: &str = "owner-key.pending";
+/// How many times the final add under [`KEYCHAIN_ACCOUNT`] is tried before the key is left under the pending account.
+pub const SAVE_ATTEMPTS: usize = 3;
+
+/// Bozniak M6: a save that never leaves the helper without a readable owner key.
+///
+/// 1. the new key is added under [`KEYCHAIN_PENDING_ACCOUNT`] and read back; on any failure the old item is untouched;
+/// 2. only then is the old item deleted (still delete-then-add, so an old item can't keep weaker attributes), and the
+///    key is added under [`KEYCHAIN_ACCOUNT`], retried [`SAVE_ATTEMPTS`] times, and read back;
+/// 3. only then is the pending item deleted. If step 2 keeps failing the pending item stays, and [`KeyStore::load`]
+///    falls back to it, so the key is never lost.
+pub struct TwoPhase<R: RawKeychain>(pub R);
+
+fn holds(r: &dyn RawKeychain, account: &str, key: &str) -> bool {
+    matches!(r.get(account), Ok(Some(b)) if b == key.as_bytes())
+}
+
+fn valid(b: Vec<u8>) -> Option<String> {
+    String::from_utf8(b).ok().filter(|k| is_owner_key(k))
+}
+
+impl<R: RawKeychain> KeyStore for TwoPhase<R> {
+    fn load(&self) -> Option<String> {
+        [KEYCHAIN_ACCOUNT, KEYCHAIN_PENDING_ACCOUNT]
+            .into_iter()
+            .find_map(|a| self.0.get(a).ok().flatten().and_then(valid))
+    }
+    fn save(&self, key: &str) -> Result<(), String> {
+        let r = &self.0;
+        r.delete(KEYCHAIN_PENDING_ACCOUNT)?;
+        r.add(KEYCHAIN_PENDING_ACCOUNT, key.as_bytes())?;
+        if !holds(r, KEYCHAIN_PENDING_ACCOUNT, key) {
+            let _ = r.delete(KEYCHAIN_PENDING_ACCOUNT);
+            return Err("the new owner key did not read back; the old one is kept".into());
+        }
+        // Past here the new key is safe under the pending account.
+        r.delete(KEYCHAIN_ACCOUNT)?;
+        let mut last = String::new();
+        for _ in 0..SAVE_ATTEMPTS {
+            match r.add(KEYCHAIN_ACCOUNT, key.as_bytes()) {
+                Ok(()) if holds(r, KEYCHAIN_ACCOUNT, key) => {
+                    // Losing only the pending copy is harmless: load prefers the main account.
+                    let _ = r.delete(KEYCHAIN_PENDING_ACCOUNT);
+                    return Ok(());
+                }
+                Ok(()) => {
+                    last = "the owner key did not read back".into();
+                    let _ = r.delete(KEYCHAIN_ACCOUNT);
+                }
+                Err(e) => last = e,
+            }
+        }
+        // Kept under the pending account; load still finds it and the next connect tries again.
+        Err(format!(
+            "{last} (the key is kept and will be moved on the next save)"
+        ))
+    }
+    fn delete(&self) -> Result<(), String> {
+        self.0.delete(KEYCHAIN_ACCOUNT)?;
+        self.0.delete(KEYCHAIN_PENDING_ACCOUNT)
+    }
+}
+
 #[cfg(target_os = "macos")]
-fn keychain_options(write: bool) -> Result<security_framework::passwords::PasswordOptions, String> {
+fn keychain_options(
+    account: &str,
+    write: bool,
+) -> Result<security_framework::passwords::PasswordOptions, String> {
     use security_framework::passwords::PasswordOptions;
-    let mut o = PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+    let mut o = PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, account);
     if cfg!(not(debug_assertions)) {
         o.use_protected_keychain();
         o.set_access_group(ACCESS_GROUP);
@@ -219,22 +295,24 @@ fn keychain_options(write: bool) -> Result<security_framework::passwords::Passwo
 }
 
 #[cfg(target_os = "macos")]
-impl KeyStore for KeychainStore {
-    fn load(&self) -> Option<String> {
-        security_framework::passwords::generic_password(keychain_options(false).ok()?)
-            .ok()
-            .and_then(|b| String::from_utf8(b).ok())
-            .filter(|k| is_owner_key(k))
+impl RawKeychain for KeychainStore {
+    fn get(&self, account: &str) -> Result<Option<Vec<u8>>, String> {
+        const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+        match security_framework::passwords::generic_password(keychain_options(account, false)?) {
+            Ok(b) => Ok(Some(b)),
+            Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
     }
-    fn save(&self, key: &str) -> Result<(), String> {
-        // Delete first, so an older item can't keep weaker attributes through an update.
-        self.delete()?;
-        security_framework::passwords::set_generic_password_options(key.as_bytes(), keychain_options(true)?)
+    fn add(&self, account: &str, secret: &[u8]) -> Result<(), String> {
+        security_framework::passwords::set_generic_password_options(secret, keychain_options(account, true)?)
             .map_err(|e| e.to_string())
     }
-    fn delete(&self) -> Result<(), String> {
+    fn delete(&self, account: &str) -> Result<(), String> {
         const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
-        match security_framework::passwords::delete_generic_password_options(keychain_options(false)?) {
+        match security_framework::passwords::delete_generic_password_options(keychain_options(
+            account, false,
+        )?) {
             Ok(()) => Ok(()),
             Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
             Err(e) => Err(e.to_string()),
@@ -278,7 +356,7 @@ impl KeyStore for MemoryStore {
 pub fn platform_store() -> Box<dyn KeyStore> {
     #[cfg(target_os = "macos")]
     {
-        Box::new(KeychainStore)
+        Box::new(TwoPhase(KeychainStore))
     }
     #[cfg(not(target_os = "macos"))]
     {
