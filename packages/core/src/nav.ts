@@ -12,6 +12,8 @@ export interface NavRequest {
   settings?: boolean;
   /** The qrtz page (`app: 'qrtz'`): open this app's detail modal (`/qrtz/item/<name>`), e.g. its models. */
   item?: string;
+  /** ADR 0184: reopen the permissions onboarding (qrtz settings → permissions). The shell shows it over everything. */
+  onboarding?: boolean;
 }
 
 /** The sub-path a module view opens its own settings page at (`/talk/settings`, `/ctrl/settings`, `/note/settings`). */

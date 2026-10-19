@@ -213,3 +213,47 @@ describe('shell routing (ADR 0091)', () => {
     act(() => root.unmount());
   });
 });
+
+describe('the permissions onboarding gate (ADR 0184)', () => {
+  it('shows before the qrtz page on first launch; finishing opens qrtz; settings reopens it', async () => {
+    const { fakeHost } = await import('./onboarding.fake');
+    const host = fakeHost({ done: false });
+    window.qrtzTransport = host.transport;
+    try {
+      const { q, click, root } = await boot('/');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(q('onboarding')).not.toBeNull();
+      expect(q('nav-qrtz')).toBeNull();
+      await click('onboarding-skip');
+      expect(q('onboarding')).toBeNull();
+      expect(q('nav-qrtz')).not.toBeNull();
+      await act(async () => requestNavigate({ app: 'qrtz', onboarding: true }));
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(q('onboarding')).not.toBeNull();
+      await click('onboarding-continue');
+      expect(q('onboarding')).toBeNull();
+      expect(host.seen('onboarding:finish')).toHaveLength(2);
+      act(() => root.unmount());
+    } finally {
+      delete (window as { qrtzTransport?: unknown }).qrtzTransport;
+    }
+  });
+
+  it('a finished onboarding opens straight on the qrtz page', async () => {
+    const { fakeHost } = await import('./onboarding.fake');
+    const host = fakeHost({ done: true });
+    window.qrtzTransport = host.transport;
+    try {
+      const { q, root } = await boot('/');
+      expect(q('onboarding')).toBeNull();
+      expect(q('nav-qrtz')).not.toBeNull();
+      act(() => root.unmount());
+    } finally {
+      delete (window as { qrtzTransport?: unknown }).qrtzTransport;
+    }
+  });
+});

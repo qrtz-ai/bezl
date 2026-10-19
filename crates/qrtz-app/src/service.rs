@@ -952,7 +952,16 @@ impl AppService {
                     "bundledFallback is set by qrtz, not through config",
                 ))
             }
+            // ADR 0184: onboarding is done when the host says so (`onboarding:finish`), never a renderer's patch.
+            "config:set" if crate::onboarding::patch_touches_onboarding(&p["patch"]) => Err(AppError::new(
+                ErrorCode::Validation,
+                "onboarding is finished from the onboarding screen, not through config",
+            )),
             "config:set" => self.set_config(&p["patch"]),
+            "onboarding:finish" => {
+                let cfg = self.set_config(&crate::onboarding::finish_patch())?;
+                Ok(json!({"done": cfg["onboarding"]["done"].as_bool().unwrap_or(false)}))
+            }
             // ADR 0146 M1.4: the caller's module comes from its view, so a page can only reach its own settings.
             "module:get-settings" => {
                 let m = crate::modules::settings_module_of(sub_app)?;

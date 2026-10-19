@@ -116,6 +116,12 @@ export const ConfigSchema = z.object({
       snap: ModuleSwitch,
     })
     .prefault({}),
+  /**
+   * ADR 0184: the first-run permissions screen (microphone, system audio, accessibility). `done` is written only by
+   * the host, from `onboarding:finish` (continue or skip); a renderer's `config:set` of it is refused, like
+   * `modules.<id>.installed`. Absent (a fresh install, or a config from before 0184) shows the screen once.
+   */
+  onboarding: z.object({ done: z.boolean().default(false) }).prefault({}),
   privacy: z
     .object({
       /** Meetings detected in these apps/platforms (e.g. "Safari", "zoom", "google-meet") are ignored. */
@@ -209,4 +215,27 @@ export function deepMerge<T>(base: T, patch: unknown): T {
 /** Apply a patch and validate strictly (writes must be valid). */
 export function applyConfigPatch(cfg: Config, patch: unknown): Config {
   return ConfigSchema.parse(deepMerge(cfg, patch));
+}
+
+/**
+ * True if a renderer's `config:set` patch touches a key only the host writes (crates/qrtz-app `installed.rs`
+ * `patch_touches_installed` / `patch_touches_bundled_fallback` and `onboarding.rs` `patch_touches_onboarding`):
+ * `modules.<id>.installed` (ADR 0169), `modules.<id>.bundledFallback` (ADR 0181) and `onboarding` (ADR 0184). The
+ * mock backend refuses these the same way the host does.
+ */
+export function patchTouchesHostOnly(patch: unknown): boolean {
+  if (!patch || typeof patch !== 'object') return false;
+  const p = patch as Record<string, unknown>;
+  if ('onboarding' in p) return true;
+  const m = p.modules;
+  return (
+    !!m &&
+    typeof m === 'object' &&
+    Object.values(m as Record<string, unknown>).some(
+      (v) =>
+        !!v &&
+        typeof v === 'object' &&
+        ('installed' in v || 'bundledFallback' in v),
+    )
+  );
 }

@@ -28,6 +28,7 @@ import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
 import { useModuleSwitches } from './useModuleSwitches';
 import { useAppUpdateDot } from './useAppUpdateDot';
+import { useOnboarded } from './useOnboarded';
 import {
   QRTZ,
   QRTZ_PARTS,
@@ -39,10 +40,13 @@ import {
   splitRoute,
 } from './routes';
 
-// Not needed to paint the shell (ADR 0093): the palette opens on ⌘K (preloaded when idle). There is no first-run
-// screen (ADR 0163): qrtz opens straight to its views, and downloads and permissions are asked where they are used.
+// Not needed to paint the shell (ADR 0093): the palette opens on ⌘K (preloaded when idle); the permissions
+// onboarding (ADR 0184) shows once, before the qrtz page, and again only when reopened from qrtz settings.
 const loadPalette = () => import('./Palette');
 const Palette = lazy(() => loadPalette().then((m) => ({ default: m.Palette })));
+const Onboarding = lazy(() =>
+  import('./Onboarding').then((m) => ({ default: m.Onboarding })),
+);
 
 /** Pinned to the bottom of the sidebar: only the dev-only gallery. There are no apps or settings tabs. */
 export const SIDEBAR_FOOT = new Set(['gallery']);
@@ -178,11 +182,32 @@ export function Shell() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // ADR 0184: qrtz settings → permissions reopens the onboarding over everything.
+  const [reopened, setReopened] = useState(false);
   useEffect(
-    () => onNavigateRequest((r) => void navigate(navTarget(r, apps))),
+    () =>
+      onNavigateRequest((r) =>
+        r.onboarding ? setReopened(true) : void navigate(navTarget(r, apps)),
+      ),
     [navigate, apps],
   );
   const theme = useConfigTheme();
+  const [onboarded, setOnboarded] = useOnboarded();
+  if (onboarded === false || reopened)
+    return (
+      <ThemeProvider mode={theme}>
+        <ToastProvider>
+          <Suspense fallback={null}>
+            <Onboarding
+              onDone={() => {
+                setOnboarded(true);
+                setReopened(false);
+              }}
+            />
+          </Suspense>
+        </ToastProvider>
+      </ThemeProvider>
+    );
   return (
     <ThemeProvider mode={theme}>
       <ToastProvider>

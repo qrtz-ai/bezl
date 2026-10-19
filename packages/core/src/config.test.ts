@@ -4,6 +4,7 @@ import {
   defaultConfig,
   loadConfig,
   migrateLegacyConfig,
+  patchTouchesHostOnly,
 } from './config';
 
 describe('config', () => {
@@ -129,12 +130,29 @@ describe('config', () => {
       expect(k in c.note).toBe(false);
   });
 
-  it('ADR 0163: an old config with onboarding (done or not) loads without it, and nothing else changes', () => {
+  it('ADR 0184: onboarding is back; a fresh config shows it, a stored done keeps it done', () => {
+    expect(defaultConfig().onboarding).toEqual({ done: false });
     for (const done of [true, false]) {
       const c = loadConfig({ onboarding: { done }, theme: 'light' });
-      expect('onboarding' in c).toBe(false);
+      expect(c.onboarding.done).toBe(done);
       expect(c.theme).toBe('light');
     }
-    expect('onboarding' in defaultConfig()).toBe(false);
+    expect(loadConfig({ theme: 'light' }).onboarding.done).toBe(false);
+  });
+
+  it('ADR 0184: only the host writes onboarding or modules.<id>.installed', () => {
+    expect(patchTouchesHostOnly({ onboarding: { done: true } })).toBe(true);
+    expect(patchTouchesHostOnly({ onboarding: {} })).toBe(true);
+    expect(
+      patchTouchesHostOnly({ modules: { echo: { installed: true } } }),
+    ).toBe(true);
+    expect(
+      patchTouchesHostOnly({ modules: { echo: { enabled: false } } }),
+    ).toBe(false);
+    expect(
+      patchTouchesHostOnly({ modules: { echo: { bundledFallback: false } } }),
+    ).toBe(true);
+    expect(patchTouchesHostOnly({ theme: 'dark' })).toBe(false);
+    expect(patchTouchesHostOnly(null)).toBe(false);
   });
 });

@@ -568,6 +568,7 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     response: { opened: true, restart: false },
   },
   'app:restart': { request: undefined, response: { restarting: true } },
+  'onboarding:finish': { request: undefined, response: { done: true } },
   'note:session': { request: undefined, response: idleSession },
   'note:start': { request: { title: 'Standup' }, response: recordingSession },
   'note:stop': {

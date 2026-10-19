@@ -5,6 +5,7 @@
 //   ?mockFail=start-permission | summary-once | speech-once   ?seed=1 (one finished meeting)
 //   ?mockSpeed=<ms per tick>   ?mockSpeech=missing | installed (default installed; missing = a fresh install)
 //   ?mockPerms=denied (every OS permission starts not-determined)   ?theme=light | dark | system
+//   ?onboarding=1 (first run: the permissions onboarding shows, ADR 0184; otherwise it is already done)
 import {
   AppError,
   TAURI_EVENT,
@@ -23,6 +24,7 @@ import {
   moduleOfView,
   modulePatchError,
   pickModuleSettings,
+  patchTouchesHostOnly,
   isStreamEvent,
   type Config,
   type EventName,
@@ -80,6 +82,9 @@ export function createMockBridge(): TauriBridge {
   let live: Json | null = null;
   let timers: ReturnType<typeof setTimeout>[] = [];
   let summaryFailed = false;
+  // ADR 0184: e2e runs start past the permissions onboarding unless they ask for a first run.
+  if (params.get('onboarding') !== '1')
+    config = applyConfigPatch(config, { onboarding: { done: true } });
   const theme = params.get('theme');
   if (theme === 'light' || theme === 'dark' || theme === 'system')
     config = applyConfigPatch(config, { theme });
@@ -327,6 +332,9 @@ export function createMockBridge(): TauriBridge {
     }),
     'config:get': () => config,
     'config:set': ({ patch }) => {
+      // Like crates/qrtz-app: `modules.<id>.installed` and `onboarding` are the host's to write.
+      if (patchTouchesHostOnly(patch))
+        throw new AppError('E_VALIDATION', 'only qrtz writes that setting');
       config = applyConfigPatch(config, patch);
       emit('config:changed', config);
       return config;
@@ -383,6 +391,11 @@ export function createMockBridge(): TauriBridge {
       restart: pane === 'screen-recording',
     }),
     'app:restart': () => ({ restarting: true }),
+    'onboarding:finish': () => {
+      config = applyConfigPatch(config, { onboarding: { done: true } });
+      emit('config:changed', config);
+      return { done: true } as const;
+    },
     'speech:status': () => speech as never,
     'speech:check': () => speech as never,
     'speech:download': ({ force }) => {

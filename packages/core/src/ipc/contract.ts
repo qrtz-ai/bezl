@@ -159,6 +159,16 @@ export const ipcContract = {
     request: z.void(),
     response: z.object({ restarting: z.boolean() }),
   }),
+  /**
+   * ADR 0184: the permissions onboarding is done (continue or skip). The host writes `onboarding.done`; a renderer's
+   * `config:set` of `onboarding` is refused.
+   */
+  'onboarding:finish': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.void(),
+    response: z.object({ done: z.literal(true) }),
+  }),
   'note:session': defineChannel({
     version: 1,
     capability: 'note.read',

@@ -29,8 +29,11 @@ const transport: QrtzTransport = {
     data:
       e.channel === 'app-update:status'
         ? idle
-        : (ipcSamples as Record<string, { response: unknown }>)[e.channel]
-            ?.response,
+        : // ADR 0184: past the first-run permissions onboarding, so the sidebar shows.
+          e.channel === 'config:get'
+          ? { onboarding: { done: true } }
+          : (ipcSamples as Record<string, { response: unknown }>)[e.channel]
+              ?.response,
   }),
   on: (_subApp, event, cb) => {
     if (event === 'app-update:state') listener = cb;

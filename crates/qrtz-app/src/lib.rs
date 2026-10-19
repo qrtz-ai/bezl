@@ -20,6 +20,7 @@ pub mod module_helpers;
 #[cfg(feature = "runtime")]
 pub mod module_hosting;
 pub mod modules;
+pub mod onboarding;
 #[cfg(feature = "runtime")]
 pub mod packages_ipc;
 #[cfg(feature = "runtime")]

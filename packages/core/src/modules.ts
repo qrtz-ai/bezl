@@ -37,6 +37,7 @@ export const GLOBAL_CONFIG_SECTIONS = [
   'theme',
   'logLevel',
   'app',
+  'onboarding',
   'modules',
 ] as const;
 

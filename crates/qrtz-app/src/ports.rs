@@ -65,6 +65,8 @@ pub const APP_CHANNELS: &[&str] = &[
     // System Settings at a permission's pane, and "restart qrtz" for a grant that needs one.
     "permissions:open-settings",
     "app:restart",
+    // ADR 0184: the permissions onboarding is done (the host writes `onboarding.done`).
+    "onboarding:finish",
 ];
 pub const TALK_PREFIX: &str = "talk:";
 /// ctrl (ADR 0103): tasks, schedules and run history (`qrtz_ctrl::service::CtrlService`).

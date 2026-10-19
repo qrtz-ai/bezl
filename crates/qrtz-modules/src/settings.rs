@@ -4,7 +4,7 @@
 //! - **Module settings** belong to one module and live in its own file, `modules/<id>/settings.json` under the
 //!   app data dir. The module's view edits them; nothing else does.
 //! - **Global settings** are the few that apply across modules: the theme, the log level, the app's menu bar and
-//!   login item, the speech downloads ([`GLOBAL_KEYS`]), and the `modules` switches (one per module,
+//!   login item, onboarding (ADR 0184), the speech downloads ([`GLOBAL_KEYS`]), and the `modules` switches (one per module,
 //!   plus all of them at once). They stay in config.json.
 //!
 //! M0 adds the `modules` switches to config.json and this split. Today's per-product config sections
@@ -18,7 +18,14 @@ use std::path::{Path, PathBuf};
 
 /// config.json sections that stay global. Every other section belongs to exactly one module
 /// (its manifest's `settings.legacySections`).
-pub const GLOBAL_SECTIONS: &[&str] = &["schemaVersion", "theme", "logLevel", "app", "modules"];
+pub const GLOBAL_SECTIONS: &[&str] = &[
+    "schemaVersion",
+    "theme",
+    "logLevel",
+    "app",
+    "onboarding",
+    "modules",
+];
 
 /// Keys inside a module's section that stay global in config.json (ADR 0146 M2.3). The speech downloads
 /// (`speech.autoUpdate`, `speech.warmAfterDownload`) serve echo and nano alike and are shown in the global

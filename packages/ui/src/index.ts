@@ -28,3 +28,4 @@ export * from './ModuleSettings';
 export * from './Marketplace';
 export * from './Modal';
 export * from './Menu';
+export * from './Onboarding';

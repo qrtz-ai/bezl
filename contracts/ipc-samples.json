@@ -84,6 +84,12 @@
         "restarting": true
       }
     },
+    "onboarding:finish": {
+      "request": null,
+      "response": {
+        "done": true
+      }
+    },
     "note:session": {
       "request": null,
       "response": {

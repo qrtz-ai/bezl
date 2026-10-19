@@ -433,6 +433,26 @@
         "additionalProperties": false
       }
     },
+    "onboarding:finish": {
+      "version": 1,
+      "capability": "os.permissions",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "done": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "done"
+        ],
+        "additionalProperties": false
+      }
+    },
     "note:session": {
       "version": 1,
       "capability": "note.read",
@@ -14235,6 +14255,7 @@
         "note.record",
         "talk.read",
         "talk.dictate",
+        "os.permissions",
         "log.write",
         "app.update.read"
       ]
@@ -14368,6 +14389,9 @@
           "enabled": true,
           "installed": true
         }
+      },
+      "onboarding": {
+        "done": false
       },
       "privacy": {
         "excludedApps": [],
@@ -14687,6 +14711,19 @@
           ],
           "additionalProperties": false
         },
+        "onboarding": {
+          "type": "object",
+          "properties": {
+            "done": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "done"
+          ],
+          "additionalProperties": false
+        },
         "privacy": {
           "type": "object",
           "properties": {
@@ -14759,6 +14796,7 @@
         "talk",
         "speech",
         "modules",
+        "onboarding",
         "privacy",
         "snap"
       ],

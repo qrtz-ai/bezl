@@ -226,6 +226,65 @@ async fn stub_ports_answer_idle_and_refuse_actions_honestly() {
     );
 }
 
+/// ADR 0184: `onboarding.done` is the host's to write. Any renderer's `config:set` (or a module settings patch) that
+/// touches `onboarding` is refused and changes nothing; only the shell's `onboarding:finish` sets it, it persists,
+/// and a sub app without `os.permissions` can't call it.
+#[tokio::test]
+async fn only_the_host_writes_onboarding_done() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("config.json");
+    let (_svc, r, _) = app(&file, None);
+    let cfg = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
+    assert_eq!(
+        cfg["onboarding"],
+        json!({"done": false}),
+        "a fresh config shows onboarding"
+    );
+    for patch in [
+        json!({"onboarding": {"done": true}}),
+        json!({"onboarding": {}}),
+        json!({"theme": "light", "onboarding": {"done": true}}),
+    ] {
+        for sub in ["settings", "shell", "marketplace"] {
+            let bad = call(&r, sub, "config:set", json!({ "patch": patch })).await;
+            assert_ne!(bad["ok"], true, "{sub} {patch}: {bad}");
+        }
+        let bad = call(&r, "settings", "config:set", json!({ "patch": patch })).await;
+        assert_eq!(bad["error"]["code"], "E_VALIDATION", "{bad}");
+    }
+    // A module's settings page can't reach it either (it's a global section).
+    let bad = call(
+        &r,
+        "talk",
+        "module:set-settings",
+        json!({"patch": {"onboarding": {"done": true}}}),
+    )
+    .await;
+    assert_ne!(bad["ok"], true, "{bad}");
+    let cfg = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
+    assert_eq!(cfg["onboarding"]["done"], false, "nothing was written");
+    assert_eq!(cfg["theme"], "dark", "a refused patch writes none of its keys");
+    // settings has no os.permissions: it can reopen the screen, not finish it.
+    let forbidden = call(&r, "settings", "onboarding:finish", Value::Null).await;
+    assert_eq!(forbidden["error"]["code"], "E_FORBIDDEN", "{forbidden}");
+    let ok = call(&r, "shell", "onboarding:finish", Value::Null).await;
+    assert_eq!(ok["data"], json!({"done": true}), "{ok}");
+    // Persisted: a relaunch reads it back.
+    drop(r);
+    let (_svc2, r2, _) = app(&file, None);
+    let cfg = call(&r2, "settings", "config:get", Value::Null).await["data"].clone();
+    assert_eq!(cfg["onboarding"]["done"], true);
+    // Other writes still work and keep it.
+    let ok = call(
+        &r2,
+        "settings",
+        "config:set",
+        json!({"patch": {"theme": "light"}}),
+    )
+    .await;
+    assert_eq!(ok["data"]["onboarding"]["done"], true, "{ok}");
+}
+
 #[tokio::test]
 async fn config_defaults_validation_persistence_and_events() {
     let dir = tempfile::tempdir().unwrap();

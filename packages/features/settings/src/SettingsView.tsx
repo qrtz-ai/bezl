@@ -244,6 +244,22 @@ export default function SettingsView() {
           },
         )}
       </SettingsSection>
+      <SettingsSection title="permissions" data-testid="permissions-card">
+        <Text variant="caption" muted>
+          the microphone, system audio and accessibility, with their state. each
+          app also asks the first time it needs one.
+        </Text>
+        <Stack dir="row" gap={2}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => requestNavigate({ app: 'qrtz', onboarding: true })}
+            data-testid="onboarding-reopen"
+          >
+            set up permissions
+          </Button>
+        </Stack>
+      </SettingsSection>
       <SettingsSection title="backup" data-testid="backup-card">
         <Stack dir="row" gap={2}>
           <Button

@@ -90,7 +90,8 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   const cfg = (await invoke(page, 'settings', 'config:get')) as {
     data: Record<string, unknown>;
   };
-  expect(cfg.data).not.toHaveProperty('onboarding');
+  // ADR 0184: the mock starts past the permissions onboarding (onboarding.spec.ts covers the first run).
+  expect(cfg.data.onboarding).toEqual({ done: true });
 
   // marketplace → installed (the module manager): each module's permissions beside its switch, live state, allow.
   await tab(page, 'marketplace').click();
