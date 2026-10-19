@@ -315,7 +315,10 @@ impl AppService {
                     None,
                 )),
                 "app-update:restart" => Ok(json!({"restarting": false})),
-                _ => Err(AppError::new(ErrorCode::Unavailable, "updates aren't set up in this build").retryable(false)),
+                _ => Err(
+                    AppError::new(ErrorCode::Unavailable, "updates aren't set up in this build")
+                        .retryable(false),
+                ),
             };
         };
         if channel == "app-update:restart" {
@@ -938,10 +941,12 @@ impl AppService {
                 "modules are installed from the marketplace, not through config",
             )),
             // ADR 0180: whether echo runs the copy in qrtz.app is the host's to say, never a renderer's.
-            "config:set" if crate::installed::patch_touches_bundled_fallback(&p["patch"]) => Err(AppError::new(
-                ErrorCode::Validation,
-                "bundledFallback is set by qrtz, not through config",
-            )),
+            "config:set" if crate::installed::patch_touches_bundled_fallback(&p["patch"]) => {
+                Err(AppError::new(
+                    ErrorCode::Validation,
+                    "bundledFallback is set by qrtz, not through config",
+                ))
+            }
             "config:set" => self.set_config(&p["patch"]),
             // ADR 0146 M1.4: the caller's module comes from its view, so a page can only reach its own settings.
             "module:get-settings" => {

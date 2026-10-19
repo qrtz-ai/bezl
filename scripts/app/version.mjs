@@ -17,11 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  bumpPatch,
-  cmpVersion,
-  parseVersion,
-} from '../modules/version.mjs';
+import { bumpPatch, cmpVersion, parseVersion } from '../modules/version.mjs';
 
 export const TAG_PREFIX = 'app-v';
 const CONF = 'apps/desktop/src-tauri/tauri.conf.json';
@@ -64,8 +60,7 @@ const git = (repo, args) =>
   }).trim();
 
 const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
-export const currentVersion = (repo) =>
-  readJson(path.join(repo, CONF)).version;
+export const currentVersion = (repo) => readJson(path.join(repo, CONF)).version;
 
 /** The newest shell release tag (`app-v*`, or an old `v*`), as { tag, version }, or null. */
 export function lastTag(repo) {
@@ -74,16 +69,29 @@ export function lastTag(repo) {
     .filter(Boolean)
     .map((t) => ({
       tag: t,
-      version: t.startsWith(TAG_PREFIX) ? t.slice(TAG_PREFIX.length) : t.slice(1),
+      version: t.startsWith(TAG_PREFIX)
+        ? t.slice(TAG_PREFIX.length)
+        : t.slice(1),
     }))
     .filter((t) => /^\d+\.\d+\.\d+$/.test(t.version))
-    .sort((a, b) => cmpVersion(a.version, b.version) || (a.tag.startsWith(TAG_PREFIX) ? 1 : -1));
+    .sort(
+      (a, b) =>
+        cmpVersion(a.version, b.version) ||
+        (a.tag.startsWith(TAG_PREFIX) ? 1 : -1),
+    );
   return tags.length ? tags[tags.length - 1] : null;
 }
 
 /** The files under SHELL_PATHS that changed between `from` and `to`. */
 export function shellChanges(repo, from, to = 'HEAD') {
-  const out = git(repo, ['diff', '--name-only', from, to, '--', ...SHELL_PATHS]);
+  const out = git(repo, [
+    'diff',
+    '--name-only',
+    from,
+    to,
+    '--',
+    ...SHELL_PATHS,
+  ]);
   return out ? out.split('\n') : [];
 }
 
@@ -93,14 +101,28 @@ export function plan(repo, force = false) {
   parseVersion(from);
   const last = lastTag(repo);
   if (!last)
-    return { from, to: null, reason: 'no release tag yet (tag the released version first)' };
+    return {
+      from,
+      to: null,
+      reason: 'no release tag yet (tag the released version first)',
+    };
   const c = cmpVersion(from, last.version);
   if (c > 0)
-    return { from, to: null, reason: `already ahead of ${last.tag}`, since: last.tag };
+    return {
+      from,
+      to: null,
+      reason: `already ahead of ${last.tag}`,
+      since: last.tag,
+    };
   if (c < 0) throw new Error(`${CONF} ${from} is behind its tag ${last.tag}`);
   const changed = shellChanges(repo, last.tag).length > 0;
   if (!changed && !force)
-    return { from, to: null, reason: `unchanged since ${last.tag}`, since: last.tag };
+    return {
+      from,
+      to: null,
+      reason: `unchanged since ${last.tag}`,
+      since: last.tag,
+    };
   return {
     from,
     to: bumpPatch(from),
@@ -117,7 +139,9 @@ function replaceOnce(file, re, to) {
 
 /** The workspace members whose version is the workspace's (their Cargo.lock entries move with it). */
 export function workspaceMembers(repo) {
-  const files = git(repo, ['ls-files', '*Cargo.toml', 'Cargo.toml']).split('\n');
+  const files = git(repo, ['ls-files', '*Cargo.toml', 'Cargo.toml']).split(
+    '\n',
+  );
   const names = [];
   for (const f of files) {
     const s = fs.readFileSync(path.join(repo, f), 'utf8');
@@ -148,11 +172,18 @@ export function changelogWith(text, to, date, subjects) {
       : '- no user-facing changes; rebuilt';
   const section = `## ${to} (${date})\n\n${lines}\n`;
   const rest = m ? body.replace(m[0], '') : body;
-  return `${head}\n## Unreleased\n\n${section}\n${rest.replace(/^\n+/, '')}`.replace(/\n{3,}/g, '\n\n');
+  return `${head}\n## Unreleased\n\n${section}\n${rest.replace(/^\n+/, '')}`.replace(
+    /\n{3,}/g,
+    '\n\n',
+  );
 }
 
 /** Apply a plan; returns the files written. */
-export function applyBump(repo, p, date = new Date().toISOString().slice(0, 10)) {
+export function applyBump(
+  repo,
+  p,
+  date = new Date().toISOString().slice(0, 10),
+) {
   const v = /("version":\s*")(\d+\.\d+\.\d+)(")/;
   replaceOnce(path.join(repo, CONF), v, p.to);
   for (const f of PACKAGE_JSONS) replaceOnce(path.join(repo, f), v, p.to);
@@ -164,12 +195,20 @@ export function applyBump(repo, p, date = new Date().toISOString().slice(0, 10))
   const lockFile = path.join(repo, 'Cargo.lock');
   let lock = fs.readFileSync(lockFile, 'utf8');
   for (const n of workspaceMembers(repo)) {
-    const re = new RegExp(`(\\[\\[package\\]\\]\\nname = "${n.replace(/[-]/g, '\\-')}"\\nversion = ")${p.from.replace(/\./g, '\\.')}(")`);
+    const re = new RegExp(
+      `(\\[\\[package\\]\\]\\nname = "${n.replace(/[-]/g, '\\-')}"\\nversion = ")${p.from.replace(/\./g, '\\.')}(")`,
+    );
     lock = lock.replace(re, `$1${p.to}$2`);
   }
   fs.writeFileSync(lockFile, lock);
   const subs = p.since
-    ? git(repo, ['log', '--format=%h %s', `${p.since}..HEAD`, '--', ...SHELL_PATHS])
+    ? git(repo, [
+        'log',
+        '--format=%h %s',
+        `${p.since}..HEAD`,
+        '--',
+        ...SHELL_PATHS,
+      ])
         .split('\n')
         .filter(Boolean)
     : [];
@@ -190,7 +229,10 @@ export function tag(repo, push = false) {
   } catch {
     /* new */
   }
-  if (at && at !== head) throw new Error(`${t} exists at ${at.slice(0, 7)}, not HEAD: bump the version`);
+  if (at && at !== head)
+    throw new Error(
+      `${t} exists at ${at.slice(0, 7)}, not HEAD: bump the version`,
+    );
   if (!at) git(repo, ['tag', '-a', t, '-m', `qrtz ${v}`]);
   if (push) git(repo, ['push', 'origin', `refs/tags/${t}`]);
   return at ? null : t;
@@ -202,7 +244,8 @@ function main(argv) {
   const force = rest.includes('--force');
   if (cmd === 'plan' || cmd === 'bump') {
     const p = plan(repo, force);
-    if (cmd === 'bump' && p.to) for (const f of applyBump(repo, p)) console.log(f);
+    if (cmd === 'bump' && p.to)
+      for (const f of applyBump(repo, p)) console.log(f);
     console.error(`version: qrtz ${p.from} -> ${p.to ?? '-'} (${p.reason})`);
     if (cmd === 'plan') console.log(`app\t${p.from}\t${p.to ?? '-'}`);
   } else if (cmd === 'tag') {
@@ -211,11 +254,16 @@ function main(argv) {
   } else if (cmd === 'current') {
     console.log(currentVersion(repo));
   } else {
-    throw new Error('usage: version.mjs plan|bump [--force] | tag [--push] | current');
+    throw new Error(
+      'usage: version.mjs plan|bump [--force] | tag [--push] | current',
+    );
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(import.meta.filename)
+) {
   try {
     main(process.argv.slice(2));
   } catch (e) {

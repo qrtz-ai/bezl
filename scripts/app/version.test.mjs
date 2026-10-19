@@ -30,11 +30,27 @@ function fixture() {
   g(repo, 'init', '-q', '-b', 'main');
   g(repo, 'config', 'user.email', 't@t');
   g(repo, 'config', 'user.name', 't');
-  w(repo, 'apps/desktop/src-tauri/tauri.conf.json', '{\n  "productName": "qrtz",\n  "version": "0.2.0"\n}\n');
+  w(
+    repo,
+    'apps/desktop/src-tauri/tauri.conf.json',
+    '{\n  "productName": "qrtz",\n  "version": "0.2.0"\n}\n',
+  );
   w(repo, 'package.json', '{\n  "name": "qrtz",\n  "version": "0.2.0"\n}\n');
-  w(repo, 'apps/desktop/package.json', '{\n  "name": "@qrtz/desktop",\n  "version": "0.2.0"\n}\n');
-  w(repo, 'Cargo.toml', '[workspace]\nmembers = ["crates/a"]\n\n[workspace.package]\nversion = "0.2.0"\nedition = "2021"\n');
-  w(repo, 'crates/a/Cargo.toml', '[package]\nname = "qrtz-a"\nversion.workspace = true\n');
+  w(
+    repo,
+    'apps/desktop/package.json',
+    '{\n  "name": "@qrtz/desktop",\n  "version": "0.2.0"\n}\n',
+  );
+  w(
+    repo,
+    'Cargo.toml',
+    '[workspace]\nmembers = ["crates/a"]\n\n[workspace.package]\nversion = "0.2.0"\nedition = "2021"\n',
+  );
+  w(
+    repo,
+    'crates/a/Cargo.toml',
+    '[package]\nname = "qrtz-a"\nversion.workspace = true\n',
+  );
   w(repo, 'crates/a/src/lib.rs', '1\n');
   w(
     repo,
@@ -44,7 +60,11 @@ function fixture() {
   w(repo, 'modules/echo/qrtz.json', '{"version": "0.2.0"}\n');
   w(repo, 'native/qrtz-helper/Sources/QrtzNano/a.swift', '1\n');
   w(repo, 'native/qrtz-helper/Sources/QrtzEcho/a.swift', '1\n');
-  w(repo, 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n\n- **faster echo:** it is.\n\n## 0.2.0\n\n- first\n');
+  w(
+    repo,
+    'CHANGELOG.md',
+    '# Changelog\n\n## Unreleased\n\n- **faster echo:** it is.\n\n## 0.2.0\n\n- first\n',
+  );
   commit(repo, 'init');
   g(repo, 'tag', 'v0.2.0');
   return repo;
@@ -68,7 +88,11 @@ describe('scripts/app/version.mjs (ADR 0180)', () => {
     // echo is inside qrtz.app (ADR 0174): its code changes only with the whole signed bundle.
     w(repo, 'native/qrtz-helper/Sources/QrtzEcho/a.swift', '2\n');
     commit(repo, 'echo: tweak');
-    expect(plan(repo)).toMatchObject({ from: '0.2.0', to: '0.2.1', since: 'v0.2.0' });
+    expect(plan(repo)).toMatchObject({
+      from: '0.2.0',
+      to: '0.2.1',
+      since: 'v0.2.0',
+    });
   });
 
   it('bump writes every version file, only the workspace lock entries, and the changelog', () => {
@@ -78,14 +102,24 @@ describe('scripts/app/version.mjs (ADR 0180)', () => {
     expect(workspaceMembers(repo)).toEqual(['qrtz-a']);
     const files = applyBump(repo, plan(repo), '2026-10-19');
     expect(files).toContain('Cargo.lock');
-    expect(JSON.parse(r(repo, 'apps/desktop/src-tauri/tauri.conf.json')).version).toBe('0.2.1');
+    expect(
+      JSON.parse(r(repo, 'apps/desktop/src-tauri/tauri.conf.json')).version,
+    ).toBe('0.2.1');
     expect(JSON.parse(r(repo, 'package.json')).version).toBe('0.2.1');
-    expect(JSON.parse(r(repo, 'apps/desktop/package.json')).version).toBe('0.2.1');
+    expect(JSON.parse(r(repo, 'apps/desktop/package.json')).version).toBe(
+      '0.2.1',
+    );
     expect(r(repo, 'Cargo.toml')).toContain('version = "0.2.1"');
-    expect(r(repo, 'Cargo.lock')).toContain('name = "qrtz-a"\nversion = "0.2.1"');
-    expect(r(repo, 'Cargo.lock')).toContain('name = "serde"\nversion = "0.2.0"');
+    expect(r(repo, 'Cargo.lock')).toContain(
+      'name = "qrtz-a"\nversion = "0.2.1"',
+    );
+    expect(r(repo, 'Cargo.lock')).toContain(
+      'name = "serde"\nversion = "0.2.0"',
+    );
     const cl = r(repo, 'CHANGELOG.md');
-    expect(cl).toMatch(/^# Changelog\n\n## Unreleased\n\n## 0\.2\.1 \(2026-10-19\)\n\n- \*\*faster echo:\*\* it is\.\n\n## 0\.2\.0\n/);
+    expect(cl).toMatch(
+      /^# Changelog\n\n## Unreleased\n\n## 0\.2\.1 \(2026-10-19\)\n\n- \*\*faster echo:\*\* it is\.\n\n## 0\.2\.0\n/,
+    );
     // Already ahead of its tag: not bumped twice.
     commit(repo, 'release 0.2.1');
     expect(plan(repo).to).toBeNull();
@@ -93,10 +127,15 @@ describe('scripts/app/version.mjs (ADR 0180)', () => {
   });
 
   it('with no unreleased notes the commit subjects are the section', () => {
-    const out = changelogWith('# Changelog\n\n## Unreleased\n\n## 0.2.0\n\n- a\n', '0.2.1', '2026-10-19', [
-      'abc1234 echo: catch the first word',
-    ]);
-    expect(out).toContain('## 0.2.1 (2026-10-19)\n\n- echo: catch the first word (abc1234)\n');
+    const out = changelogWith(
+      '# Changelog\n\n## Unreleased\n\n## 0.2.0\n\n- a\n',
+      '0.2.1',
+      '2026-10-19',
+      ['abc1234 echo: catch the first word'],
+    );
+    expect(out).toContain(
+      '## 0.2.1 (2026-10-19)\n\n- echo: catch the first word (abc1234)\n',
+    );
     expect(out.indexOf('## Unreleased')).toBeLessThan(out.indexOf('## 0.2.1'));
   });
 

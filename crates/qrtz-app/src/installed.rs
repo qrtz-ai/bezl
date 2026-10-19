@@ -655,6 +655,8 @@ mod tests {
         assert!(!patch_touches_bundled_fallback(
             &json!({"modules": {"echo": {"enabled": false}}})
         ));
-        assert!(!patch_touches_bundled_fallback(&json!({"echo": {"bundledFallback": true}})));
+        assert!(!patch_touches_bundled_fallback(
+            &json!({"echo": {"bundledFallback": true}})
+        ));
     }
 }

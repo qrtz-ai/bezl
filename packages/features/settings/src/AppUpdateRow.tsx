@@ -41,16 +41,14 @@ export default function AppUpdateRow() {
   const live = useQrtzEvent('app-update:state');
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    void qrtz.invoke('app-update:status').then(setStatus, (e: Error) =>
-      setError(e.message),
-    );
+    void qrtz
+      .invoke('app-update:status')
+      .then(setStatus, (e: Error) => setError(e.message));
   }, [qrtz]);
   useEffect(() => {
     if (live) setStatus(live);
   }, [live]);
-  const run = (
-    p: Promise<AppUpdateStatus>,
-  ) => {
+  const run = (p: Promise<AppUpdateStatus>) => {
     setError(null);
     void p.then(setStatus, (e: Error) => setError(e.message));
   };
@@ -58,7 +56,8 @@ export default function AppUpdateRow() {
     setError(null);
     void qrtz.invoke('app-update:restart').then(
       (r) => {
-        if (!r.restarting) setError("qrtz couldn't restart: quit and open it again");
+        if (!r.restarting)
+          setError("qrtz couldn't restart: quit and open it again");
       },
       (e: Error) => setError(e.message),
     );
@@ -97,7 +96,9 @@ export default function AppUpdateRow() {
             variant="ghost"
             size="sm"
             icon="refresh"
-            disabled={!s || s.state === 'not-set-up' || busy || s.state === 'ready'}
+            disabled={
+              !s || s.state === 'not-set-up' || busy || s.state === 'ready'
+            }
             onClick={() => run(qrtz.invoke('app-update:check'))}
             data-testid="update-check"
           >
@@ -123,7 +124,12 @@ export default function AppUpdateRow() {
         </Text>
       ) : null}
       {error ? (
-        <Text variant="caption" muted role="alert" data-testid="app-update-error">
+        <Text
+          variant="caption"
+          muted
+          role="alert"
+          data-testid="app-update-error"
+        >
           {error}
         </Text>
       ) : null}

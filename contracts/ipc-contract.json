@@ -6881,36 +6881,6 @@
                 "snap"
               ]
             }
-          },
-          "bundled": {
-            "default": {},
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "seed": {
-                  "type": "string"
-                },
-                "version": {
-                  "type": "string"
-                },
-                "update": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "required": [
-                "seed",
-                "version",
-                "update"
-              ],
-              "additionalProperties": false
-            }
           }
         },
         "required": [
@@ -6918,8 +6888,7 @@
           "index",
           "available",
           "reclaimable",
-          "pendingRestart",
-          "bundled"
+          "pendingRestart"
         ],
         "additionalProperties": false
       }
@@ -7183,36 +7152,6 @@
                 "snap"
               ]
             }
-          },
-          "bundled": {
-            "default": {},
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "seed": {
-                  "type": "string"
-                },
-                "version": {
-                  "type": "string"
-                },
-                "update": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "required": [
-                "seed",
-                "version",
-                "update"
-              ],
-              "additionalProperties": false
-            }
           }
         },
         "required": [
@@ -7220,8 +7159,7 @@
           "index",
           "available",
           "reclaimable",
-          "pendingRestart",
-          "bundled"
+          "pendingRestart"
         ],
         "additionalProperties": false
       }

@@ -61,7 +61,11 @@ export function sidebarItems(
 ): SideNavItem[] {
   return [
     // ADR 0180: the dot says a newer qrtz is ready (settings → qrtz updates it).
-    { id: QRTZ, label: 'qrtz', dot: updateReady, dotLabel: 'qrtz update ready' },
+    {
+      id: QRTZ,
+      label: 'qrtz',
+      ...(updateReady ? { dot: true, dotLabel: 'qrtz update ready' } : {}),
+    },
     ...visible
       .filter(({ manifest }) => !QRTZ_PAGE_PARTS.has(manifest.id))
       .map(({ manifest }) => ({

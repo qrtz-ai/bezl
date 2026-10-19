@@ -22,9 +22,15 @@ const base: AppUpdateStatus = {
   error: null,
   checkedAtMs: null,
 };
-const st = (p: Partial<AppUpdateStatus>): AppUpdateStatus => ({ ...base, ...p });
+const st = (p: Partial<AppUpdateStatus>): AppUpdateStatus => ({
+  ...base,
+  ...p,
+});
 
-async function mount(start: AppUpdateStatus, answers: Record<string, unknown> = {}) {
+async function mount(
+  start: AppUpdateStatus,
+  answers: Record<string, unknown> = {},
+) {
   const calls: string[] = [];
   let push: ((s: AppUpdateStatus) => void) | null = null;
   const client = {
@@ -114,7 +120,9 @@ describe('settings → qrtz: its own update (ADR 0180)', () => {
         doneBytes: 15_700_000,
       }),
     );
-    expect(m.q('app-update-progress')?.getAttribute('aria-valuenow')).toBe('50');
+    expect(m.q('app-update-progress')?.getAttribute('aria-valuenow')).toBe(
+      '50',
+    );
     expect(m.q('app-update-download')).toBeNull();
     expect((m.q('update-check') as HTMLButtonElement).disabled).toBe(true);
     await m.emit(st({ state: 'installing', latest: '0.2.1' }));
@@ -162,8 +170,12 @@ describe('settings → qrtz: its own update (ADR 0180)', () => {
       const s = st({ state, latest: '0.2.1', sizeBytes: 1e6, doneBytes: 1e5 });
       const line = appUpdateLine(s);
       // Sizes keep their unit ("MB", as backup says it); everything else is lowercase.
-      expect(line.replace(/MB/g, ''), state).toBe(line.replace(/MB/g, '').toLowerCase());
-      expect(appUpdateDot(s), state).toBe(state === 'available' || state === 'ready');
+      expect(line.replace(/MB/g, ''), state).toBe(
+        line.replace(/MB/g, '').toLowerCase(),
+      );
+      expect(appUpdateDot(s), state).toBe(
+        state === 'available' || state === 'ready',
+      );
     }
   });
 });

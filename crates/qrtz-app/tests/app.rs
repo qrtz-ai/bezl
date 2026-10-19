@@ -249,7 +249,10 @@ async fn config_defaults_validation_persistence_and_events() {
         assert!(bad.to_string().contains("set by qrtz"), "{bad}");
     }
     let after = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
-    assert!(after["modules"]["echo"].get("bundledFallback").is_none(), "{after}");
+    assert!(
+        after["modules"]["echo"].get("bundledFallback").is_none(),
+        "{after}"
+    );
     let ok = call(
         &r,
         "settings",

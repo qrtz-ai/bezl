@@ -28,8 +28,16 @@ export function keyFrom(text) {
   return decoded.includes('minisign public key') ? k : null;
 }
 
-export function feed({ version, archive, sig, notes, host = HOST, date = new Date() }) {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`not a plain x.y.z version: ${version}`);
+export function feed({
+  version,
+  archive,
+  sig,
+  notes,
+  host = HOST,
+  date = new Date(),
+}) {
+  if (!/^\d+\.\d+\.\d+$/.test(version))
+    throw new Error(`not a plain x.y.z version: ${version}`);
   const bytes = fs.readFileSync(archive);
   const signature = fs.readFileSync(sig, 'utf8').trim();
   if (!signature) throw new Error(`${sig}: empty`);
@@ -50,18 +58,34 @@ export function feed({ version, archive, sig, notes, host = HOST, date = new Dat
 
 function main(argv) {
   const a = {};
-  for (let i = 0; i < argv.length; i += 2) a[argv[i].replace(/^--/, '')] = argv[i + 1];
+  for (let i = 0; i < argv.length; i += 2)
+    a[argv[i].replace(/^--/, '')] = argv[i + 1];
   if (a['check-key']) {
     const k = keyFrom(fs.readFileSync(a['check-key'], 'utf8'));
-    console.error(k ? 'feed: the app-update public key is set' : 'feed: no app-update public key yet (TODO)');
+    console.error(
+      k
+        ? 'feed: the app-update public key is set'
+        : 'feed: no app-update public key yet (TODO)',
+    );
     process.exit(k ? 0 : 1);
   }
-  const notes = a['notes-file'] ? fs.readFileSync(a['notes-file'], 'utf8').trim() : '';
-  const f = feed({ version: a.version, archive: a.archive, sig: a.sig, notes, host: a.host ?? HOST });
+  const notes = a['notes-file']
+    ? fs.readFileSync(a['notes-file'], 'utf8').trim()
+    : '';
+  const f = feed({
+    version: a.version,
+    archive: a.archive,
+    sig: a.sig,
+    notes,
+    host: a.host ?? HOST,
+  });
   process.stdout.write(JSON.stringify(f, null, 2) + '\n');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(import.meta.filename)
+) {
   try {
     main(process.argv.slice(2));
   } catch (e) {

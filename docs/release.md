@@ -132,12 +132,12 @@ high-water mark in its data dir). Never a downgrade, never a reinstall.
 
 On R2 (bucket `qrtz-modules`, never touched by the module publish: hydrate-out.sh and publish.sh exclude `app/**`):
 
-| Object                                         | Cache         |
-| ---------------------------------------------- | ------------- |
+| Object                                          | Cache             |
+| ----------------------------------------------- | ----------------- |
 | `v1/app/<v>/qrtz_<v>_aarch64.app.tar.gz{,.sig}` | 1 year, immutable |
 | `v1/app/<v>/qrtz_<v>_aarch64.dmg`               | 1 year, immutable |
-| `v1/app/qrtz-latest.dmg` (the download link)    | 60 s          |
-| `v1/app/latest.json` (uploaded last)            | 60 s          |
+| `v1/app/qrtz-latest.dmg` (the download link)    | 60 s              |
+| `v1/app/latest.json` (uploaded last)            | 60 s              |
 
 To cut a release: `node scripts/app/version.mjs bump` (patch: tauri.conf.json, both package.json, the workspace
 Cargo.toml and Cargo.lock, CHANGELOG `## Unreleased` → `## <v> (<date>)`), commit, push to main. app-release.yml does

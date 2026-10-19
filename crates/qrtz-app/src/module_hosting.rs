@@ -152,7 +152,11 @@ impl HttpTransport {
     }
     /// A small file (the feed), at most `max` bytes; `None` = not there.
     pub async fn app_meta(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
-        let b = self.app_host(path)?.fetch_meta(path).await.map_err(|e| e.to_string())?;
+        let b = self
+            .app_host(path)?
+            .fetch_meta(path)
+            .await
+            .map_err(|e| e.to_string())?;
         match b {
             Some(b) if b.len() > max => Err(format!("{path}: too large")),
             b => Ok(b),

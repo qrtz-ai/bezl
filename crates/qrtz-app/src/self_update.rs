@@ -109,14 +109,20 @@ pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
         return Err("the update feed has no signature".into());
     }
     let sha256 = p["sha256"].as_str().unwrap_or_default();
-    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+    if sha256.len() != 64
+        || !sha256
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
         return Err("the update feed has no sha256".into());
     }
     let size = p["size"].as_u64().unwrap_or(0);
     if size == 0 || size > MAX_ARCHIVE_BYTES {
         return Err("the update feed's archive size is missing or too large".into());
     }
-    let notes = v["notes"].as_str().map(|n| n.chars().take(MAX_NOTES).collect::<String>());
+    let notes = v["notes"]
+        .as_str()
+        .map(|n| n.chars().take(MAX_NOTES).collect::<String>());
     Ok(Release {
         version: version.to_owned(),
         notes: notes.filter(|n| !n.trim().is_empty()),
@@ -148,10 +154,13 @@ fn decode_b64_text(s: &str) -> Result<String, String> {
 /// `key_b64`, and the version it was signed for (`version:` in its trusted comment, covered by the signature) is
 /// `version`. A signature without a signed version is refused.
 pub fn verify_signature(bytes: &[u8], sig_b64: &str, key_b64: &str, version: &str) -> Result<(), String> {
-    let key = minisign_verify::PublicKey::decode(&decode_b64_text(key_b64).map_err(|e| format!("app-update key: {e}"))?)
-        .map_err(|e| format!("app-update key: {e}"))?;
-    let sig = minisign_verify::Signature::decode(&decode_b64_text(sig_b64).map_err(|e| format!("signature: {e}"))?)
-        .map_err(|e| format!("signature: {e}"))?;
+    let key = minisign_verify::PublicKey::decode(
+        &decode_b64_text(key_b64).map_err(|e| format!("app-update key: {e}"))?,
+    )
+    .map_err(|e| format!("app-update key: {e}"))?;
+    let sig =
+        minisign_verify::Signature::decode(&decode_b64_text(sig_b64).map_err(|e| format!("signature: {e}"))?)
+            .map_err(|e| format!("signature: {e}"))?;
     key.verify(bytes, &sig, false)
         .map_err(|e| format!("the update's signature doesn't verify: {e}"))?;
     let signed = sig
@@ -169,7 +178,10 @@ pub fn verify_signature(bytes: &[u8], sig_b64: &str, key_b64: &str, version: &st
 pub fn app_requirement() -> String {
     format!(
         "{} and notarized",
-        qrtz_modules::manifest::designated_requirement(APP_IDENTIFIER, qrtz_modules::manifest::RELEASE_TEAM_ID)
+        qrtz_modules::manifest::designated_requirement(
+            APP_IDENTIFIER,
+            qrtz_modules::manifest::RELEASE_TEAM_ID
+        )
     )
 }
 
@@ -194,12 +206,18 @@ pub enum State {
     Checking,
     UpToDate,
     Available(Release),
-    Downloading { release: Release, done: u64 },
+    Downloading {
+        release: Release,
+        done: u64,
+    },
     /// Verifying the archive and the new bundle, and swapping it in.
     Installing(Release),
     /// The new version is in place: "restart to update".
     Ready(Release),
-    Failed { message: String, release: Option<Release> },
+    Failed {
+        message: String,
+        release: Option<Release>,
+    },
 }
 
 impl State {
@@ -225,7 +243,10 @@ impl State {
         }
     }
     fn busy(&self) -> bool {
-        matches!(self, Self::Checking | Self::Downloading { .. } | Self::Installing(_) | Self::Ready(_))
+        matches!(
+            self,
+            Self::Checking | Self::Downloading { .. } | Self::Installing(_) | Self::Ready(_)
+        )
     }
 }
 
@@ -250,7 +271,11 @@ pub trait Backend: Send + Sync {
     /// The feed's bytes (`None` = the host has no feed yet).
     async fn fetch_feed(&self) -> Result<Option<Vec<u8>>, String>;
     /// The archive's bytes; `progress(done, total)`.
-    async fn fetch_archive(&self, r: &Release, progress: &(dyn Fn(u64, u64) + Send + Sync)) -> Result<Vec<u8>, String>;
+    async fn fetch_archive(
+        &self,
+        r: &Release,
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+    ) -> Result<Vec<u8>, String>;
     /// Unpack, check (step 4 of the module doc) and swap the new qrtz.app in. Only called with verified bytes.
     async fn install(&self, r: &Release, archive: Vec<u8>) -> Result<(), String>;
     /// The pinned host (`https://modules.qrtz.ai`) the archive URL must be on.
@@ -286,7 +311,11 @@ fn now_ms() -> u64 {
 impl SelfUpdate {
     /// `key`: the app-update public key ([`pinned_key`] in the app); `None` = not set up.
     pub fn new(current: impl Into<String>, key: Option<String>, backend: Arc<dyn Backend>) -> Arc<Self> {
-        let state = if key.is_some() { State::Idle } else { State::NotSetUp };
+        let state = if key.is_some() {
+            State::Idle
+        } else {
+            State::NotSetUp
+        };
         Arc::new(Self {
             current: current.into(),
             key,
@@ -390,7 +419,11 @@ impl SelfUpdate {
             Ok(_) => State::UpToDate,
             Err(e) if quiet => {
                 tracing::warn!(error = %e, "app update check failed");
-                if matches!(prev, State::Checking) { State::Idle } else { prev }
+                if matches!(prev, State::Checking) {
+                    State::Idle
+                } else {
+                    prev
+                }
             }
             Err(e) => State::Failed {
                 message: e,
@@ -470,7 +503,11 @@ impl SelfUpdate {
         let bytes = self.backend.fetch_archive(r, &progress).await?;
         self.set(State::Installing(r.clone()));
         if bytes.len() as u64 != r.size {
-            return Err(format!("the update is {} bytes, the feed says {}", bytes.len(), r.size));
+            return Err(format!(
+                "the update is {} bytes, the feed says {}",
+                bytes.len(),
+                r.size
+            ));
         }
         if qrtz_modules::sha256_hex(&bytes) != r.sha256 {
             return Err("the update's sha256 isn't the feed's".into());
@@ -519,7 +556,10 @@ impl SelfUpdate {
                 }
                 Ok(self.status())
             }
-            _ => Err(AppError::new(ErrorCode::Validation, format!("unknown channel {channel}"))),
+            _ => Err(AppError::new(
+                ErrorCode::Validation,
+                format!("unknown channel {channel}"),
+            )),
         }
     }
 }
@@ -536,7 +576,11 @@ impl Backend for PinnedBackend {
     async fn fetch_feed(&self) -> Result<Option<Vec<u8>>, String> {
         self.transport.app_meta(FEED_PATH, MAX_FEED_BYTES).await
     }
-    async fn fetch_archive(&self, r: &Release, progress: &(dyn Fn(u64, u64) + Send + Sync)) -> Result<Vec<u8>, String> {
+    async fn fetch_archive(
+        &self,
+        r: &Release,
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+    ) -> Result<Vec<u8>, String> {
         const CHUNK: u64 = 8 << 20;
         let mut out = Vec::with_capacity(usize::try_from(r.size).map_err(|_| "too large")?);
         while (out.len() as u64) < r.size {
@@ -598,7 +642,12 @@ pub fn install_bundle(archive: &[u8], version: &str, bundle: &std::path::Path) -
     let stage = tempfile::Builder::new()
         .prefix(".qrtz-update-")
         .tempdir_in(parent)
-        .map_err(|e| format!("can't write to {}: {e} (qrtz can't replace itself there)", parent.display()))?;
+        .map_err(|e| {
+            format!(
+                "can't write to {}: {e} (qrtz can't replace itself there)",
+                parent.display()
+            )
+        })?;
     let tgz = stage.path().join("update.tar.gz");
     std::fs::write(&tgz, archive).map_err(|e| e.to_string())?;
     let out = stage.path().join("x");
@@ -641,7 +690,11 @@ fn run_tool(cmd: &str, args: &[&str]) -> Result<String, String> {
         .args(args)
         .output()
         .map_err(|e| format!("{cmd}: {e}"))?;
-    let text = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    );
     if o.status.success() {
         Ok(text)
     } else {
@@ -655,7 +708,9 @@ pub fn check_new_bundle(app: &std::path::Path, version: &str) -> Result<(), Stri
     crate::module_hosting::strip_quarantine(app)?;
     let plist = app.join("Contents/Info.plist");
     let p = path_str(&plist)?;
-    let read = |k: &str| run_tool("/usr/bin/plutil", &["-extract", k, "raw", "-o", "-", p]).map(|s| s.trim().to_owned());
+    let read = |k: &str| {
+        run_tool("/usr/bin/plutil", &["-extract", k, "raw", "-o", "-", p]).map(|s| s.trim().to_owned())
+    };
     let id = read("CFBundleIdentifier")?;
     if id != APP_IDENTIFIER {
         return Err(format!("the update is {id}, not {APP_IDENTIFIER}"));
@@ -667,16 +722,30 @@ pub fn check_new_bundle(app: &std::path::Path, version: &str) -> Result<(), Stri
     let a = path_str(app)?;
     run_tool(
         "/usr/bin/codesign",
-        &["--verify", "--deep", "--strict", &format!("-R={}", app_requirement()), a],
+        &[
+            "--verify",
+            "--deep",
+            "--strict",
+            &format!("-R={}", app_requirement()),
+            a,
+        ],
     )
     .map_err(|e| format!("the update isn't qrtz's notarized Developer ID build: {e}"))?;
     let gk = std::process::Command::new("/usr/sbin/spctl")
         .args(["--assess", "--type", "execute", "-vv", a])
         .output()
         .map_err(|e| format!("spctl: {e}"))?;
-    let out = format!("{}{}", String::from_utf8_lossy(&gk.stdout), String::from_utf8_lossy(&gk.stderr));
-    if !spctl_disabled(&out) && !(gk.status.success() && spctl_says_notarized(&out)) {
-        return Err(format!("gatekeeper doesn't accept the update as notarized: {}", out.trim()));
+    let out = format!(
+        "{}{}",
+        String::from_utf8_lossy(&gk.stdout),
+        String::from_utf8_lossy(&gk.stderr)
+    );
+    let accepted = gk.status.success() && spctl_says_notarized(&out);
+    if !(accepted || spctl_disabled(&out)) {
+        return Err(format!(
+            "gatekeeper doesn't accept the update as notarized: {}",
+            out.trim()
+        ));
     }
     Ok(())
 }
@@ -708,7 +777,10 @@ mod tests {
     #[test]
     fn the_key_file_is_a_todo_or_one_valid_key() {
         match pinned_key() {
-            None => assert!(KEY_FILE.contains("TODO(ADR 0180)"), "an empty key file keeps its TODO"),
+            None => assert!(
+                KEY_FILE.contains("TODO(ADR 0180)"),
+                "an empty key file keeps its TODO"
+            ),
             Some(k) => assert!(key_is_valid(k), "app_update_key.pub: not a minisign public key"),
         }
         assert_eq!(key_from("# a\n\n  KEY  \n# b"), Some("KEY"));
@@ -730,7 +802,10 @@ mod tests {
     #[test]
     fn the_requirement_names_the_app_the_team_and_notarization() {
         let r = app_requirement();
-        assert!(r.starts_with("identifier \"ai.qrtz.desktop\" and anchor apple generic"), "{r}");
+        assert!(
+            r.starts_with("identifier \"ai.qrtz.desktop\" and anchor apple generic"),
+            "{r}"
+        );
         assert!(r.contains("certificate leaf[subject.OU] = \"MR26CCZ496\""), "{r}");
         assert!(r.ends_with(" and notarized"), "{r}");
     }
@@ -739,17 +814,30 @@ mod tests {
     fn gatekeeper_verdicts() {
         let ok = "/Applications/qrtz.app: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Jared Grimes (MR26CCZ496)\n";
         assert!(spctl_says_notarized(ok));
-        assert!(!spctl_says_notarized("/x/qrtz.app: accepted\nsource=Developer ID\n"), "signed, not notarized");
-        assert!(!spctl_says_notarized("/x/qrtz.app: rejected\nsource=Unnotarized Developer ID\n"));
-        assert!(spctl_disabled("/x/qrtz.app: accepted\nsource=assessments disabled\n"));
+        assert!(
+            !spctl_says_notarized("/x/qrtz.app: accepted\nsource=Developer ID\n"),
+            "signed, not notarized"
+        );
+        assert!(!spctl_says_notarized(
+            "/x/qrtz.app: rejected\nsource=Unnotarized Developer ID\n"
+        ));
+        assert!(spctl_disabled(
+            "/x/qrtz.app: accepted\nsource=assessments disabled\n"
+        ));
     }
 
     #[test]
     fn the_bundle_is_found_from_its_executable() {
         let p = std::path::Path::new("/Applications/qrtz.app/Contents/MacOS/qrtz-app");
-        assert_eq!(bundle_of(p).unwrap(), std::path::Path::new("/Applications/qrtz.app"));
+        assert_eq!(
+            bundle_of(p).unwrap(),
+            std::path::Path::new("/Applications/qrtz.app")
+        );
         assert!(bundle_of(std::path::Path::new("/repo/target/debug/qrtz-app")).is_err());
-        assert!(bundle_of(std::path::Path::new("/Volumes/qrtz/qrtz.app/Contents/MacOS/qrtz-app")).is_err());
+        assert!(bundle_of(std::path::Path::new(
+            "/Volumes/qrtz/qrtz.app/Contents/MacOS/qrtz-app"
+        ))
+        .is_err());
         assert!(bundle_of(std::path::Path::new(
             "/private/var/folders/x/AppTranslocation/1/d/qrtz.app/Contents/MacOS/qrtz-app"
         ))

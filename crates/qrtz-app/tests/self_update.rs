@@ -9,7 +9,11 @@ use std::sync::{Arc, Mutex};
 const HOST: &str = "https://modules.qrtz.ai";
 
 fn fixture(name: &str) -> Vec<u8> {
-    std::fs::read(format!("{}/tests/fixtures/app-update/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+    std::fs::read(format!(
+        "{}/tests/fixtures/app-update/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
 }
 fn text(name: &str) -> String {
     String::from_utf8(fixture(name)).unwrap().trim().to_owned()
@@ -49,9 +53,18 @@ impl Backend for Fake {
         if *self.fail_feed.lock().unwrap() {
             return Err("offline".into());
         }
-        Ok(self.feed.lock().unwrap().as_ref().map(|v| serde_json::to_vec(v).unwrap()))
+        Ok(self
+            .feed
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|v| serde_json::to_vec(v).unwrap()))
     }
-    async fn fetch_archive(&self, r: &Release, progress: &(dyn Fn(u64, u64) + Send + Sync)) -> Result<Vec<u8>, String> {
+    async fn fetch_archive(
+        &self,
+        r: &Release,
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+    ) -> Result<Vec<u8>, String> {
         let b = self.archive.lock().unwrap().clone();
         progress(b.len() as u64 / 2, r.size);
         progress(b.len() as u64, r.size);
@@ -86,7 +99,10 @@ fn the_feed_parses_and_pins_the_archive_path() {
         parse_feed(&serde_json::to_vec(&v).unwrap(), HOST).unwrap_err()
     };
     // Another host, another version's archive, a prerelease, no signature, no sha256, no size, no platform.
-    bad(&|v| v["platforms"][TARGET]["url"] = json!("https://evil.example/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz"));
+    bad(&|v| {
+        v["platforms"][TARGET]["url"] =
+            json!("https://evil.example/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz")
+    });
     bad(&|v| v["platforms"][TARGET]["url"] = json!(format!("{HOST}/{}", archive_path("0.2.5"))));
     bad(&|v| v["version"] = json!("0.3.0-beta.1"));
     bad(&|v| v["platforms"][TARGET]["signature"] = json!(""));
@@ -178,8 +194,14 @@ async fn a_quiet_check_that_fails_keeps_the_row_as_it_was() {
     let (u, f) = setup("0.2.0", Some(feed("0.3.0", &text("good-0.3.0.sig"))));
     u.check(true).await;
     *f.fail_feed.lock().unwrap() = true;
-    assert!(matches!(u.check(true).await, State::Available(_)), "quiet: no error shown");
-    assert!(matches!(u.check(false).await, State::Failed { .. }), "pressed: the error shows");
+    assert!(
+        matches!(u.check(true).await, State::Available(_)),
+        "quiet: no error shown"
+    );
+    assert!(
+        matches!(u.check(false).await, State::Failed { .. }),
+        "pressed: the error shows"
+    );
     let (u, f) = setup("0.2.0", None);
     *f.fail_feed.lock().unwrap() = true;
     assert_eq!(u.check(true).await, State::Idle);
@@ -194,7 +216,10 @@ async fn the_download_channel_answers_at_once_and_the_events_follow() {
     *f.archive.lock().unwrap() = fixture("artifact.tar.gz");
     let u = SelfUpdate::new("0.2.0", Some(key()), f.clone()).with_events(events);
     assert_eq!(u.call("app-update:check").await.unwrap()["state"], "available");
-    assert_eq!(u.call("app-update:download").await.unwrap()["state"], "downloading");
+    assert_eq!(
+        u.call("app-update:download").await.unwrap()["state"],
+        "downloading"
+    );
     let mut seen = vec![];
     while seen.last().map(String::as_str) != Some("ready") {
         let (name, v) = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())

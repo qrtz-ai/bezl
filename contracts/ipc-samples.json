@@ -799,14 +799,7 @@
           "blobs": 0,
           "bytes": 0
         },
-        "pendingRestart": [],
-        "bundled": {
-          "echo": {
-            "seed": "0.2.0",
-            "version": "0.2.0",
-            "update": "0.2.1"
-          }
-        }
+        "pendingRestart": []
       },
       "idle": {
         "packages": [],
@@ -817,8 +810,7 @@
           "blobs": 0,
           "bytes": 0
         },
-        "pendingRestart": [],
-        "bundled": {}
+        "pendingRestart": []
       }
     },
     "packages:refresh": {
@@ -972,14 +964,7 @@
           "blobs": 0,
           "bytes": 0
         },
-        "pendingRestart": [],
-        "bundled": {
-          "echo": {
-            "seed": "0.2.0",
-            "version": "0.2.0",
-            "update": "0.2.1"
-          }
-        }
+        "pendingRestart": []
       }
     },
     "packages:check-update": {
