@@ -122,6 +122,19 @@ pub const SYSTEM_SLEEP_MOVE: &str = "route.system.system_sleep";
 pub const WIFI_ON_MOVE: &str = "route.system.wifi_on";
 pub const WIFI_OFF_MOVE: &str = "route.system.wifi_off";
 
+/// ADR 0198: "switch the sound to my airpods" / "play sound through the macbook speakers": the one connected output
+/// device of a kind becomes the Mac's sound output. The move is this prefix plus the kind's wire spelling
+/// (`route.system.audio_output_built_in`, `_bluetooth`, `_usb`, `_display`).
+pub const AUDIO_OUTPUT_MOVE_PREFIX: &str = "route.system.audio_output_";
+
+/// ADR 0198: the sound output kind a move names, else `None` (only the closed set's spellings).
+pub fn audio_output_of_move(mv: &str) -> Option<crate::ladder::AudioOutput> {
+    let kind = mv.strip_prefix(AUDIO_OUTPUT_MOVE_PREFIX)?;
+    crate::ladder::AudioOutput::ALL
+        .into_iter()
+        .find(|k| k.as_str() == kind)
+}
+
 /// ADR 0194: "keep my mac awake for 2 hours": the Mac doesn't idle-sleep (the screen may); the minutes are the plan's
 /// `choose_target` option `minutes.N`.
 pub const KEEP_AWAKE_MOVE: &str = "route.system.keep_awake";
@@ -261,6 +274,18 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::WifiOn,
                 expect: if on { Expect::One } else { Expect::Zero },
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0198: the one output device of that kind becomes the sound output, picked in the helper's own process;
+    // verified by the current output's kind reading back.
+    if let Some(kind) = audio_output_of_move(mv) {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::SetAudioOutput { kind })],
+            verify: Verify {
+                check: Check::AudioOutput,
+                expect: Expect::Level(kind.code()),
             },
             content: BTreeMap::new(),
         });
@@ -1064,6 +1089,15 @@ impl Driver<'_> {
                 let want = i64::from(mv == WIFI_ON_MOVE);
                 if self.helper.measure(&Check::WifiOn) == Some(want) {
                     return sink.push(log, finish(TaskStatus::Done));
+                }
+            }
+            // ADR 0198: the sound already coming out of that kind of device is done with nothing acted (not even
+            // the device list read). Can't tell (`null`) or another kind: the act picks the device and says why not.
+            if fplan.is_none() {
+                if let Some(kind) = audio_output_of_move(&mv) {
+                    if self.helper.measure(&Check::AudioOutput) == Some(kind.code()) {
+                        return sink.push(log, finish(TaskStatus::Done));
+                    }
                 }
             }
             // ADR 0194: nothing held, nothing to let go: done with nothing acted.

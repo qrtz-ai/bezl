@@ -100,6 +100,11 @@ pub enum Check {
     /// out, or never made). Read in the helper's own process from IOKit's record of that one assertion
     /// (`IOPMAssertionCopyProperties`); no other app's assertions are listed or read.
     KeptAwake,
+    /// ADR 0198: the kind of the Mac's current sound output (`kAudioHardwarePropertyDefaultOutputDevice`'s transport
+    /// type): [`crate::ladder::AudioOutput::code`], 10 built-in, 20 Bluetooth, 30 USB, 40 HDMI / DisplayPort, 0 any
+    /// other kind (`null`: no output device). Read in the helper's own process from Core Audio; never a device's name
+    /// or UID, never the input device, nothing that needs the microphone. Verified with [`Expect::Level`].
+    AudioOutput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -629,6 +634,12 @@ pub struct FakeWorld {
     /// manager refuses to make one (`awake.refused`).
     pub awake: Option<(u32, bool)>,
     pub awake_refused: bool,
+    /// ADR 0198: the connected output devices' kinds (one entry per device, so two Bluetooth headsets are two
+    /// entries), and the current output's kind (`None`: another kind, AirPlay / aggregate, read back as 0).
+    /// `audio_output_refused`: Core Audio refuses the change (`audio_output.refused`).
+    pub audio_devices: Vec<crate::ladder::AudioOutput>,
+    pub audio_current: Option<crate::ladder::AudioOutput>,
+    pub audio_output_refused: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -714,6 +725,9 @@ impl FakeWorld {
             wifi_refused: false,
             awake: None,
             awake_refused: false,
+            audio_devices: vec![crate::ladder::AudioOutput::BuiltIn],
+            audio_current: Some(crate::ladder::AudioOutput::BuiltIn),
+            audio_output_refused: false,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -1013,6 +1027,18 @@ impl FakeWorld {
                 self.awake = None;
                 Ok(())
             }
+            // ADR 0198: the helper picks the one device of that kind; none or several and nothing changes.
+            Route::Workspace(WorkspaceOp::SetAudioOutput { kind }) => {
+                match self.audio_devices.iter().filter(|k| *k == kind).count() {
+                    0 => Err("audio_output.none".into()),
+                    1 if self.audio_output_refused => Err("audio_output.refused".into()),
+                    1 => {
+                        self.audio_current = Some(*kind);
+                        Ok(())
+                    }
+                    _ => Err("audio_output.not_one".into()),
+                }
+            }
             // ADR 0168: nothing read, everything gone.
             Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
                 Some(_) => {
@@ -1154,6 +1180,7 @@ impl FakeWorld {
                     Check::LastSleep => self.last_sleep,
                     Check::WifiOn => self.wifi.map(i64::from),
                     Check::KeptAwake => Some(i64::from(self.awake.is_some())),
+                    Check::AudioOutput => Some(self.audio_current.map_or(0, |k| k.code())),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

@@ -582,6 +582,14 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0198: play the Mac's sound through the one connected device of a kind (its own speakers, AirPods or another
+    // Bluetooth device, USB, a display); reversible (switch back), no gate, no app.
+    IntentDef {
+        id: "audio_output",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -779,6 +787,182 @@ fn menu_bar_wording(toks: &[Tok]) -> bool {
         && (has(toks, DOCK_HIDE_WORDS)
             || has(toks, DOCK_SHOW_WORDS)
             || has(toks, &["turn", "enable", "disable", "on", "off", "keep"]))
+}
+
+/// ADR 0198: words that say the task is about where the sound comes out.
+const AUDIO_SOUND_WORDS: &[&str] = &[
+    "sound", "audio", "output", "outputs", "speakers", "speaker", "playback",
+];
+/// ADR 0198: devices that are sound outputs by themselves ("switch to my airpods"); headphones, headsets, earbuds and
+/// plain "speakers" can be Bluetooth, USB, a display or the Mac's own, so alone they name no kind (the move question
+/// asks).
+const AUDIO_DEVICE_WORDS: &[&str] = &[
+    "airpods",
+    "airpod",
+    "headphones",
+    "headphone",
+    "headset",
+    "headsets",
+    "earbuds",
+    "earphones",
+    "speakers",
+    "speaker",
+];
+/// ADR 0198: the verbs of a switch ("switch the sound to …", "use my airpods", "play sound through …").
+const AUDIO_SWITCH_WORDS: &[&str] = &[
+    "switch", "switches", "change", "set", "use", "move", "send", "route", "play", "put", "make", "select",
+    "pick", "choose", "swap", "redirect", "go",
+];
+/// ADR 0198: the kind words. Built-in: the Mac's own speakers (host words count unless they're where the task runs,
+/// "on my mac"). Bluetooth: AirPods or the word. USB. Display: a display's / TV's speakers over HDMI or DisplayPort.
+const AUDIO_BUILT_IN_WORDS: &[&str] = &["built-in", "builtin", "internal"];
+const AUDIO_HOST_WORDS: &[&str] = &[
+    "mac",
+    "mac's",
+    "macbook",
+    "macbook's",
+    "laptop",
+    "laptop's",
+    "computer",
+    "computer's",
+    "imac",
+    "imac's",
+];
+const AUDIO_BLUETOOTH_WORDS: &[&str] = &["airpods", "airpod", "bluetooth"];
+const AUDIO_USB_WORDS: &[&str] = &["usb"];
+const AUDIO_DISPLAY_WORDS: &[&str] = &[
+    "display",
+    "display's",
+    "displays",
+    "monitor",
+    "monitor's",
+    "monitors",
+    "tv",
+    "tv's",
+    "television",
+    "hdmi",
+    "displayport",
+];
+/// ADR 0198: words that make a sound task something else ctrl doesn't do here: the input side (mic, recording), the
+/// level or mute (their own intents), a Bluetooth connection or pairing (a device by name), AirPods' own modes, AirPlay
+/// / HomePod (a receiver by name), several outputs at once, the alert / effects device, settings, a toggle, a negation.
+const AUDIO_NOT_WORDS: &[&str] = &[
+    "input",
+    "inputs",
+    "mic",
+    "mics",
+    "microphone",
+    "microphones",
+    "record",
+    "recording",
+    "dictation",
+    "volume",
+    "louder",
+    "quieter",
+    "softer",
+    "mute",
+    "unmute",
+    "silence",
+    "off",
+    "connect",
+    "connects",
+    "connected",
+    "connecting",
+    "reconnect",
+    "disconnect",
+    "pair",
+    "unpair",
+    "forget",
+    "battery",
+    "noise",
+    "transparency",
+    "cancellation",
+    "spatial",
+    "airplay",
+    "homepod",
+    "homepods",
+    "both",
+    "all",
+    "alert",
+    "alerts",
+    "effects",
+    "notification",
+    "notifications",
+    "settings",
+    "setting",
+    "preferences",
+    "toggle",
+    "flip",
+    "don't",
+    "dont",
+    "never",
+    "not",
+    "stop",
+];
+
+/// ADR 0198: the tokens whose kind words count. "switch the sound from my airpods to the speakers": what follows the
+/// last "to" after a "from" (the "from" device is where it is now, not where it goes).
+fn audio_target_toks(toks: &[Tok]) -> &[Tok] {
+    let Some(from) = toks.iter().position(|t| t.w == "from") else {
+        return toks;
+    };
+    match toks[from..].iter().rposition(|t| t.w == "to") {
+        Some(to) => &toks[from + to + 1..],
+        None => toks,
+    }
+}
+
+/// ADR 0198: the kinds the words name ("on my mac" / "of the laptop" is where, not which output).
+fn audio_kinds(toks: &[Tok]) -> Vec<crate::ladder::AudioOutput> {
+    use crate::ladder::AudioOutput as K;
+    let t = audio_target_toks(toks);
+    let host = t.iter().enumerate().any(|(i, tok)| {
+        if !AUDIO_HOST_WORDS.contains(&tok.w.as_str()) {
+            return false;
+        }
+        let before = t[..i]
+            .iter()
+            .rev()
+            .find(|p| !matches!(p.w.as_str(), "my" | "the" | "this" | "your" | "our"));
+        !before.is_some_and(|p| matches!(p.w.as_str(), "on" | "of" | "in"))
+    });
+    let mut out = Vec::new();
+    if has(t, AUDIO_BUILT_IN_WORDS) || host {
+        out.push(K::BuiltIn);
+    }
+    if has(t, AUDIO_BLUETOOTH_WORDS) {
+        out.push(K::Bluetooth);
+    }
+    if has(t, AUDIO_USB_WORDS) {
+        out.push(K::Usb);
+    }
+    // "apple tv" is an AirPlay receiver, not a display's speakers.
+    let apple_tv = t.windows(2).any(|w| w[0].w == "apple" && w[1].w == "tv");
+    if has(t, AUDIO_DISPLAY_WORDS) && !apple_tv {
+        out.push(K::Display);
+    }
+    out
+}
+
+/// ADR 0198: the one kind the task names, else `None` (none, or two: the move question asks).
+fn audio_kind_of(toks: &[Tok]) -> Option<crate::ladder::AudioOutput> {
+    match audio_kinds(toks).as_slice() {
+        [k] => Some(*k),
+        _ => None,
+    }
+}
+
+/// ADR 0198: "switch the sound to my airpods", "play sound through the macbook speakers", "use the usb speakers",
+/// "every morning at 9 switch the audio output to my display". A switch verb, where the sound comes out (a sound word
+/// or an audio device), a kind or device word, and none of [`AUDIO_NOT_WORDS`] ("apple tv" is AirPlay).
+fn audio_output_task(toks: &[Tok]) -> bool {
+    let device = has(toks, AUDIO_DEVICE_WORDS);
+    let apple_tv = toks.windows(2).any(|w| w[0].w == "apple" && w[1].w == "tv");
+    has(toks, AUDIO_SWITCH_WORDS)
+        && (has(toks, AUDIO_SOUND_WORDS) || device)
+        && (device || !audio_kinds(toks).is_empty())
+        && !has(toks, AUDIO_NOT_WORDS)
+        && !apple_tv
 }
 
 /// ADR 0195: words that name a Dock screen edge (macOS has no top).
@@ -1741,6 +1925,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 p += 9500;
             }
         }
+        "audio_output" => {
+            // ADR 0198: "switch the sound to my airpods", "play sound through the macbook speakers". No app named in
+            // full, no site. Without it it sits well below.
+            p -= 3000;
+            let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
+            if audio_output_task(toks) && !full && !site {
+                p += 9500;
+            }
+        }
         "mute" => {
             // "mute my mac", "mute the sound". Not "mute slack" (one app's own mute is a different thing).
             p -= 3000;
@@ -2327,6 +2520,15 @@ fn move_question(
             4500,
         )],
         "allow_sleep" => vec![route("system.allow_sleep", 4500)],
+        // ADR 0198: one move, the kind the words name. None or two (bare "headphones", "the speakers", "from the
+        // display to usb" is fine, "airpods or the speakers" isn't) → all four low so the run asks.
+        "audio_output" => match audio_kind_of(toks) {
+            Some(k) => vec![route(&format!("system.audio_output_{}", k.as_str()), 4500)],
+            None => crate::ladder::AudioOutput::ALL
+                .into_iter()
+                .map(|k| route(&format!("system.audio_output_{}", k.as_str()), 2000))
+                .collect(),
+        },
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -2612,6 +2814,7 @@ fn intent_label(id: &str) -> &'static str {
         "wifi_power" => "turn wi-fi on or off",
         "keep_awake" => "keep your mac awake for a while",
         "allow_sleep" => "let your mac sleep again",
+        "audio_output" => "switch the sound output",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -2658,6 +2861,10 @@ fn route_label(id: &str) -> &'static str {
         "system.keep_awake" => "keep the mac from sleeping, the screen may still sleep",
         "system.keep_awake_display" => "keep the mac and its screen from sleeping",
         "system.allow_sleep" => "stop keeping it awake, nothing put to sleep",
+        "system.audio_output_built_in" => "play sound through the mac's own speakers",
+        "system.audio_output_bluetooth" => "play sound through the bluetooth device, like airpods",
+        "system.audio_output_usb" => "play sound through the usb device",
+        "system.audio_output_display" => "play sound through the display's speakers",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",
@@ -2841,6 +3048,8 @@ mod label_tests {
             "clean",
             "trash",
             "screen awake",
+            "airpods",
+            "speakers",
             "left",
             "right",
             "bottom",

@@ -1060,6 +1060,56 @@ test('ctrl: turn off my wifi sets the wi-fi radio without a card', async ({
   expect(errors).toEqual([]);
 });
 
+// ADR 0198: "switch the sound to my airpods" / "play sound through the macbook speakers" makes the one output device
+// of that kind the mac's sound output in the helper, one kind per task, no card.
+test('ctrl: switch the sound to my airpods picks that output without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, move, other] of [
+    [
+      'switch the sound to my airpods',
+      'play sound through the bluetooth device, like airpods',
+      "play sound through the mac's own speakers",
+    ],
+    [
+      'every evening switch the sound from my airpods to the macbook speakers',
+      "play sound through the mac's own speakers",
+      'play sound through the bluetooth device, like airpods',
+    ],
+    [
+      'use the usb speakers',
+      'play sound through the usb device',
+      "play sound through the display's speakers",
+    ],
+    [
+      'switch the audio output to my monitor',
+      "play sound through the display's speakers",
+      'play sound through the usb device',
+    ],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('switch the sound output');
+    await expect(decisions).toContainText(move);
+    await expect(decisions).not.toContainText(other);
+    await expect(decisions).not.toContainText('mute your mac');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0194: "keep my mac awake for 2 hours" holds one timed power assertion in the helper; "let my mac sleep again"
 // releases it. No card, nothing put to sleep.
 test('ctrl: keep my mac awake holds it for the duration without a card', async ({

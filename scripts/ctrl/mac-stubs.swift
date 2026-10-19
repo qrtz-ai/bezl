@@ -162,6 +162,46 @@ open class CWWiFiClient: NSObject {
     open class func shared() -> CWWiFiClient { CWWiFiClient() }
     open func interface() -> CWInterface? { nil }
 }
+// Core Audio (ADR 0198)
+public typealias AudioObjectID = UInt32
+public typealias AudioObjectPropertySelector = UInt32
+public typealias AudioObjectPropertyScope = UInt32
+public typealias AudioObjectPropertyElement = UInt32
+public struct AudioObjectPropertyAddress {
+    public var mSelector: AudioObjectPropertySelector
+    public var mScope: AudioObjectPropertyScope
+    public var mElement: AudioObjectPropertyElement
+    public init(mSelector: AudioObjectPropertySelector, mScope: AudioObjectPropertyScope, mElement: AudioObjectPropertyElement) {
+        self.mSelector = mSelector; self.mScope = mScope; self.mElement = mElement
+    }
+}
+// Imported as Int in the SDK (an anonymous enum), hence `AudioObjectID(kAudioObjectSystemObject)` at every use.
+public var kAudioObjectSystemObject: Int { 1 }
+public var kAudioObjectUnknown: AudioObjectID { 0 }
+public var kAudioObjectPropertyScopeGlobal: AudioObjectPropertyScope { 0x676C_6F62 }
+public var kAudioObjectPropertyScopeOutput: AudioObjectPropertyScope { 0x6F75_7470 }
+public var kAudioObjectPropertyElementMain: AudioObjectPropertyElement { 0 }
+public var kAudioHardwarePropertyDevices: AudioObjectPropertySelector { 0x6465_7623 }
+public var kAudioHardwarePropertyDefaultOutputDevice: AudioObjectPropertySelector { 0x644F_7574 }
+public var kAudioDevicePropertyTransportType: AudioObjectPropertySelector { 0x7472_616E }
+public var kAudioDevicePropertyStreams: AudioObjectPropertySelector { 0x7374_6D23 }
+public var kAudioDevicePropertyIsHidden: AudioObjectPropertySelector { 0x6869_646E }
+public var kAudioDeviceTransportTypeBuiltIn: UInt32 { 0x626C_746E }
+public var kAudioDeviceTransportTypeBluetooth: UInt32 { 0x626C_7565 }
+public var kAudioDeviceTransportTypeBluetoothLE: UInt32 { 0x626C_6561 }
+public var kAudioDeviceTransportTypeUSB: UInt32 { 0x7573_6220 }
+public var kAudioDeviceTransportTypeHDMI: UInt32 { 0x6864_6D69 }
+public var kAudioDeviceTransportTypeDisplayPort: UInt32 { 0x6470_7274 }
+public var noErr: OSStatus { 0 }
+public func AudioObjectGetPropertyDataSize(_ inObjectID: AudioObjectID, _ inAddress: UnsafePointer<AudioObjectPropertyAddress>,
+                                           _ inQualifierDataSize: UInt32, _ inQualifierData: UnsafeRawPointer?,
+                                           _ outDataSize: UnsafeMutablePointer<UInt32>) -> OSStatus { -1 }
+public func AudioObjectGetPropertyData(_ inObjectID: AudioObjectID, _ inAddress: UnsafePointer<AudioObjectPropertyAddress>,
+                                       _ inQualifierDataSize: UInt32, _ inQualifierData: UnsafeRawPointer?,
+                                       _ ioDataSize: UnsafeMutablePointer<UInt32>, _ outData: UnsafeMutableRawPointer) -> OSStatus { -1 }
+public func AudioObjectSetPropertyData(_ inObjectID: AudioObjectID, _ inAddress: UnsafePointer<AudioObjectPropertyAddress>,
+                                       _ inQualifierDataSize: UInt32, _ inQualifierData: UnsafeRawPointer?,
+                                       _ inDataSize: UInt32, _ inData: UnsafeRawPointer) -> OSStatus { -1 }
 // Core ML
 public enum MLComputeUnits { case cpuOnly, cpuAndGPU, all, cpuAndNeuralEngine }
 open class MLModelConfiguration: NSObject { open var computeUnits: MLComputeUnits = .all }

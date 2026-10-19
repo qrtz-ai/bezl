@@ -138,6 +138,57 @@ pub enum WorkspaceOp {
     /// ADR 0194: let the Mac sleep again: the helper releases its own keep-awake assertion (never another app's or the
     /// system's). Nothing is put to sleep; the Mac's own idle timer takes over.
     AllowSleep,
+    /// ADR 0198: make the one connected output device of this `kind` the Mac's sound output, in the helper's own
+    /// process (Core Audio: `kAudioHardwarePropertyDefaultOutputDevice` on the system object, what picking it in the
+    /// menu bar's Sound item does). The helper lists the devices and picks; no device name, id or UID crosses the wire,
+    /// only the closed kind. None of that kind → `audio_output.none`, more than one → `audio_output.not_one` (the task
+    /// can't say which, so it asks). Nothing is played, no app is told anything, no key event, the input device and
+    /// the volume stay. Reversible (switch back), no gate, no permission, never deferred.
+    SetAudioOutput { kind: AudioOutput },
+}
+
+/// ADR 0198: the kinds of sound output "switch the sound to my airpods" can pick, from the device's Core Audio
+/// transport type. A closed set: a task never names a device (free text), the helper finds the one of that kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioOutput {
+    /// The Mac's own speakers (transport built-in; the headphone jack is the same device).
+    BuiltIn,
+    /// AirPods or another Bluetooth / Bluetooth LE device.
+    Bluetooth,
+    /// A USB device (speakers, a headset, a DAC; Apple's Studio Display speakers are USB too).
+    Usb,
+    /// A display's or TV's speakers over HDMI or DisplayPort.
+    Display,
+}
+
+impl AudioOutput {
+    pub const ALL: [AudioOutput; 4] = [
+        AudioOutput::BuiltIn,
+        AudioOutput::Bluetooth,
+        AudioOutput::Usb,
+        AudioOutput::Display,
+    ];
+    /// The wire spelling (`built_in`, `bluetooth`, `usb`, `display`), also the move's suffix.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AudioOutput::BuiltIn => "built_in",
+            AudioOutput::Bluetooth => "bluetooth",
+            AudioOutput::Usb => "usb",
+            AudioOutput::Display => "display",
+        }
+    }
+    /// The code [`crate::helper::Check::AudioOutput`] reads back for the current output (spaced by 10 so the ±1
+    /// tolerance of [`crate::helper::Expect::Level`] never confuses two kinds; 0 is any other kind: AirPlay,
+    /// aggregate, virtual, Thunderbolt).
+    pub fn code(self) -> i64 {
+        match self {
+            AudioOutput::BuiltIn => 10,
+            AudioOutput::Bluetooth => 20,
+            AudioOutput::Usb => 30,
+            AudioOutput::Display => 40,
+        }
+    }
 }
 
 /// ADR 0166: the Finder, the app that shows a folder.
@@ -364,7 +415,8 @@ impl Route {
                 | WorkspaceOp::SleepSystem
                 | WorkspaceOp::SetWifi { .. }
                 | WorkspaceOp::KeepAwake { .. }
-                | WorkspaceOp::AllowSleep,
+                | WorkspaceOp::AllowSleep
+                | WorkspaceOp::SetAudioOutput { .. },
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -582,6 +634,9 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                 // ADR 0194: no app or window, no input, nothing on screen changes: holding the Mac awake (or letting
                 // it sleep on its own timer again) takes nothing from the user, so never deferred.
                 WorkspaceOp::KeepAwake { .. } | WorkspaceOp::AllowSleep => return Verdict::Allowed,
+                // ADR 0198: no app or window, no input; where the sound plays is the task, and nothing the user is
+                // doing is stopped (the playing app keeps playing on the new device), so never deferred.
+                WorkspaceOp::SetAudioOutput { .. } => return Verdict::Allowed,
                 // ADR 0168: no app or window either, but the clipboard is the user's own working buffer: never
                 // empty it while they're in the middle of something (a copy they're about to paste). Retry later.
                 WorkspaceOp::ClearClipboard => {

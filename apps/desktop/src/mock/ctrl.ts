@@ -155,6 +155,10 @@ const INTENTS = {
   system_sleep: opt('intent.system_sleep', 'put your mac to sleep', 0.07),
   wifi_on: opt('intent.wifi_power', 'turn wi-fi on or off', 0.07),
   wifi_off: opt('intent.wifi_power', 'turn wi-fi on or off', 0.07),
+  audio_built_in: opt('intent.audio_output', 'switch the sound output', 0.07),
+  audio_bluetooth: opt('intent.audio_output', 'switch the sound output', 0.07),
+  audio_usb: opt('intent.audio_output', 'switch the sound output', 0.07),
+  audio_display: opt('intent.audio_output', 'switch the sound output', 0.07),
   keep_awake: opt('intent.keep_awake', 'keep your mac awake for a while', 0.07),
   keep_screen_on: opt(
     'intent.keep_awake',
@@ -206,6 +210,10 @@ type Intent =
   | 'system_sleep'
   | 'wifi_on'
   | 'wifi_off'
+  | 'audio_built_in'
+  | 'audio_bluetooth'
+  | 'audio_usb'
+  | 'audio_display'
   | 'keep_awake'
   | 'keep_screen_on'
   | 'allow_sleep'
@@ -509,6 +517,44 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.system.wifi_off',
         'turn the wi-fi radio off, nothing else changed',
+        0.97,
+      ),
+    ]),
+  ],
+  // ADR 0198: the one connected output device of the kind the words name becomes the sound output, picked in the
+  // helper's own process; no app question, no card.
+  audio_built_in: [
+    act('choose_move', [
+      opt(
+        'route.system.audio_output_built_in',
+        "play sound through the mac's own speakers",
+        0.97,
+      ),
+    ]),
+  ],
+  audio_bluetooth: [
+    act('choose_move', [
+      opt(
+        'route.system.audio_output_bluetooth',
+        'play sound through the bluetooth device, like airpods',
+        0.97,
+      ),
+    ]),
+  ],
+  audio_usb: [
+    act('choose_move', [
+      opt(
+        'route.system.audio_output_usb',
+        'play sound through the usb device',
+        0.97,
+      ),
+    ]),
+  ],
+  audio_display: [
+    act('choose_move', [
+      opt(
+        'route.system.audio_output_display',
+        "play sound through the display's speakers",
         0.97,
       ),
     ]),
@@ -1001,6 +1047,51 @@ const wifiOf = (text: string): Intent | null => {
   return on ? 'wifi_on' : 'wifi_off';
 };
 
+// ADR 0198: a switch verb, where the sound comes out (a sound word or an audio device) and exactly one kind: the mac's
+// own speakers, bluetooth / airpods, usb, a display. "from x to y" counts only y. Never the input side, the volume or
+// mute, pairing or connecting, airplay / homepod / apple tv, several outputs, alert sounds, settings, a toggle or a
+// negation.
+const audioOf = (text: string): Intent | null => {
+  if (
+    !/\b(switch|switches|change|set|use|move|send|route|play|put|make|select|pick|choose|swap|redirect|go)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  if (
+    !/\b(sound|audio|output|outputs|speakers?|playback|airpods?|headphones?|headsets?|earbuds|earphones)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  if (
+    /\b(input|inputs|mics?|microphones?|record|recording|dictation|volume|louder|quieter|softer|mute|unmute|silence|off|connect|connects|connected|connecting|reconnect|disconnect|pair|unpair|forget|battery|noise|transparency|cancellation|spatial|airplay|homepods?|both|all|alerts?|effects|notifications?|settings?|preferences|toggle|flip|don't|dont|never|not|stop)\b/i.test(
+      text,
+    ) ||
+    /\bapple\s+tv\b/i.test(text)
+  )
+    return null;
+  const to = /\bfrom\b.*\bto\b(.*)$/i.exec(text);
+  const target = to ? (to[1] ?? '') : text;
+  const kinds: Intent[] = [];
+  if (
+    /\b(built-in|builtin|internal)\b/i.test(target) ||
+    /(?<!\b(on|of|in)\s+(my|the|this|your|our)?\s*)\b(mac|mac's|macbook|macbook's|laptop|laptop's|computer|computer's|imac|imac's)(?![\w'])/i.test(
+      target,
+    )
+  )
+    kinds.push('audio_built_in');
+  if (/\b(airpods?|bluetooth)\b/i.test(target)) kinds.push('audio_bluetooth');
+  if (/\busb\b/i.test(target)) kinds.push('audio_usb');
+  if (
+    /\b(display|display's|displays|monitor|monitor's|monitors|tv|tv's|television|hdmi|displayport)\b/i.test(
+      target,
+    )
+  )
+    kinds.push('audio_display');
+  return kinds.length === 1 ? (kinds[0] ?? null) : null;
+};
+
 // ADR 0194: keep the mac (a screen word: and its screen) awake, or let it sleep again; never without an end, a
 // condition, the sleep settings, waking or locking.
 const awakeOf = (text: string): Intent | null => {
@@ -1051,6 +1142,7 @@ const intentOf = (text: string): Intent | null =>
   windowsOf(text) ??
   awakeOf(text) ??
   wifiOf(text) ??
+  audioOf(text) ??
   ejectOf(text) ??
   displaySleepOf(text) ??
   systemSleepOf(text) ??

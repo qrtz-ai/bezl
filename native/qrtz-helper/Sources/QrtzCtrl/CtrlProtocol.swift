@@ -55,6 +55,10 @@ public enum CtrlRoute: Equatable, Sendable {
     case keepAwake(minutes: Int, display: Bool)
     /// ADR 0194: release this process's own keep-awake assertion (never another's); nothing is put to sleep.
     case allowSleep
+    /// ADR 0198: make the one connected output device of `kind` the sound output, in the helper's own process (Core
+    /// Audio's default output device). The helper lists and picks; no device name or id comes over the wire. Nothing
+    /// played, no app, no content, no gate, never deferred.
+    case setAudioOutput(kind: CtrlAudioKind)
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -92,9 +96,11 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0183: `last_sleep` too (when the Mac last slept, `kern.sleeptime`, read in this process).
     /// ADR 0191: `wifi_on` too (the Wi-Fi radio's power, read in this process; never a network's name).
     /// ADR 0194: `kept_awake` too (this process's own keep-awake assertion, read from IOKit; no other app's).
+    /// ADR 0198: `audio_output` too (the current sound output's kind, read from Core Audio; never a device's name).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
                                                     CtrlDock.check, CtrlDock.edgeCheck, CtrlMenuBar.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
-                                                    CtrlSystemSleep.check, CtrlWifi.check, CtrlKeepAwake.check]
+                                                    CtrlSystemSleep.check, CtrlWifi.check, CtrlKeepAwake.check,
+                                                    CtrlAudioOutput.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -127,6 +133,8 @@ public enum CtrlRoute: Equatable, Sendable {
             // bool `display`; nothing else is read.
             case CtrlKeepAwake.op: return CtrlKeepAwake.parse(o)
             case CtrlKeepAwake.releaseOp: return .allowSleep
+            // ADR 0198: the kind's exact spelling only; a device name riding along is ignored, never used.
+            case CtrlAudioOutput.op: return CtrlAudioOutput.parse(o)
             // ADR 0176: `single` must be a JSON true/false (objCType "c", ADR 0141); a number, a string or no field is
             // a bad request.
             case "eject_volumes":
@@ -320,7 +328,7 @@ public final class CtrlServer {
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
              .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake,
-             .allowSleep: break
+             .allowSleep, .setAudioOutput: break
         }
     }
 
@@ -330,7 +338,8 @@ public final class CtrlServer {
              let .pidKey(a, _): return a
         case .openFolder: return CtrlFolders.finder
         case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
-             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake, .allowSleep:
+             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake, .allowSleep,
+             .setAudioOutput:
             return nil
         }
     }

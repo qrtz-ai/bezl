@@ -364,6 +364,10 @@ public final class MacCtrlBackend: CtrlBackend {
             // ADR 0194: only this process's own assertion; nothing is put to sleep.
             lock.lock(); let old = awakeAssertion; awakeAssertion = nil; lock.unlock()
             if let old { CtrlKeepAwakeMac.release(old) }
+        case let .setAudioOutput(kind):
+            // ADR 0198: the one device of that kind becomes the sound output (Core Audio, this process); picked here
+            // from the device list, nothing played, the input device and the volume untouched.
+            try CtrlAudioOutputMac.switchTo(kind)
         case let .setWifi(on):
             // ADR 0191: the Wi-Fi radio's power (CoreWLAN, this process); no network picked, nothing read about one.
             try CtrlWifiMac.setPower(on)
@@ -457,6 +461,8 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlDisplay.check: return CtrlDisplayMac.asleep() ? 1 : 0
         // ADR 0191: the Wi-Fi radio's power only, read in this process (no Location, no network name).
         case CtrlWifi.check: return CtrlWifi.value(powerOn: CtrlWifiMac.powerOn())
+        // ADR 0198: the current sound output's kind, from Core Audio's transport type (never its name).
+        case CtrlAudioOutput.check: return CtrlAudioOutput.value(transport: CtrlAudioOutputMac.currentTransport())
         // ADR 0194: this process's own keep-awake assertion, from IOKit's record of it (none: 0).
         case CtrlKeepAwake.check:
             lock.lock(); let id = awakeAssertion; lock.unlock()
