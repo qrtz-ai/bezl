@@ -35,3 +35,5 @@ not json
 {"asr":"","durationMs":1,"id":"d","text":"","type":"dictation.stopped"}
 {"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","tailConf":1.5,"text":"","type":"dictation.stopped"}
 {"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","tailDropped":"yes","text":"","type":"dictation.stopped"}
+{"id":"k3","state":"maybe","type":"calendar.access"}
+{"calendars":[],"id":"r2","type":"calendar.events"}

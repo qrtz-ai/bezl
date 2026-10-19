@@ -37,6 +37,9 @@
     "summarize.result",
     "summarize.error",
     "summarize.status",
+    "calendar.access",
+    "calendar.events",
+    "calendar.changed",
     "insert.result"
   ],
   "hostToHelperTypes": [
@@ -59,6 +62,9 @@
     "summarize",
     "summarize.cancel",
     "summarize.check",
+    "calendar.check",
+    "calendar.request",
+    "calendar.read",
     "insert.text"
   ],
   "helperToHost": {
@@ -1141,6 +1147,144 @@
         "properties": {
           "type": {
             "type": "string",
+            "const": "calendar.access"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not-determined",
+              "granted",
+              "denied",
+              "restricted",
+              "write-only",
+              "unsupported"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "state"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "calendar.events"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "calendars": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ]
+            }
+          },
+          "events": {
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "calendarId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "startMs": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "endMs": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "allDay": {
+                  "type": "boolean"
+                },
+                "attendees": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "meetingUrl": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "required": [
+                "id",
+                "calendarId",
+                "title",
+                "startMs",
+                "endMs",
+                "allDay",
+                "attendees"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "calendars",
+          "events"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "calendar.changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
             "const": "insert.result"
           },
           "id": {
@@ -1571,6 +1715,72 @@
         "required": [
           "type",
           "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "calendar.check"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "calendar.request"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "calendar.read"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "fromMs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "toMs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "fromMs",
+          "toMs"
         ]
       },
       {

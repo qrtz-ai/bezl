@@ -68,6 +68,28 @@ const PermissionState = z.enum([
   'unsupported',
 ]);
 
+/** ADR 0217: bounds on the calendar messages (the helper caps, the host re-checks). */
+export const CALENDAR_LIMITS = {
+  titleMax: 200,
+  urlMax: 500,
+  idMax: 512,
+  calendarsMax: 200,
+  eventsMax: 2000,
+  /** The widest window one `calendar.read` may ask for: 15 days. */
+  windowMaxMs: 15 * 24 * 3_600_000,
+} as const;
+const CalendarReqId = z.string().min(1).max(64);
+const CalendarText = z.string().min(1).max(CALENDAR_LIMITS.idMax);
+export const CalendarAccessState = z.enum([
+  'not-determined',
+  'granted',
+  'denied',
+  'restricted',
+  'write-only',
+  'unsupported',
+]);
+export type CalendarAccessState = z.infer<typeof CalendarAccessState>;
+
 export const HelperToHost = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('hello'),
@@ -344,6 +366,44 @@ export const HelperToHost = z.discriminatedUnion('type', [
     reason: SummarizeUnavailableReason.optional(),
     contextTokens: z.number().int().min(0).optional(),
   }),
+  /**
+   * ADR 0217: nano's Apple Calendar access (EventKit, read-only). Answers `calendar.check` / `calendar.request`
+   * with their id; sent without an id when the state changes on its own (System Settings). `write-only` (macOS 14+)
+   * can't read events, so nano treats it like `denied`.
+   */
+  z.object({
+    type: z.literal('calendar.access'),
+    id: CalendarReqId.optional(),
+    state: CalendarAccessState,
+  }),
+  /**
+   * ADR 0217: answer to `calendar.read`: every calendar the user has, and the events in the window with only the
+   * fields nano keeps (no notes, location, attendee names or addresses). Titles are capped and cleaned by the
+   * helper and again by the host; `meetingUrl` is an https video-call link or absent.
+   */
+  z.object({
+    type: z.literal('calendar.events'),
+    id: CalendarReqId,
+    calendars: z
+      .array(z.object({ id: CalendarText, title: CalendarText }))
+      .max(CALENDAR_LIMITS.calendarsMax),
+    events: z
+      .array(
+        z.object({
+          id: CalendarText,
+          calendarId: CalendarText,
+          title: z.string().max(CALENDAR_LIMITS.titleMax),
+          startMs: z.number().int(),
+          endMs: z.number().int(),
+          allDay: z.boolean(),
+          attendees: z.number().int().min(0).max(10_000),
+          meetingUrl: z.string().max(CALENDAR_LIMITS.urlMax).optional(),
+        }),
+      )
+      .max(CALENDAR_LIMITS.eventsMax),
+  }),
+  /** ADR 0217: EKEventStoreChanged: the calendar database changed; the host reads the window again. */
+  z.object({ type: z.literal('calendar.changed') }),
   z.object({
     type: z.literal('insert.result'),
     id: z.string(),
@@ -439,6 +499,21 @@ export const HostToHelper = z.discriminatedUnion('type', [
   z.object({ type: z.literal('summarize.cancel'), id: SummarizeId }),
   /** ADR 0075: is the on-device model available? Answered by `summarize.status`. */
   z.object({ type: z.literal('summarize.check'), id: SummarizeId }),
+  /** ADR 0217: nano's calendar access state, without asking. Answered by `calendar.access` with this id. */
+  z.object({ type: z.literal('calendar.check'), id: CalendarReqId }),
+  /**
+   * ADR 0217: ask for full calendar access (the macOS prompt, once). Sent only after the user turned the calendar
+   * on in nano or pressed 'connect calendar'; never from onboarding. Answered by `calendar.access`.
+   */
+  z.object({ type: z.literal('calendar.request'), id: CalendarReqId }),
+  /** ADR 0217: read the events in [fromMs, toMs) (at most 15 days). Answered by `calendar.events`, or by
+   * `calendar.access` when access isn't granted. */
+  z.object({
+    type: z.literal('calendar.read'),
+    id: CalendarReqId,
+    fromMs: z.number().int(),
+    toMs: z.number().int(),
+  }),
   /** Insert text into the focused app: AX selected text, then AX value, then pasteboard + Cmd-V. */
   z.object({
     type: z.literal('insert.text'),

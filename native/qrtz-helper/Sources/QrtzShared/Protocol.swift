@@ -122,6 +122,12 @@ public enum HelperMessage: Equatable, Sendable {
     case summarizeResult(id: String, output: SummaryOutput)
     case summarizeError(id: String, failure: SummarizeFailure)
     case summarizeStatus(id: String, available: Bool, reason: SummarizeUnavailable?, contextTokens: Int?)
+    /// ADR 0217: nano's calendar access (an answer carries the request's id; nil = it changed on its own).
+    case calendarAccess(id: String?, state: CalendarAccessState)
+    /// ADR 0217: answer to calendar.read (capped to CalendarLimits on encode).
+    case calendarEvents(id: String, calendars: [CalendarInfo], events: [CalendarEventInfo])
+    /// ADR 0217: EKEventStoreChanged.
+    case calendarChanged
 }
 
 /// Host → helper.
@@ -156,6 +162,12 @@ public enum HostMessage: Equatable, Sendable {
     /// OS compiles and caches them now, not at the first recording. Ignored while a recording runs.
     case modelsWarm
     case summarizeCheck(id: String)
+    /// ADR 0217: nano's calendar access, without asking.
+    case calendarCheck(id: String)
+    /// ADR 0217: ask for full calendar access (the macOS prompt once); only after the user turned it on in nano.
+    case calendarRequest(id: String)
+    /// ADR 0217: the events in [fromMs, toMs), at most CalendarLimits.windowMaxMs wide.
+    case calendarRead(id: String, fromMs: Int64, toMs: Int64)
 }
 
 // MARK: - Encoding helpers
@@ -341,6 +353,25 @@ extension HelperMessage {
             if let reason { o["reason"] = s(reason.rawValue) }
             if let ctx { o["contextTokens"] = n(Double(ctx)) }
             return obj("summarize.status", o)
+        case .calendarAccess(let id, let state):
+            var o: [String: JSONValue] = ["state": s(state.rawValue)]
+            if let id { o["id"] = s(id) }
+            return obj("calendar.access", o)
+        case .calendarEvents(let id, let cals, let evs):
+            let c: [JSONValue] = cals.prefix(CalendarLimits.calendarsMax).map {
+                .object(["id": s(String($0.id.prefix(CalendarLimits.idMax))), "title": s(String($0.title.prefix(CalendarLimits.idMax)))])
+            }
+            let e: [JSONValue] = evs.prefix(CalendarLimits.eventsMax).map { v in
+                var o: [String: JSONValue] = [
+                    "id": s(v.id), "calendarId": s(v.calendarId), "title": s(CalendarText.clean(v.title)),
+                    "startMs": n(Double(v.startMs)), "endMs": n(Double(v.endMs)), "allDay": .bool(v.allDay),
+                    "attendees": n(Double(min(max(v.attendees, 0), 10_000))),
+                ]
+                if let u = CalendarText.meetingURL(v.meetingUrl) { o["meetingUrl"] = s(u) }
+                return .object(o)
+            }
+            return obj("calendar.events", ["id": s(id), "calendars": .array(c), "events": .array(e)])
+        case .calendarChanged: return obj("calendar.changed", [:])
         }
     }
 
@@ -468,6 +499,23 @@ extension HelperMessage {
                 return v
             }
             self = .summarizeStatus(id: try f.str("id"), available: a, reason: reason, contextTokens: try f.optNum("contextTokens").map { Int($0) })
+        case "calendar.access":
+            self = .calendarAccess(id: try f.optStr("id"), state: try f.enumValue("state", CalendarAccessState.self))
+        case "calendar.events":
+            func arr(_ k: String) throws -> [Fields] {
+                guard let a = f.o[k]?.array else { throw ProtocolError("missing array \(k)") }
+                return try a.map { try Fields($0) }
+            }
+            let cals = try arr("calendars").map { CalendarInfo(id: try $0.str("id"), title: try $0.str("title")) }
+            let evs = try arr("events").map { e -> CalendarEventInfo in
+                guard let allDay = e.o["allDay"]?.bool else { throw ProtocolError("missing allDay") }
+                return CalendarEventInfo(id: try e.str("id"), calendarId: try e.str("calendarId"), title: try e.str("title"),
+                                         startMs: Int64(try e.num("startMs")), endMs: Int64(try e.num("endMs")), allDay: allDay,
+                                         attendees: Int(try e.num("attendees")), meetingUrl: try e.optStr("meetingUrl"))
+            }
+            guard cals.count <= CalendarLimits.calendarsMax, evs.count <= CalendarLimits.eventsMax else { throw ProtocolError("calendar.events too long") }
+            self = .calendarEvents(id: try f.str("id"), calendars: cals, events: evs)
+        case "calendar.changed": self = .calendarChanged
         case let t: throw ProtocolError("unknown helper message type \(t)")
         }
     }
@@ -511,6 +559,10 @@ extension HostMessage {
             return .object(["type": s("summarize"), "id": s(id), "stage": s(stage.rawValue), "prompt": s(prompt)])
         case .summarizeCancel(let id): return .object(["type": s("summarize.cancel"), "id": s(id)])
         case .summarizeCheck(let id): return .object(["type": s("summarize.check"), "id": s(id)])
+        case .calendarCheck(let id): return .object(["type": s("calendar.check"), "id": s(id)])
+        case .calendarRequest(let id): return .object(["type": s("calendar.request"), "id": s(id)])
+        case .calendarRead(let id, let from, let to):
+            return .object(["type": s("calendar.read"), "id": s(id), "fromMs": n(Double(from)), "toMs": n(Double(to))])
         }
     }
 
@@ -566,6 +618,12 @@ extension HostMessage {
             self = .summarize(id: id, stage: try f.enumValue("stage", SummarizeStage.self), prompt: prompt)
         case "summarize.cancel": self = .summarizeCancel(id: try f.str("id"))
         case "summarize.check": self = .summarizeCheck(id: try f.str("id"))
+        case "calendar.check": self = .calendarCheck(id: try f.str("id"))
+        case "calendar.request": self = .calendarRequest(id: try f.str("id"))
+        case "calendar.read":
+            let id = try f.str("id")
+            guard (1...64).contains(id.count) else { throw ProtocolError("bad id") }
+            self = .calendarRead(id: id, fromMs: Int64(try f.num("fromMs")), toMs: Int64(try f.num("toMs")))
         case let t: throw ProtocolError("unknown host message type \(t)")
         }
     }

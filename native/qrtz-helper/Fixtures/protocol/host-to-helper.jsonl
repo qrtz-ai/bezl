@@ -25,3 +25,6 @@
 {"echoGate":false,"preRollMs":300,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":false}
 {"kind":"info","message":"copied to clipboard","type":"pill.flash"}
 {"kind":"error","message":"couldn't insert; copied to clipboard","type":"pill.flash"}
+{"id":"k1","type":"calendar.check"}
+{"id":"k2","type":"calendar.request"}
+{"fromMs":1789913600000,"id":"r1","toMs":1791209600000,"type":"calendar.read"}

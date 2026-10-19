@@ -57,3 +57,7 @@
 {"endMs":9100,"source":"system","speaker":2,"startMs":5000,"type":"diarization.segment"}
 {"atMs":612000,"reason":"backlog","source":"system","type":"diarization.unavailable"}
 {"atMs":0,"reason":"model-unavailable","source":"mic","type":"diarization.unavailable"}
+{"id":"k1","state":"granted","type":"calendar.access"}
+{"state":"denied","type":"calendar.access"}
+{"calendars":[{"id":"cal-work","title":"Work"}],"events":[{"allDay":false,"attendees":4,"calendarId":"cal-work","endMs":1790003600000,"id":"ev-1","meetingUrl":"https://meet.google.com/abc-defg-hij","startMs":1790000000000,"title":"weekly sync"},{"allDay":true,"attendees":0,"calendarId":"cal-work","endMs":1790086400000,"id":"ev-2","startMs":1790000000000,"title":"offsite"}],"id":"r1","type":"calendar.events"}
+{"type":"calendar.changed"}
