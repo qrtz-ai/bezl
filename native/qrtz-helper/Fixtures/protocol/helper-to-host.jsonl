@@ -6,6 +6,7 @@
 {"code":"audio.unavailable","fatal":false,"message":"no audio source","type":"error"}
 {"activeId":"d1","code":"dictation.busy","fatal":false,"id":"d2","message":"a dictation is already running","type":"error"}
 {"activeAudioPath":"/tmp/a.wav","audioPath":"/tmp/b.wav","code":"recording.busy","fatal":false,"message":"a recording is already running","type":"error"}
+{"code":"dictation.mic","fatal":false,"message":"AVAudioEngine -10868","reason":"failed","type":"error"}
 {"app":"Zoom","key":"zoom-app:4242","platform":"zoom","title":"Zoom Meeting","type":"meeting.detected"}
 {"app":"Google Meet (Chrome)","key":"meet:abc-defg-hij","platform":"google-meet","title":"Weekly Product Sync","type":"meeting.detected"}
 {"key":"meet:abc-defg-hij","type":"meeting.ended"}

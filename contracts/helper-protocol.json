@@ -234,7 +234,8 @@
             "type": "string",
             "enum": [
               "denied",
-              "no-device"
+              "no-device",
+              "failed"
             ]
           }
         },

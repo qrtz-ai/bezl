@@ -75,7 +75,7 @@ public enum HelperMessage: Equatable, Sendable {
     case log(level: LogLevel, msg: String)
     /// id/activeId are set on dictation.busy (the ignored start, the dictation that owns the helper);
     /// audioPath/activeAudioPath on recording.busy (the ignored start's file, the running recording's file).
-    /// reason (N195, dictation.mic only): "denied" | "no-device" when the mic open's error says which.
+    /// reason (N195, dictation.mic only): "denied" | "no-device" | "failed" (N202: granted, cause unknown).
     case error(code: String, message: String, fatal: Bool, id: String? = nil, activeId: String? = nil, audioPath: String? = nil, activeAudioPath: String? = nil, reason: String? = nil)
     case meetingDetected(key: String, title: String, platform: MeetingPlatform, app: String)
     case meetingEnded(key: String)

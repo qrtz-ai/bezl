@@ -217,7 +217,9 @@ final class ArbiterTests: XCTestCase {
         XCTAssertEqual(DictationEngine.micFailureReason(noDev, micPermission: .granted), "no-device")
         XCTAssertNil(DictationEngine.micFailureReason(noDev, micPermission: nil), "unknown permission: no reason")
         XCTAssertNil(DictationEngine.micFailureReason(noDev, micPermission: .unsupported))
-        XCTAssertNil(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868"), micPermission: .granted))
+        XCTAssertEqual(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868"), micPermission: .granted), "failed", "N202")
+        XCTAssertEqual(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868"), micPermission: .denied), "denied")
+        XCTAssertNil(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868"), micPermission: nil))
     }
 
     /// B1 end to end: the open fails with the no-device text while the injected status says denied: reason denied.

@@ -322,15 +322,17 @@ public actor DictationEngine {
     /// N195 (ADR 0224), review B1: why a mic open failed, for `error{dictation.mic}.reason`. Permission decides first:
     /// a mic that isn't authorized (AVCaptureDevice `.audio` status, via `micPermission`) is `denied`, whatever the
     /// error says (a denied mic often fails as a 0 Hz / 0 channel format, "no microphone input device"). Only an
-    /// authorized mic with no input is `no-device`. Anything else (status unknown or unsupported) sends no reason.
-    /// Talk maps `no-device` to mic-lost and anything else to mic-denied.
+    /// authorized mic with no input is `no-device`. N202 (ADR 0227 notes): an authorized mic that failed for any
+    /// other reason (held in exclusive use, a Core Audio start error) is `failed`, so talk doesn't show a
+    /// permission error while permission is granted. Status unknown or unsupported still sends no reason.
+    /// Talk maps `no-device` to mic-lost and anything else to mic-denied (until its `failed` mapping lands).
     public static func micFailureReason(_ error: Error, micPermission: PermissionState?) -> String? {
         switch micPermission {
         case .denied?, .notDetermined?: return "denied"
         case .granted?:
             let d = "\(error)".lowercased()
             if d.contains("no microphone") || d.contains("no input device") || d.contains("device not found") { return "no-device" }
-            return nil
+            return "failed"
         default: return nil
         }
     }
