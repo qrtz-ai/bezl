@@ -5,7 +5,7 @@ import type { Config } from './config';
  * qrtz modules (ADR 0146). The Rust crate `qrtz-modules` is the authority on manifests and the lockfile; this is the
  * renderer's typed view of the same shapes, plus the mapping from modules to the views they turn on.
  */
-export const MODULE_IDS = ['echo', 'nano', 'ctrl'] as const;
+export const MODULE_IDS = ['echo', 'nano', 'ctrl', 'snap'] as const;
 export const ModuleId = z.enum(MODULE_IDS);
 export type ModuleId = z.infer<typeof ModuleId>;
 
@@ -14,6 +14,7 @@ export const MODULE_VIEWS: Readonly<Record<ModuleId, readonly string[]>> = {
   echo: ['talk'],
   nano: ['note'],
   ctrl: ['ctrl'],
+  snap: ['snap'],
 };
 
 /** Config sections that stay global; every other section belongs to one module (`settings.legacySections`). */
@@ -160,6 +161,7 @@ export const MODULE_SETTINGS_PATHS: Readonly<
     ['privacy', 'pauseHotkey'],
   ],
   ctrl: [],
+  snap: [['snap']],
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>

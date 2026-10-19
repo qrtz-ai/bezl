@@ -29,6 +29,7 @@ import {
   CtrlTask,
   CtrlModelState,
 } from '../ctrl/contract';
+import { SnapStatus } from '../snap/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -612,6 +613,13 @@ export const ipcContract = {
     capability: 'ctrl.write',
     request: z.object({ consent: z.boolean() }),
     response: CtrlModelState,
+  }),
+  /** qrtz snap (ADR 0159): what qrtz-snap last reported, for snap's view and its shortcut editor. */
+  'snap:status': defineChannel({
+    version: 1,
+    capability: 'snap.read',
+    request: z.void(),
+    response: SnapStatus,
   }),
 } as const satisfies Record<string, ChannelDef>;
 

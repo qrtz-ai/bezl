@@ -360,6 +360,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     .then(|| {
         crate::local_models::LocalModels::new(dirs.data.join("models"), b.knobs.local_models_base.clone())
     });
+    let mut snap_spawn = None;
     let (supervisor, availability) = match b.helper {
         Some((mut spawn, av)) => (
             Some({
@@ -373,7 +374,10 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                         l.root().to_string_lossy().into_owned(),
                     ));
                 }
-                crate::module_helpers::ModuleHelpers::spawn(&b.helper_layout, spawn, b.supervisor)
+                // ADR 0159: qrtz-snap, its own process in either layout, next to the helper. The Rust mock
+                // helper plays no snap role, so Linux dev runs without it.
+                snap_spawn = crate::snap::spawn_for(&spawn);
+                crate::module_helpers::ModuleHelpers::spawn(&b.helper_layout, spawn, b.supervisor.clone())
             }),
             av,
         ),
@@ -506,6 +510,14 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     }
     if let Some(h) = &helpers {
         service.set_module_helpers(h.clone());
+    }
+    if let Some(sp) = snap_spawn {
+        let mut o = b.supervisor.clone();
+        o.name = "qrtz-snap".into();
+        // qrtz-snap speaks only `snap.*` (no heartbeat line), like qrtz-ctrl.
+        o.heartbeat_timeout = std::time::Duration::ZERO;
+        let sup = qrtz_helper_bridge::Supervisor::spawn(o, Arc::new(sp));
+        service.set_snap(Arc::new(crate::snap::SnapHost::new(sup)));
     }
     if let Some(w) = echo_warm {
         service.set_echo_hello_hook(Arc::new(move || w.on_hello()));

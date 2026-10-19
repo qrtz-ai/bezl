@@ -354,6 +354,18 @@ const ctrlSamples = {
   },
 } satisfies { [C in Extract<IpcChannel, `ctrl:${string}`>]: ChannelSample<C> };
 
+const snapSamples = {
+  'snap:status': {
+    request: undefined,
+    response: {
+      running: true,
+      axTrusted: true,
+      registered: { leftHalf: 'alt+cmd+left', rightHalf: 'alt+cmd+right' },
+      refused: { undo: 'another app uses these keys' },
+    },
+  },
+} satisfies { [C in Extract<IpcChannel, `snap:${string}`>]: ChannelSample<C> };
+
 const packagesState = {
   packages: [
     {
@@ -618,11 +630,13 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   'speech:resume': { request: undefined, response: speechDownloading },
   'speech:delete': { request: undefined, response: speechNone },
   ...ctrlSamples,
+  ...snapSamples,
 };
 
 export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'helper:status': { state: 'running', restarts: 0 },
   'config:changed': { theme: 'dark' },
+  'snap:changed': snapSamples['snap:status'].response,
   'note:session': recordingSession,
   'note:pipeline': pipeline,
   'note:transcript': {

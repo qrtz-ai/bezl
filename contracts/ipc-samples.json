@@ -1437,6 +1437,20 @@
         "scorer": "heuristic",
         "error": "laya.placeholder"
       }
+    },
+    "snap:status": {
+      "request": null,
+      "response": {
+        "running": true,
+        "axTrusted": true,
+        "registered": {
+          "leftHalf": "alt+cmd+left",
+          "rightHalf": "alt+cmd+right"
+        },
+        "refused": {
+          "undo": "another app uses these keys"
+        }
+      }
     }
   },
   "events": {
@@ -1446,6 +1460,17 @@
     },
     "config:changed": {
       "theme": "dark"
+    },
+    "snap:changed": {
+      "running": true,
+      "axTrusted": true,
+      "registered": {
+        "leftHalf": "alt+cmd+left",
+        "rightHalf": "alt+cmd+right"
+      },
+      "refused": {
+        "undo": "another app uses these keys"
+      }
     },
     "note:session": {
       "phase": "recording",

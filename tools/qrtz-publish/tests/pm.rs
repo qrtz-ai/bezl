@@ -893,7 +893,9 @@ fn the_legacy_lockfile_migrates_to_requests() {
         BTreeMap::from([
             ("ctrl".to_string(), "^0.2.0".to_string()),
             ("echo".to_string(), "^0.2.0".to_string()),
-            ("nano".to_string(), "^0.2.0".to_string())
+            ("nano".to_string(), "^0.2.0".to_string()),
+            // ADR 0159: qrtz snap.
+            ("snap".to_string(), "^0.1.0".to_string())
         ])
     );
     std::fs::create_dir_all(d.path().join("modules")).unwrap();

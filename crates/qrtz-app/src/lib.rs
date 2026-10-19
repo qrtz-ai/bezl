@@ -25,6 +25,7 @@ pub mod secrets;
 pub mod service;
 #[cfg(feature = "runtime")]
 pub mod setup;
+pub mod snap;
 #[cfg(feature = "runtime")]
 pub mod speech;
 #[cfg(feature = "runtime")]

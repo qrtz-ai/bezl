@@ -95,6 +95,10 @@ fn the_json_schemas_accept_the_bundled_files_and_refuse_ranges_and_dylibs() {
         let v: Value = serde_json::from_str(src).unwrap();
         let errs: Vec<String> = ms.iter_errors(&v).map(|e| e.to_string()).collect();
         assert!(errs.is_empty(), "{id}: {errs:?}");
+        // snap (ADR 0159) has no dependencies to bend.
+        if v["dependencies"].as_array().is_none_or(|d| d.is_empty()) {
+            continue;
+        }
         let mut range = v.clone();
         range["dependencies"][0]["version"] = "^1.0.0".into();
         assert!(!ms.is_valid(&range), "{id}: range accepted");
@@ -146,12 +150,11 @@ fn the_manifests_agree_with_the_confinement_map() {
     let map = read_json("docs/modules/confinement-map.json");
     assert_eq!(map["crates"]["qrtz-modules"], "shell");
     for m in manifests() {
-        let owns = map["crates"]
-            .as_object()
-            .unwrap()
-            .values()
-            .any(|o| o == m.id.as_str());
-        assert!(owns, "{} owns no crate in the map", m.id);
+        // A module owns a Rust crate or (snap, ADR 0159: Swift only) a Swift target.
+        let owns = ["crates", "swiftTargets"]
+            .iter()
+            .any(|k| map[*k].as_object().unwrap().values().any(|o| o == m.id.as_str()));
+        assert!(owns, "{} owns no crate or Swift target in the map", m.id);
         // ADR 0154: one qrtz identity, so a module may declare only the app's TCC allowlist.
         let allowed = map["appTccEntitlements"].as_object().unwrap();
         for e in &m.entitlements {
@@ -192,6 +195,17 @@ fn every_extension_helper_has_a_target_its_per_process_entitlement_and_the_launc
         );
         let needs = match *id {
             "ctrl" => "com.apple.security.automation.apple-events",
+            // ADR 0159: snap needs Accessibility only (a TCC grant, not an entitlement) and Carbon hotkeys (none),
+            // so its signature carries no entitlement at all.
+            "snap" => {
+                let ent =
+                    std::fs::read_to_string(pkg.join("entitlements/ai.qrtz.snap.entitlements")).unwrap();
+                assert!(
+                    !ent.contains("<key>"),
+                    "qrtz-snap's signature carries no entitlement"
+                );
+                continue;
+            }
             _ => "com.apple.security.device.audio-input",
         };
         let ent = std::fs::read_to_string(pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements")))

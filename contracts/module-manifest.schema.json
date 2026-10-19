@@ -29,7 +29,8 @@
       "enum": [
         "echo",
         "nano",
-        "ctrl"
+        "ctrl",
+        "snap"
       ]
     },
     "name": {

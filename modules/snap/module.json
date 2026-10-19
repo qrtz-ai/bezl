@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "snap",
+  "name": "snap",
+  "version": "0.1.0",
+  "protocol": 1,
+  "minApp": "0.2.0",
+  "code": {
+    "bundleId": "ai.qrtz.snap",
+    "teamId": "0000000000",
+    "designatedRequirement": "identifier \"ai.qrtz.snap\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\""
+  },
+  "launch": {
+    "kind": "bundled-helper",
+    "entry": "qrtz-snap",
+    "channels": ["snap.*"]
+  },
+  "views": ["snap"],
+  "capabilities": ["snap.read", "module.settings"],
+  "permissions": ["accessibility"],
+  "entitlements": [],
+  "settings": {
+    "namespace": "snap",
+    "legacySections": ["snap"]
+  },
+  "provides": [],
+  "dependencies": []
+}

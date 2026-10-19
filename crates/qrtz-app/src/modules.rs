@@ -128,6 +128,8 @@ pub const MODULE_SETTINGS_PATHS: &[(&str, &str, Option<&str>)] = &[
     ("nano", "speech", Some("speakerMode")),
     ("nano", "privacy", Some("excludedApps")),
     ("nano", "privacy", Some("pauseHotkey")),
+    // ADR 0159: snap's shortcuts, status item and disabled apps (snap's settings file).
+    ("snap", "snap", None),
 ];
 
 fn settings_paths(module: &str) -> impl Iterator<Item = (&'static str, Option<&'static str>)> + '_ {
@@ -203,13 +205,14 @@ mod tests {
     #[test]
     fn the_bundled_modules_load_and_resolve() {
         let b = bundled();
-        assert_eq!(b.manifests.len(), 3);
+        assert_eq!(b.manifests.len(), 4);
         for m in &b.manifests {
             b.lock.resolve(m).unwrap();
         }
         assert_eq!(module_of_view("talk"), Some("echo"));
         assert_eq!(module_of_view("note"), Some("nano"));
         assert_eq!(module_of_view("ctrl"), Some("ctrl"));
+        assert_eq!(module_of_view("snap"), Some("snap"));
         assert_eq!(module_of_view("settings"), None);
     }
 

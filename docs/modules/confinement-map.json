@@ -1,6 +1,15 @@
 {
   "about": "ADR 0144 M0 stand-in owned by the confinement track (Bozniak), amended by ADR 0154 (one qrtz identity). Read by crates/qrtz-lifecycle/tests/offline_graph.rs. It maps today's code to the module that will own it. Bobs's module manifests replace the owner fields; the ratchet lists only shrink. appTccEntitlements is the single app's TCC entitlement allowlist: every entry carries an ADR note and changes only with one.",
-  "owners": ["shell", "shared", "echo", "nano", "ctrl", "voice", "monolith"],
+  "owners": [
+    "shell",
+    "shared",
+    "echo",
+    "nano",
+    "ctrl",
+    "snap",
+    "voice",
+    "monolith"
+  ],
   "crates": {
     "qrtz-desktop": "shell",
     "qrtz-app": "shell",
@@ -32,7 +41,9 @@
     "QrtzNanoMac": "nano",
     "qrtz-echo": "echo",
     "qrtz-nano": "nano",
-    "qrtz-ctrl": "ctrl"
+    "qrtz-ctrl": "ctrl",
+    "QrtzSnap": "snap",
+    "qrtz-snap": "snap"
   },
   "swiftPackages": {
     "FluidAudio": "voice"
@@ -62,8 +73,8 @@
     "com.apple.security.automation.apple-events": "ADR 0154: Apple Events for ctrl (Jared approved 2026-10-18; NSAppleEventsUsageDescription goes with it)"
   },
   "entitlements": {
-    "naming": "ai.qrtz.<extension>.entitlements for an extension helper (echo, nano, ctrl; accepted, not required, ADR 0154); ai.qrtz.inference.<name>.entitlements for a sandboxed inference XPC service (e.g. ai.qrtz.inference.voice.entitlements)",
-    "extensionHelpers": ["echo", "nano", "ctrl"],
+    "naming": "ai.qrtz.<extension>.entitlements for an extension helper (echo, nano, ctrl, snap; accepted, not required, ADR 0154); ai.qrtz.inference.<name>.entitlements for a sandboxed inference XPC service (e.g. ai.qrtz.inference.voice.entitlements)",
+    "extensionHelpers": ["echo", "nano", "ctrl", "snap"],
     "extensionHelpersAllowed": "appTccEntitlements: an extension helper shares qrtz's identity and may hold only what the app may (ADR 0154)",
     "allowedTrue": {
       "inference": ["com.apple.security.app-sandbox"]

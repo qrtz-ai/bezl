@@ -33,6 +33,8 @@ let package = Package(
         .executable(name: "qrtz-echo", targets: ["qrtz-echo"]),
         .executable(name: "qrtz-nano", targets: ["qrtz-nano"]),
         .executable(name: "qrtz-ctrl", targets: ["qrtz-ctrl"]),
+        // ADR 0159: qrtz snap, Spectacle's window snapping as an extension.
+        .executable(name: "qrtz-snap", targets: ["qrtz-snap"]),
     ],
     dependencies: platformDeps,
     targets: [
@@ -68,6 +70,12 @@ let package = Package(
                           swiftSettings: macSeams),
         .executableTarget(name: "qrtz-nano", dependencies: ["QrtzGateProbe", "QrtzShared", "QrtzNano", "QrtzMacShared", "QrtzNanoMac"],
                           swiftSettings: macSeams),
+        // qrtz snap (ADR 0159): Spectacle's frame math, history, shortcuts and wire, Foundation-only (tested on Linux);
+        // Sources/QrtzSnap/mac is the Carbon hotkeys, AX mover and status item, macOS only.
+        .target(name: "QrtzSnap", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "QrtzSnapTests", dependencies: ["QrtzSnap"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(
+            name: "qrtz-snap", dependencies: ["QrtzSnap", "QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(
             name: "qrtz-ctrl", dependencies: ["QrtzCtrl", "QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
     ]

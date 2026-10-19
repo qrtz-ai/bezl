@@ -59,6 +59,18 @@
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"
+    },
+    "snap": {
+      "code": {
+        "bundleId": "ai.qrtz.snap",
+        "designatedRequirement": "identifier \"ai.qrtz.snap\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
+        "teamId": "0000000000"
+      },
+      "dependencies": [],
+      "manifestSha256": "8883e3302ab1f0026d455aa7b73d56bd8c828f7e82e35a334e4bb03e67fa3e85",
+      "source": "bundled",
+      "staleRevocation": false,
+      "version": "0.1.0"
     }
   },
   "packages": {

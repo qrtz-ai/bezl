@@ -11537,6 +11537,49 @@
         ],
         "additionalProperties": false
       }
+    },
+    "snap:status": {
+      "version": 1,
+      "capability": "snap.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "axTrusted": {
+            "type": "boolean"
+          },
+          "registered": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "refused": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "running",
+          "axTrusted",
+          "registered",
+          "refused"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {
@@ -11579,6 +11622,45 @@
           "type": "string"
         },
         "additionalProperties": {}
+      }
+    },
+    "snap:changed": {
+      "capability": "snap.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "axTrusted": {
+            "type": "boolean"
+          },
+          "registered": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "refused": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "running",
+          "axTrusted",
+          "registered",
+          "refused"
+        ],
+        "additionalProperties": false
       }
     },
     "note:session": {
@@ -13110,6 +13192,13 @@
       ]
     },
     {
+      "id": "snap",
+      "capabilities": [
+        "snap.read",
+        "module.settings"
+      ]
+    },
+    {
       "id": "gallery",
       "capabilities": []
     },
@@ -13178,6 +13267,9 @@
         },
         "ctrl": {
           "enabled": true
+        },
+        "snap": {
+          "enabled": true
         }
       },
       "onboarding": {
@@ -13186,6 +13278,11 @@
       "privacy": {
         "excludedApps": [],
         "pauseHotkey": "CommandOrControl+Shift+P"
+      },
+      "snap": {
+        "shortcuts": {},
+        "disabledApps": [],
+        "statusItem": true
       }
     },
     "schema": {
@@ -13440,13 +13537,27 @@
                 "enabled"
               ],
               "additionalProperties": false
+            },
+            "snap": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
             "enabled",
             "echo",
             "nano",
-            "ctrl"
+            "ctrl",
+            "snap"
           ],
           "additionalProperties": false
         },
@@ -13487,6 +13598,43 @@
             "pauseHotkey"
           ],
           "additionalProperties": false
+        },
+        "snap": {
+          "type": "object",
+          "properties": {
+            "shortcuts": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "disabledApps": {
+              "default": [],
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              }
+            },
+            "statusItem": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "shortcuts",
+            "disabledApps",
+            "statusItem"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -13499,7 +13647,8 @@
         "speech",
         "modules",
         "onboarding",
-        "privacy"
+        "privacy",
+        "snap"
       ],
       "additionalProperties": false
     }

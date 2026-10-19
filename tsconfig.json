@@ -20,6 +20,9 @@
       "path": "packages/features/ctrl"
     },
     {
+      "path": "packages/features/snap"
+    },
+    {
       "path": "packages/features/gallery"
     },
     {

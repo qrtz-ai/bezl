@@ -25,6 +25,7 @@
         "@qrtz/feature-gallery": "workspace:*",
         "@qrtz/feature-note": "workspace:*",
         "@qrtz/feature-settings": "workspace:*",
+        "@qrtz/feature-snap": "workspace:*",
         "@qrtz/feature-talk": "workspace:*",
         "@qrtz/ui": "workspace:*",
         "@tauri-apps/api": "^2.9.0",
@@ -102,6 +103,17 @@
       "devDependencies": {
         "@types/react": "^19.3.0",
         "react": "^19.3.1",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
+    "packages/features/snap": {
+      "name": "@qrtz/feature-snap",
+      "version": "0.1.0",
+      "dependencies": {
+        "@qrtz/core": "workspace:*",
+        "@qrtz/ui": "workspace:*",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -285,6 +297,8 @@
     "@qrtz/feature-note": ["@qrtz/feature-note@workspace:packages/features/note"],
 
     "@qrtz/feature-settings": ["@qrtz/feature-settings@workspace:packages/features/settings"],
+
+    "@qrtz/feature-snap": ["@qrtz/feature-snap@workspace:packages/features/snap"],
 
     "@qrtz/feature-talk": ["@qrtz/feature-talk@workspace:packages/features/talk"],
 

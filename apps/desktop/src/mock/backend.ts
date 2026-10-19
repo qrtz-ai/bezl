@@ -37,6 +37,7 @@ import {
 } from '@qrtz/core/ipc/samples';
 import { resolveManifest } from '../shared/manifests';
 import { ctrlHandlers } from './ctrl';
+import { SNAP_DEFAULT_SHORTCUTS } from '@qrtz/core';
 
 type Json = Record<string, unknown>;
 const params = new URLSearchParams(window.location.search);
@@ -535,6 +536,22 @@ export function createMockBridge(): TauriBridge {
     'talk:dictionary': () => [],
     // ADR 0146 parity: like the real IPC gate, every ctrl:* call is refused while ctrl (or every module) is off.
     ...gateCtrl(ctrlHandlers(), () => isModuleOn(config, 'ctrl')),
+    // ADR 0159: the browser mock has no qrtz-snap; it reports Spectacle's defaults as held (and nothing while off).
+    'snap:status': () => {
+      const on = isModuleOn(config, 'snap');
+      const overrides = (config.snap?.shortcuts ?? {}) as Record<
+        string,
+        string
+      >;
+      const registered: Record<string, string> = {};
+      if (on)
+        for (const [a, b] of Object.entries({
+          ...SNAP_DEFAULT_SHORTCUTS,
+          ...overrides,
+        }))
+          if (b) registered[a] = b;
+      return { running: on, axTrusted: on, registered, refused: {} };
+    },
   };
 
   const router = createRouter({ handlers, resolveSubApp: resolveManifest });

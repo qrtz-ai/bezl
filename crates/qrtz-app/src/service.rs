@@ -96,6 +96,8 @@ pub struct AppService {
     module_helpers: std::sync::OnceLock<crate::module_helpers::ModuleHelpers>,
     /// Split: whether qrtz-ctrl was last started (true) or stopped (false) for `modules.ctrl` (run 31).
     ctrl_on: Mutex<Option<bool>>,
+    /// ADR 0159: qrtz-snap (its own process in either layout), set once before `start_helper`.
+    snap: std::sync::OnceLock<Arc<crate::snap::SnapHost>>,
     /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
     echo_hello: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
@@ -133,6 +135,7 @@ impl AppService {
             speech_tap: std::sync::OnceLock::new(),
             module_helpers: std::sync::OnceLock::new(),
             ctrl_on: Mutex::default(),
+            snap: std::sync::OnceLock::new(),
             echo_hello: std::sync::OnceLock::new(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
@@ -348,6 +351,9 @@ impl AppService {
     /// Quit: the goodbye to every helper process (the monolith, or nano, echo and ctrl), then kill after `grace`.
     pub async fn shutdown_helpers(&self, grace: std::time::Duration) {
         let bye = encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
+        if let Some(s) = self.snap.get() {
+            s.sup.shutdown(bye.clone(), grace).await;
+        }
         if let Some(m) = self.module_helpers.get() {
             m.shutdown(bye, grace).await;
         } else if let Some(h) = &self.helper {
@@ -357,6 +363,9 @@ impl AppService {
 
     /// Stop every helper process at once (no goodbye).
     pub fn stop_helpers(&self) {
+        if let Some(s) = self.snap.get() {
+            s.sup.stop();
+        }
         if let Some(m) = self.module_helpers.get() {
             for (_, s) in m.processes() {
                 s.stop();
@@ -376,9 +385,66 @@ impl AppService {
         let _ = self.echo_hello.set(f);
     }
 
+    /// ADR 0159: run qrtz-snap (set once, before `start_helper`).
+    pub fn set_snap(&self, s: Arc<crate::snap::SnapHost>) {
+        let _ = self.snap.set(s);
+    }
+
+    /// qrtz-snap runs while snap is on and gets snap's settings when they change (ADR 0159).
+    fn apply_snap(&self, cfg: &Value) {
+        if let Some(s) = self.snap.get() {
+            if s.apply(cfg) {
+                self.events.emit("snap:changed", s.status());
+            }
+        }
+    }
+
+    /// qrtz-snap's lines and status: its reports reach snap's view, its menu's "disable for <app>" the config.
+    fn pump_snap(self: &Arc<Self>, s: Arc<crate::snap::SnapHost>) {
+        let mut lines = s.sup.subscribe_lines();
+        let me = self.clone();
+        let s2 = s.clone();
+        tokio::spawn(async move {
+            loop {
+                match lines.recv().await {
+                    Ok(line) => match s2.on_line(&line, &me.config.get()) {
+                        crate::snap::SnapLine::Status => me.events.emit("snap:changed", s2.status()),
+                        crate::snap::SnapLine::Patch(p) => {
+                            if let Err(e) = me.set_config(&p) {
+                                tracing::warn!(error = %e, "snap: disable-app not saved");
+                            }
+                        }
+                        crate::snap::SnapLine::None => {}
+                    },
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(_) => break,
+                }
+            }
+        });
+        let mut status = s.sup.watch_status();
+        let me = self.clone();
+        tokio::spawn(async move {
+            let mut prev = None;
+            loop {
+                let st = status.borrow_and_update().state;
+                if prev != Some(st) && s.on_state(st, &me.config.get()) {
+                    me.events.emit("snap:changed", s.status());
+                }
+                prev = Some(st);
+                if status.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
+        self.apply_snap(&self.config.get());
+    }
+
     /// Start the helper and pump its lines/status into the ports and the event bus. Call once, inside tokio.
     /// Split: qrtz-ctrl only starts while ctrl is on (run 31); `config:set` starts or stops it after.
     pub fn start_helper(self: &Arc<Self>) {
+        if let Some(s) = self.snap.get().cloned() {
+            self.pump_snap(s);
+        }
         if let Some(h) = self.module_helpers.get().cloned() {
             for (src, sup) in h.processes() {
                 let start = src != crate::module_helpers::HelperSource::Ctrl;
@@ -571,6 +637,7 @@ impl AppService {
         self.events.emit("config:changed", next.clone());
         self.talk.config_changed();
         self.apply_ctrl_switch(&next);
+        self.apply_snap(&next);
         Ok(next)
     }
 
@@ -637,6 +704,8 @@ impl AppService {
             Some("talk")
         } else if channel.starts_with(CTRL_PREFIX) {
             Some("ctrl")
+        } else if SNAP_CHANNELS.contains(&channel) {
+            Some("snap")
         } else if channel.starts_with(PACKAGES_PREFIX) {
             Some("packages")
         } else {
@@ -656,6 +725,10 @@ impl Handler for AppService {
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,
             Some("ctrl") => self.ctrl_channel(channel, payload).await,
+            Some("snap") => Ok(self.snap.get().map_or_else(
+                || json!({"running": false, "axTrusted": false, "registered": {}, "refused": {}}),
+                |s| s.status(),
+            )),
             Some("setup") => match self.setup.get() {
                 Some(s) => s.call(channel, payload).await,
                 None => qrtz_ipc::idle_response(channel).ok_or_else(|| {

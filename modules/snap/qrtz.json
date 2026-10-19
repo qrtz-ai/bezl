@@ -1,0 +1,16 @@
+{
+  "name": "snap",
+  "version": "0.1.0",
+  "kind": "extension",
+  "description": "window snapping with spectacle's shortcuts",
+  "extension": {
+    "entry": "bin/qrtz-snap",
+    "protocol": 1,
+    "minApp": "0.2.0",
+    "channels": ["snap.*"],
+    "views": ["snap"],
+    "capabilities": ["snap.read", "module.settings"],
+    "permissions": ["accessibility"],
+    "settings": { "namespace": "snap", "legacySections": ["snap"] }
+  }
+}

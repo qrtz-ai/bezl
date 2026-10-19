@@ -62,6 +62,8 @@ pub const APP_CHANNELS: &[&str] = &[
 pub const TALK_PREFIX: &str = "talk:";
 /// ctrl (ADR 0103): tasks, schedules and run history (`qrtz_ctrl::service::CtrlService`).
 pub const CTRL_PREFIX: &str = "ctrl:";
+/// qrtz snap (ADR 0159): what qrtz-snap last reported (`crate::snap::SnapHost`).
+pub const SNAP_CHANNELS: &[&str] = &["snap:status"];
 /// qrtz speech setup (onboarding, settings "speech"; ADR 0046 §7).
 pub const SETUP_CHANNELS: &[&str] = &[
     "speech:status",

@@ -23,6 +23,8 @@ export const Capability = z.enum([
   /** ctrl (ADR 0103): read tasks and run history; create, pause, delete and run tasks. */
   'ctrl.read',
   'ctrl.write',
+  /** qrtz snap (ADR 0159): what its helper reports (the shortcuts it holds, the Accessibility grant). */
+  'snap.read',
   /** ADR 0083: write a line to the local log (uncaught renderer errors, the audio player's errors). */
   'log.write',
   /** ADR 0083: save a copy of the local logs, or show their folder. */

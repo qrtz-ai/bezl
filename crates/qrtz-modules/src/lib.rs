@@ -47,20 +47,22 @@ pub use error::ModuleError;
 pub use manifest::{Dependency, DependencyKind, ModuleManifest};
 
 /// The modules this shell knows. A manifest with any other id is refused (an allowlist, like ADR 0046's module name).
-pub const MODULE_IDS: &[&str] = &["echo", "nano", "ctrl"];
+pub const MODULE_IDS: &[&str] = &["echo", "nano", "ctrl", "snap"];
 /// The extensions this shell knows (ADR 0157 §2). An extension runs inside qrtz's own TCC identity, so the list is
 /// part of the shell: a new extension needs a shell release, never just an index entry.
-pub const EXTENSION_NAMES: &[&str] = &["echo", "nano", "ctrl"];
+pub const EXTENSION_NAMES: &[&str] = &["echo", "nano", "ctrl", "snap"];
 
 /// The manifests that ship in this repo (`modules/<id>/module.json`) and the lockfile for the bundled state.
 pub mod bundled {
     pub const ECHO: &str = include_str!("../../../modules/echo/module.json");
     pub const NANO: &str = include_str!("../../../modules/nano/module.json");
     pub const CTRL: &str = include_str!("../../../modules/ctrl/module.json");
+    /// ADR 0159: qrtz snap, Spectacle's window snapping.
+    pub const SNAP: &str = include_str!("../../../modules/snap/module.json");
     pub const LOCK: &str = include_str!("../../../modules/modules.lock.json");
 
-    pub fn manifests() -> [(&'static str, &'static str); 3] {
-        [("echo", ECHO), ("nano", NANO), ("ctrl", CTRL)]
+    pub fn manifests() -> [(&'static str, &'static str); 4] {
+        [("echo", ECHO), ("nano", NANO), ("ctrl", CTRL), ("snap", SNAP)]
     }
 }
 

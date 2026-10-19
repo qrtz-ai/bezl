@@ -802,6 +802,7 @@ fn pairs(v: &Value) -> BTreeSet<(String, String)> {
         .collect()
 }
 
+/// The modules that own Rust crates. snap (ADR 0159) is Swift only: its host side is in qrtz-app (shell).
 const MODULES: &[&str] = &["echo", "nano", "ctrl"];
 
 /// A cross-owner edge that the module split has to remove: anything from one owner into another, except into
@@ -1220,7 +1221,7 @@ fn the_entitlements_lint_refuses_network_and_tcc_on_an_inference_service() {
     // ADR 0154: extension helpers share qrtz's identity, so any of them may hold what the app may, and nothing more.
     let ae = ("com.apple.security.automation.apple-events", true);
     let mic = ("com.apple.security.device.audio-input", true);
-    for m in ["echo", "nano", "ctrl"] {
+    for m in ["echo", "nano", "ctrl", "snap"] {
         let f = format!("ai.qrtz.{m}.entitlements");
         assert!(lint_entitlements(&f, &p(&[]), &map).is_ok(), "{f}");
         assert!(lint_entitlements(&f, &p(&[mic, ae]), &map).is_ok(), "{f}");

@@ -18,7 +18,8 @@
         "enum": [
           "echo",
           "nano",
-          "ctrl"
+          "ctrl",
+          "snap"
         ]
       },
       "additionalProperties": {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SnapStatus } from '../snap/contract';
 import type { Capability } from '../capabilities';
 import { HelperStatus } from './contract';
 import { PermissionsStatus, SessionView } from '../note/contract';
@@ -26,6 +27,11 @@ export const eventContract = {
   'config:changed': defineEvent({
     capability: 'config.read',
     payload: z.record(z.string(), z.unknown()),
+  }),
+  /** qrtz snap (ADR 0159): qrtz-snap reported a new status (started, stopped, re-registered its shortcuts). */
+  'snap:changed': defineEvent({
+    capability: 'snap.read',
+    payload: SnapStatus,
   }),
   'note:session': defineEvent({
     capability: 'note.read',

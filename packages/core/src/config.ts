@@ -95,6 +95,7 @@ export const ConfigSchema = z.object({
       echo: z.object({ enabled: z.boolean().default(true) }).prefault({}),
       nano: z.object({ enabled: z.boolean().default(true) }).prefault({}),
       ctrl: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+      snap: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     })
     .prefault({}),
   /** First-run setup (welcome, permissions, speech download). */
@@ -108,6 +109,21 @@ export const ConfigSchema = z.object({
         .default([]),
       /** Global shortcut that pauses/resumes capture while recording (Electron accelerator; "" = none). */
       pauseHotkey: z.string().max(60).default('CommandOrControl+Shift+P'),
+    })
+    .prefault({}),
+  /**
+   * qrtz snap (ADR 0159), stored in snap's own settings file. `shortcuts` holds only the user's changes to
+   * Spectacle's defaults (action → "ctrl+alt+right"; "" clears one); `disabledApps` are bundle ids snap leaves alone;
+   * `statusItem` shows snap's menu bar item with every action.
+   */
+  snap: z
+    .object({
+      shortcuts: z.record(z.string().max(32), z.string().max(60)).default({}),
+      disabledApps: z
+        .array(z.string().trim().min(1).max(255))
+        .max(100)
+        .default([]),
+      statusItem: z.boolean().default(true),
     })
     .prefault({}),
 });
