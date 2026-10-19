@@ -40,11 +40,12 @@ import {
   X,
   type Icon as FeatherIcon,
 } from 'react-feather';
+import { Notebook } from './Notebook';
 import { useTheme } from './theme';
 import type { Tokens } from './tokens';
 
 /**
- * The one icon set: Feather (react-feather, MIT). Every glyph in the app goes through <Icon name>; feature
+ * The one icon set: Feather (react-feather, MIT), plus `notebook` drawn to match it. Every glyph in the app goes through <Icon name>; feature
  * code never imports react-feather (scripts/check-ui-purity.mjs enforces it). Add icons here, not inline.
  */
 export const ICONS = {
@@ -74,6 +75,8 @@ export const ICONS = {
   info: Info,
   ask: MessageCircle,
   mic: Mic,
+  // nano's glyph; Feather has no notebook, so it is drawn on Feather's grid in ./Notebook.
+  notebook: Notebook,
   'mic-off': MicOff,
   more: MoreHorizontal,
   pause: Pause,
@@ -90,7 +93,7 @@ export const ICONS = {
   open: ExternalLink,
   permission: Lock,
   restart: RotateCw,
-} satisfies Record<string, FeatherIcon>;
+} satisfies Record<string, FeatherIcon | typeof Notebook>;
 
 export type IconName = keyof typeof ICONS;
 export type IconSize = keyof Tokens['icon']['size'];

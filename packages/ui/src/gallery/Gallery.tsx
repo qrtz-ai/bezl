@@ -442,7 +442,7 @@ function Showcase({
                     label="example nav"
                     testIdPrefix="gallery-nav"
                     items={[
-                      { id: 'note', label: 'nano', icon: 'edit' },
+                      { id: 'note', label: 'nano', icon: 'notebook' },
                       {
                         id: 'settings',
                         label: 'settings',

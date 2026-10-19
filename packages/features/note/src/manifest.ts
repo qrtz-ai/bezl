@@ -3,7 +3,7 @@ import { SubAppManifest } from '@qrtz/core';
 export const manifest = SubAppManifest.parse({
   id: 'note',
   name: 'nano',
-  icon: 'mic',
+  icon: 'notebook',
   order: 10,
   capabilities: [
     'note.read',

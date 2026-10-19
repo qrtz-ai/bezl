@@ -30,7 +30,7 @@ const KNOWN: Record<ModuleId, Omit<ExtensionInfo, 'view'>> = {
   nano: {
     description:
       'meeting notes. records, transcribes and summarizes calls without leaving this mac.',
-    icon: 'edit',
+    icon: 'notebook',
   },
   ctrl: {
     description:
