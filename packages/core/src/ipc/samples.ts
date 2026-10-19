@@ -494,6 +494,7 @@ const packagesState = {
     },
   ],
   reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
+  pendingRestart: [],
 };
 const packagePlan = {
   planSha256: 'ab'.repeat(32),
@@ -795,5 +796,6 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
     index: null,
     available: [],
     reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
+    pendingRestart: [],
   },
 };

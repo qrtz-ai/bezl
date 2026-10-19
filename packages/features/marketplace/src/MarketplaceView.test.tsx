@@ -520,4 +520,26 @@ describe('every permission is granted from inside qrtz', () => {
     ).toEqual({ pane: 'automation' });
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
+
+  it('says "restart to finish updating" for a module an update left running its old version (ADR 0172)', async () => {
+    const f = fake();
+    await render(f.client);
+    expect(q('marketplace-restart')).toBeNull();
+    const list = (ipcSamples as Record<string, { response: object }>)[
+      'packages:list'
+    ].response;
+    const g = fake({
+      'packages:list': () => ({ ...list, pendingRestart: ['nano'] }),
+    });
+    act(() => root?.unmount());
+    el.remove();
+    await render(g.client);
+    expect(q('marketplace-restart')?.textContent).toContain(
+      'restart to finish updating',
+    );
+    expect(q('marketplace-restart')?.textContent).toContain('nano');
+    await click('marketplace-restart-button');
+    expect(g.calls.map((c) => c.channel)).toContain('app:restart');
+    expect(el.textContent).toBe(el.textContent?.toLowerCase());
+  });
 });

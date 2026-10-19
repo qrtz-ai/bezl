@@ -98,6 +98,11 @@ export const PackagesState = z.object({
   available: z.array(CatalogEntry),
   /** What `packages:prune` would delete right now (nothing in use): "clean up" is offered only when not zero. */
   reclaimable: PackagesPruned,
+  /**
+   * ADR 0172: modules updated while their helper kept running the old version (it stays until qrtz restarts, and
+   * so does its old package dir): the marketplace says "restart to finish updating".
+   */
+  pendingRestart: z.array(ModuleId).default([]),
 });
 export type PackagesState = z.infer<typeof PackagesState>;
 

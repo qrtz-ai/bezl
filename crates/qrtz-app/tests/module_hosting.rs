@@ -686,7 +686,7 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
     assert_eq!(
         s,
         json!({"packages": [], "index": null, "available": [],
-               "reclaimable": {"dirs": 0, "blobs": 0, "bytes": 0}})
+               "reclaimable": {"dirs": 0, "blobs": 0, "bytes": 0}, "pendingRestart": []})
     );
     assert_eq!(w.hits(), 0, "listing is local");
     let s = ipc.call("packages:refresh", json!(null)).await.unwrap();

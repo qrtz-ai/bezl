@@ -14,7 +14,7 @@ use qrtz_modules::index::PackageKind;
 use qrtz_modules::qrtz_json::PackageManifest;
 use qrtz_modules::qrtz_lock::{package_dir, QrtzLock, LOCK_FILE};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// `<root>/qrtz.lock`, or an empty lock when there is none yet (a fresh install). A lock that doesn't parse counts as
@@ -53,6 +53,29 @@ pub fn installed_patch(lock: &QrtzLock) -> Value {
         m.insert((*id).to_owned(), json!({"installed": on.contains(*id)}));
     }
     json!({ "modules": m })
+}
+
+/// ADR 0172: what is installed right now, as the host syncs it: the `modules.<id>.installed` patch and each
+/// installed extension's locked version (a version change while `installed` stays true is an update, which
+/// relaunches that module's helper once it is idle).
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstalledModules {
+    pub patch: Value,
+    pub versions: BTreeMap<String, String>,
+}
+
+pub fn installed_modules(lock: &QrtzLock) -> InstalledModules {
+    let versions = installed_extensions(lock)
+        .into_iter()
+        .filter_map(|n| {
+            let v = lock.workspace.resolved.get(&n)?.clone();
+            Some((n, v))
+        })
+        .collect();
+    InstalledModules {
+        patch: installed_patch(lock),
+        versions,
+    }
 }
 
 /// True if a renderer's `config:set` patch touches `modules.<id>.installed` (only the host writes it).
@@ -308,7 +331,14 @@ mod tests {
         lock.packages
             .insert("model.x@1.0.0".into(), locked(PackageKind::Model));
         assert_eq!(installed_extensions(&lock), BTreeSet::from(["snap".to_owned()]));
+        let m = installed_modules(&lock);
+        assert_eq!(
+            m.versions,
+            BTreeMap::from([("snap".to_owned(), "0.1.0".to_owned())])
+        );
+        assert_eq!(m.patch, installed_patch(&lock));
         lock.packages.get_mut("snap@0.1.0").unwrap().disabled = Some("revoked".into());
+        assert!(installed_modules(&lock).versions.is_empty());
         assert!(installed_extensions(&lock).is_empty());
     }
 

@@ -250,6 +250,55 @@ pub struct Installer {
 
 const CACHE: &str = "index-cache";
 const PACKAGES: &str = "packages";
+
+/// ADR 0172: `<root>/packages-in-use.json`, the package dirs a running helper was spawned from that the lock no
+/// longer names (an extension updated while its helper keeps running until qrtz restarts). The app rewrites it when
+/// that set changes (empty at launch); every prune (the app's, the `qrtz` CLI's, a speech-model delete) keeps them.
+pub const IN_USE_FILE: &str = "packages-in-use.json";
+
+/// The dirs [`IN_USE_FILE`] names (`packages/<name>/<version>` only; anything else in it is ignored). A missing or
+/// unreadable file keeps nothing.
+pub fn read_in_use(root: &Path) -> BTreeSet<String> {
+    let Ok(b) = std::fs::read(root.join(IN_USE_FILE)) else {
+        return BTreeSet::new();
+    };
+    let v: serde_json::Value = serde_json::from_slice(&b).unwrap_or_default();
+    v["dirs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|d| d.as_str())
+        .filter(|d| in_use_dir(d))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Replace [`IN_USE_FILE`] with `dirs` (0600, atomic). An empty set removes the file.
+pub fn write_in_use(root: &Path, dirs: &BTreeSet<String>) -> Result<(), ModuleError> {
+    let p = root.join(IN_USE_FILE);
+    if dirs.is_empty() {
+        return match std::fs::remove_file(&p) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+            _ => Ok(()),
+        };
+    }
+    let bytes = serde_json::to_vec(&serde_json::json!({ "dirs": dirs }))
+        .map_err(|e| ModuleError::Io(e.to_string()))?;
+    fsutil::write_private_atomic(&p, &bytes)
+}
+
+/// `packages/<name>/<version>`, one plain component each (no `..`, no separators).
+fn in_use_dir(d: &str) -> bool {
+    let mut parts = d.split('/');
+    parts.next() == Some(PACKAGES)
+        && parts
+            .by_ref()
+            .take(2)
+            .filter(|c| !c.is_empty() && *c != "." && *c != "..")
+            .count()
+            == 2
+        && parts.next().is_none()
+}
 const LEGACY_LOCK: &str = "modules/modules.lock.json";
 
 /// Holds `.qrtz-install.lock` for one change: the app and the CLI never write at once.
@@ -1192,7 +1241,9 @@ impl Installer {
 
     /// Remove package dirs `qrtz.lock` doesn't name, store blobs no locked package's tree references (refcounted
     /// from the lock: a blob shared by two packages stays while either is locked), and stale staging dirs. Every
-    /// locked package is kept, so nothing [`Installer::list`] shows (each with its users) is ever deleted here.
+    /// locked package is kept, so nothing [`Installer::list`] shows (each with its users) is ever deleted here; so is
+    /// every dir [`IN_USE_FILE`] names (a running helper's old version, ADR 0172; its files are links or copies, so
+    /// they outlive the blobs).
     pub fn prune(&self) -> Result<Pruned, InstallError> {
         let _g = self.guard()?;
         self.sweep(true)
@@ -1207,11 +1258,12 @@ impl Installer {
     fn sweep(&self, delete: bool) -> Result<Pruned, InstallError> {
         let lock = self.lock()?;
         let mut out = Pruned::default();
-        let keep_dirs: BTreeSet<String> = lock
+        let mut keep_dirs: BTreeSet<String> = lock
             .packages
             .keys()
             .filter_map(|k| split_key(k).map(|(n, v)| package_dir(n, v)))
             .collect();
+        keep_dirs.extend(read_in_use(&self.root));
         let base = self.root.join(PACKAGES);
         if let Ok(names) = std::fs::read_dir(&base) {
             for n in names.flatten() {
@@ -1541,4 +1593,29 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
 /// `Index` lookups the CLI and the app share.
 pub fn newest(index: &Index, name: &str) -> Option<String> {
     index.latest(name).map(|(v, _)| v.to_owned())
+}
+
+#[cfg(test)]
+mod in_use_tests {
+    use super::*;
+
+    #[test]
+    fn the_in_use_file_names_only_package_dirs_and_empty_removes_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(read_in_use(tmp.path()).is_empty(), "no file keeps nothing");
+        let dirs = BTreeSet::from(["packages/echo/1.0.0".to_owned()]);
+        write_in_use(tmp.path(), &dirs).unwrap();
+        assert_eq!(read_in_use(tmp.path()), dirs);
+        std::fs::write(
+            tmp.path().join(IN_USE_FILE),
+            br#"{"dirs": ["packages/echo/1.0.0", "packages/../qrtz.lock", "packages/echo", "/etc", "packages/a/b/c", "packages/./x", 3]}"#,
+        )
+        .unwrap();
+        assert_eq!(read_in_use(tmp.path()), dirs, "only packages/<name>/<version>");
+        std::fs::write(tmp.path().join(IN_USE_FILE), b"not json").unwrap();
+        assert!(read_in_use(tmp.path()).is_empty());
+        write_in_use(tmp.path(), &BTreeSet::new()).unwrap();
+        assert!(!tmp.path().join(IN_USE_FILE).exists());
+        write_in_use(tmp.path(), &BTreeSet::new()).unwrap();
+    }
 }

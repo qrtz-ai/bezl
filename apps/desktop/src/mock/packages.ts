@@ -82,6 +82,7 @@ export function packagesHandlers(
     available: catalog,
     // The mock store keeps nothing a removed extension left behind.
     reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
+    pendingRestart: [],
   });
   const diff = (next: Map<string, string>) => {
     const before = new Map(rowsFor(requested).map((r) => [r.name, r]));

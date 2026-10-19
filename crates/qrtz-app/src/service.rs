@@ -99,6 +99,8 @@ pub struct AppService {
     /// ADR 0169: reads `qrtz.lock` (and links the installed models' views) and returns the `modules.<id>.installed`
     /// patch. Set once by the app (`track_installed_modules`); unset = every module counts as installed.
     module_sync: std::sync::OnceLock<ModuleSync>,
+    /// ADR 0172: which running helpers an update left on an old version (see [`Relaunch`]).
+    relaunch: Relaunch,
     /// ADR 0159: qrtz-snap (its own process in either layout), set once before `start_helper`.
     snap: std::sync::OnceLock<Arc<crate::snap::SnapHost>>,
     /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
@@ -114,8 +116,31 @@ pub struct AppService {
     report_dirs: std::sync::OnceLock<Vec<std::path::PathBuf>>,
 }
 
-/// ADR 0169: the host's view of what is installed, as a config patch (see [`crate::installed`]).
-pub type ModuleSync = Arc<dyn Fn() -> Value + Send + Sync>;
+/// ADR 0169: the host's view of what is installed: `read` links the installed models' views and returns the
+/// `modules.<id>.installed` patch with each installed module's locked version (see [`crate::installed`]); `root`
+/// is the data dir the lock and `packages/` are under.
+#[derive(Clone)]
+pub struct ModuleSync {
+    pub root: std::path::PathBuf,
+    pub read: Arc<dyn Fn() -> crate::installed::InstalledModules + Send + Sync>,
+}
+
+/// ADR 0172 (v1, amended): an update of an installed module (its locked version changes while `installed` stays
+/// true) doesn't relaunch its helper. The running process keeps its old version until qrtz restarts: the module
+/// is `pendingRestart` (the marketplace says "restart to finish updating"), and its old package dir is kept out of
+/// every prune (`packages-in-use.json`) while that process lives. The next launch starts the new version, rewrites
+/// the in-use set (empty) and prunes the old dir.
+#[derive(Default)]
+struct Relaunch {
+    /// The locked version of each installed module, as of the last sync.
+    locked: Mutex<std::collections::BTreeMap<String, String>>,
+    /// The version each running module helper was started from (absent: not running, or not from the lock).
+    started: Mutex<std::collections::BTreeMap<&'static str, String>>,
+    /// The in-use dirs last written (`None`: not written yet this launch).
+    in_use: Mutex<Option<std::collections::BTreeSet<String>>>,
+    /// A previous launch left dirs in use: they are pruned once at this launch's `start_helper`.
+    prune_due: std::sync::atomic::AtomicBool,
+}
 
 /// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
 pub type SpeechTap = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
@@ -145,6 +170,7 @@ impl AppService {
             module_helpers: std::sync::OnceLock::new(),
             helpers_on: Mutex::default(),
             module_sync: std::sync::OnceLock::new(),
+            relaunch: Relaunch::default(),
             snap: std::sync::OnceLock::new(),
             echo_hello: std::sync::OnceLock::new(),
             delivered: Default::default(),
@@ -440,9 +466,23 @@ impl AppService {
     /// qrtz-snap runs while snap is on and gets snap's settings when they change (ADR 0159).
     fn apply_snap(&self, cfg: &Value) {
         if let Some(s) = self.snap.get() {
+            let on = crate::modules::is_on(cfg, crate::snap::MODULE_ID);
+            let was = self
+                .relaunch
+                .started
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .contains_key(crate::snap::MODULE_ID);
             if s.apply(cfg) {
                 self.events.emit("snap:changed", s.status());
             }
+            // ADR 0172: the version qrtz-snap was started from (apply starts it when it turns on).
+            match (was, on) {
+                (false, true) => self.note_started(crate::snap::MODULE_ID),
+                (true, false) => self.note_stopped(crate::snap::MODULE_ID),
+                _ => {}
+            }
+            self.refresh_in_use();
         }
     }
 
@@ -500,6 +540,8 @@ impl AppService {
     /// Start the helper and pump its lines/status into the ports and the event bus. Call once, inside tokio.
     /// Split: qrtz-ctrl only starts while ctrl is on (run 31); `config:set` starts or stops it after.
     pub fn start_helper(self: &Arc<Self>) {
+        // ADR 0172: what a previous launch's helpers kept from an update goes now.
+        self.prune_at_launch();
         if let Some(s) = self.snap.get().cloned() {
             self.pump_snap(s);
         }
@@ -534,15 +576,115 @@ impl AppService {
             }
             last.insert(id, on);
             if on {
+                self.note_started(id);
                 sup.start();
             } else {
                 tracing::info!(
                     module = id,
                     "module off or not installed: its helper is not running"
                 );
+                self.note_stopped(id);
                 sup.stop();
             }
         }
+        drop(last);
+        self.refresh_in_use();
+    }
+
+    /// ADR 0172: module `id`'s helper is (re)started now: from its locked version (none outside the lock).
+    fn note_started(&self, id: &'static str) {
+        let v = self
+            .relaunch
+            .locked
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(id)
+            .cloned();
+        let mut started = self.relaunch.started.lock().unwrap_or_else(|p| p.into_inner());
+        match v {
+            Some(v) => started.insert(id, v),
+            None => started.remove(id),
+        };
+    }
+
+    fn note_stopped(&self, id: &'static str) {
+        self.relaunch
+            .started
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(id);
+    }
+
+    /// Running helpers started from a version the lock no longer resolves: (module, running, locked).
+    fn stale_helpers(&self) -> Vec<(&'static str, String, String)> {
+        let locked = self
+            .relaunch
+            .locked
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        let started = self.relaunch.started.lock().unwrap_or_else(|p| p.into_inner());
+        started
+            .iter()
+            .filter_map(|(id, old)| {
+                let new = locked.get(*id)?;
+                (new != old).then(|| (*id, old.clone(), new.clone()))
+            })
+            .collect()
+    }
+
+    /// Keep every stale helper's package dir out of every prune (`packages-in-use.json`; rewritten on a change).
+    fn refresh_in_use(&self) {
+        let Some(sync) = self.module_sync.get() else {
+            return;
+        };
+        let dirs: std::collections::BTreeSet<String> = self
+            .stale_helpers()
+            .into_iter()
+            .map(|(id, old, _)| qrtz_modules::qrtz_lock::package_dir(id, &old))
+            .collect();
+        let mut last = self.relaunch.in_use.lock().unwrap_or_else(|p| p.into_inner());
+        if last.as_ref() == Some(&dirs) {
+            return;
+        }
+        if last.is_none() && !qrtz_modules::install::read_in_use(&sync.root).is_empty() {
+            self.relaunch
+                .prune_due
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        match qrtz_modules::install::write_in_use(&sync.root, &dirs) {
+            Ok(()) => *last = Some(dirs),
+            Err(e) => tracing::warn!(error = %e, "in-use package dirs not saved"),
+        }
+    }
+
+    /// ADR 0172: the modules an update left running an old version until qrtz restarts (sorted).
+    pub fn pending_restart(&self) -> Vec<String> {
+        self.stale_helpers()
+            .into_iter()
+            .map(|(id, _, _)| id.to_owned())
+            .collect()
+    }
+
+    /// ADR 0172: at launch the in-use set starts empty (no helper of this launch runs an old version yet), so the
+    /// dirs a previous launch's helpers held go now (only when it left some, so no prune races a first apply).
+    /// `start_helper` runs it (once, inside tokio).
+    fn prune_at_launch(self: &Arc<Self>) {
+        if !self
+            .relaunch
+            .prune_due
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            if let Some(p) = me.packages.get() {
+                if let Err(e) = p.call("packages:prune", Value::Null).await {
+                    tracing::warn!(error = %e, "prune at launch failed");
+                }
+            }
+        });
     }
 
     /// ADR 0169: from now on, `modules.<id>.installed` follows `qrtz.lock`: synced now (call before
@@ -555,11 +697,14 @@ impl AppService {
     }
 
     /// Re-read what is installed and apply it (helpers start or stop, views appear or go). No-op when untracked.
+    /// ADR 0172: an installed module whose locked version changed is `pendingRestart` (its helper keeps running).
     pub fn sync_installed(&self) {
         let Some(sync) = self.module_sync.get() else {
             return;
         };
-        let patch = sync();
+        let now = (sync.read)();
+        *self.relaunch.locked.lock().unwrap_or_else(|p| p.into_inner()) = now.versions;
+        let patch = now.patch;
         let cur = self.config.get();
         let changed = patch["modules"].as_object().is_some_and(|m| {
             m.iter()
@@ -570,6 +715,7 @@ impl AppService {
                 tracing::warn!(error = %e, "installed modules not saved");
             }
         }
+        self.refresh_in_use();
     }
 
     pub fn tracks_installed_modules(&self) -> bool {
@@ -935,13 +1081,20 @@ impl Handler for AppService {
             },
             Some("packages") => match self.packages.get() {
                 Some(p) => {
-                    let r = p.call(channel, payload).await;
+                    let mut r = p.call(channel, payload).await;
                     // ADR 0169: an install or removal changes what runs. The old dirs and blobs nothing needs any
                     // more go too (a removed module's models, unless another installed module shares them).
                     if r.is_ok() && channel == "packages:apply" && self.tracks_installed_modules() {
                         self.sync_installed();
                         if let Err(e) = p.call("packages:prune", Value::Null).await {
                             tracing::warn!(error = %e, "prune after apply failed");
+                        }
+                    }
+                    // ADR 0172: the marketplace's "restart to finish updating" (the modules an update left running
+                    // their old version), on every packages state.
+                    if let Ok(v) = &mut r {
+                        if v.get("packages").is_some() && v.get("available").is_some() {
+                            v["pendingRestart"] = json!(self.pending_restart());
                         }
                     }
                     r

@@ -352,6 +352,29 @@ export default function MarketplaceView() {
     />
   ) : null;
 
+  // ADR 0172: an update reaches a running module at the next launch; until then it runs its old version.
+  const updated = state?.pendingRestart ?? [];
+  const restartBox = updated.length ? (
+    <Callout
+      tone="info"
+      title="restart to finish updating"
+      data-testid="marketplace-restart"
+      action={
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="restart"
+          onClick={relaunch}
+          data-testid="marketplace-restart-button"
+        >
+          restart qrtz
+        </Button>
+      }
+    >
+      {`${updated.join(', ')} ${updated.length === 1 ? 'keeps' : 'keep'} running the old version until qrtz restarts.`}
+    </Callout>
+  ) : null;
+
   const installBar =
     working && working.verb !== 'remove' ? (
       <InstallProgress
@@ -377,6 +400,7 @@ export default function MarketplaceView() {
           />
         </Toolbar>
         {errorBox}
+        {restartBox}
         <Detail
           name={at.name}
           entry={entryOf(at.name)}
@@ -405,6 +429,7 @@ export default function MarketplaceView() {
         {tabs}
         {soonBox}
         {errorBox}
+        {restartBox}
         {installBar}
         <SettingsSection title="extensions" data-testid="module-list">
           {names.length ? null : (
@@ -584,6 +609,7 @@ export default function MarketplaceView() {
       </Toolbar>
       {soonBox}
       {errorBox}
+      {restartBox}
       {installBar}
       {listings(available, installedIds).length ? null : (
         <EmptyState

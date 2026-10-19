@@ -358,14 +358,18 @@ pub fn module_sync(
     root: PathBuf,
     views: Option<crate::local_models::LocalModels>,
 ) -> crate::service::ModuleSync {
-    Arc::new(move || {
-        if let Some(v) = &views {
-            for p in v.sync_views() {
-                tracing::warn!(problem = %p, "model view not linked");
+    let lock_root = root.clone();
+    crate::service::ModuleSync {
+        root,
+        read: Arc::new(move || {
+            if let Some(v) = &views {
+                for p in v.sync_views() {
+                    tracing::warn!(problem = %p, "model view not linked");
+                }
             }
-        }
-        crate::installed::installed_patch(&crate::installed::read_lock(&root))
-    })
+            crate::installed::installed_modules(&crate::installed::read_lock(&lock_root))
+        }),
+    }
 }
 
 /// Assemble: dirs (0700) → config → DB (0600) → runtime → ports → service. Call `service.start_helper()` and

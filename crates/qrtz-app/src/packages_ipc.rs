@@ -227,7 +227,11 @@ impl PackagesIpc {
             Ok((_, v)) => catalog(&v.index),
             Err(_) => vec![],
         };
-        Ok(json!({"packages": rows, "index": index, "available": available, "reclaimable": reclaimable}))
+        // ADR 0172: which modules need a restart is the host's (`AppService` fills it in); none from here.
+        Ok(
+            json!({"packages": rows, "index": index, "available": available, "reclaimable": reclaimable,
+                   "pendingRestart": []}),
+        )
     }
 
     fn op(p: &Value) -> Result<Op, AppError> {

@@ -798,7 +798,8 @@
           "dirs": 0,
           "blobs": 0,
           "bytes": 0
-        }
+        },
+        "pendingRestart": []
       },
       "idle": {
         "packages": [],
@@ -808,7 +809,8 @@
           "dirs": 0,
           "blobs": 0,
           "bytes": 0
-        }
+        },
+        "pendingRestart": []
       }
     },
     "packages:refresh": {
@@ -961,7 +963,8 @@
           "dirs": 0,
           "blobs": 0,
           "bytes": 0
-        }
+        },
+        "pendingRestart": []
       }
     },
     "packages:check-update": {

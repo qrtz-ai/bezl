@@ -6868,13 +6868,27 @@
               "bytes"
             ],
             "additionalProperties": false
+          },
+          "pendingRestart": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "echo",
+                "nano",
+                "ctrl",
+                "snap"
+              ]
+            }
           }
         },
         "required": [
           "packages",
           "index",
           "available",
-          "reclaimable"
+          "reclaimable",
+          "pendingRestart"
         ],
         "additionalProperties": false
       }
@@ -7125,13 +7139,27 @@
               "bytes"
             ],
             "additionalProperties": false
+          },
+          "pendingRestart": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "echo",
+                "nano",
+                "ctrl",
+                "snap"
+              ]
+            }
           }
         },
         "required": [
           "packages",
           "index",
           "available",
-          "reclaimable"
+          "reclaimable",
+          "pendingRestart"
         ],
         "additionalProperties": false
       }
