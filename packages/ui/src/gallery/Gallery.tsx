@@ -672,7 +672,15 @@ function Showcase({
           <Section id="notch" title="notch surface (adr 0221)">
             <div
               data-testid="notch-gallery"
-              style={{ display: 'grid', gap: t.space[4], width: '100%' }}
+              // The panel is the real notch's fixed width (~590 px): in a narrow window it scrolls here, not the page
+              // (inline-size containment keeps its width out of the section's min-content).
+              style={{
+                display: 'grid',
+                gap: t.space[4],
+                width: '100%',
+                contain: 'inline-size',
+                overflowX: 'auto',
+              }}
             >
               <NotchSurface
                 data-testid="notch-listening"
