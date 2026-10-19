@@ -31,25 +31,25 @@ qrtz-lifecycle = { workspace = true, features = ["runtime"], optional = true }
 qrtz-storage = { workspace = true, optional = true }
 qrtz-model = { workspace = true, optional = true }
 qrtz-backup = { workspace = true, optional = true }
-qrtz-llm = { path = "../qrtz-llm", optional = true }
-qrtz-talk = { path = "../qrtz-talk", optional = true }
+qrtz-llm = { workspace = true, optional = true }
+qrtz-talk = { workspace = true, optional = true }
 # ADR 0078: the only crate that enables `net` (the signed speech module download / update channel).
-qrtz-speech = { path = "../qrtz-speech", optional = true, features = ["net"] }
-rand.workspace = true
-unicode-normalization.workspace = true
-qrtz-ipc = { path = "../qrtz-ipc" }
+qrtz-speech = { workspace = true, optional = true, features = ["net"] }
+rand = { workspace = true }
+unicode-normalization = { workspace = true }
+qrtz-ipc = { workspace = true }
 # ADR 0146: module manifests, lockfile and the global module switches (pure Rust, no network).
-qrtz-modules = { path = "../qrtz-modules" }
+qrtz-modules = { workspace = true }
 # ADR 0161: the marketplace catalog picks dependency versions the way the resolver does.
-semver = "1"
-qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
+semver = { workspace = true }
+qrtz-helper-bridge = { workspace = true }
 # ctrl (ADR 0100, 0103): the task store and run logs behind the `ctrl:*` channels. Pure Rust, no network.
-qrtz-ctrl = { path = "../qrtz-ctrl" }
-serde.workspace = true
-serde_json.workspace = true
-tokio.workspace = true
-async-trait.workspace = true
-tracing.workspace = true
+qrtz-ctrl = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
 # ADR 0083: the local log (stderr + the rotating file under ~/Library/Logs/qrtz); already the shell's subscriber.
 tracing-subscriber = { version = "0.3", default-features = false, features = [
   "fmt",
@@ -60,11 +60,11 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "tracing-log",
 ] }
 minisign-verify = "0.3.0"
-base64 = "0.22"
+base64 = { workspace = true }
 
 # ADR 0181: the self-update download and stage dirs; RENAME_SWAP's errno.
-tempfile.workspace = true
-libc = "0.2"
+tempfile = { workspace = true }
+libc = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # ADR 0078: only to delete Keychain items an older build saved (qrtz stores no keys).
@@ -74,12 +74,12 @@ core-foundation = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-tempfile.workspace = true
-qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
-qrtz-storage.workspace = true
-libc = "0.2"
-qrtz-speech = { path = "../qrtz-speech", features = ["testkit", "net"] }
-ed25519-dalek = "2"
-qrtz-publish = { path = "../../tools/qrtz-publish" }
+tempfile = { workspace = true }
+qrtz-helper-bridge = { workspace = true }
+qrtz-storage = { workspace = true }
+libc = { workspace = true }
+qrtz-speech = { workspace = true, features = ["testkit", "net"] }
+ed25519-dalek = { workspace = true }
+qrtz-publish = { workspace = true }
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }

@@ -8,18 +8,18 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-qrtz-cloexec = { path = "../qrtz-cloexec" }
-serde.workspace = true
-serde_json.workspace = true
-jsonschema.workspace = true
+qrtz-cloexec = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+jsonschema = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
-tracing.workspace = true
-rand.workspace = true
-libc = "0.2"
+tracing = { workspace = true }
+rand = { workspace = true }
+libc = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-tempfile.workspace = true
+tempfile = { workspace = true }
 
 [[bin]]
 name = "qrtz-mock-helper"

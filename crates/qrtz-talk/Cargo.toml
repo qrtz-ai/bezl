@@ -9,26 +9,26 @@ publish.workspace = true
 
 [dependencies]
 # ADR 0146 M2: the speech seam only (shared); the shell's qrtz-speech (store, spawn, updates) is not echo's.
-qrtz-speech-types = { path = "../qrtz-speech-types" }
-qrtz-ipc = { path = "../qrtz-ipc" }
-serde.workspace = true
-serde_json.workspace = true
-tokio.workspace = true
-async-trait.workspace = true
-tracing.workspace = true
+qrtz-speech-types = { workspace = true }
+qrtz-ipc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
 fancy-regex = "0.16"
 # ADR 0182 (N187): a DFA prefilter for dictionary patterns (already in the tree through fancy-regex).
-regex = "1"
+regex = { workspace = true }
 
 [dev-dependencies]
 # Tests drive the real speech module and its testkit (dev-only, so not an edge of echo's crate).
-qrtz-speech = { path = "../qrtz-speech" }
+qrtz-speech = { workspace = true }
 # The test helper admits dictation/recording through the shared helper arbiter (spec/vectors/helper).
-qrtz-lifecycle.workspace = true
-qrtz-model.workspace = true
+qrtz-lifecycle = { workspace = true }
+qrtz-model = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "net"] }
-tempfile.workspace = true
-base64 = "0.22"
+tempfile = { workspace = true }
+base64 = { workspace = true }
 # ADR 0112: tests read the `talk latency` line.
 tracing-subscriber = { version = "0.3", default-features = false, features = [
   "fmt",

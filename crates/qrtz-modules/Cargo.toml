@@ -8,14 +8,14 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-sha2 = "0.10"
-hex = "0.4"
-semver = "1"
-ed25519-dalek = "2"
-async-trait.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+semver = { workspace = true }
+ed25519-dalek = { workspace = true }
+async-trait = { workspace = true }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [target.'cfg(unix)'.dependencies]
@@ -24,5 +24,5 @@ rustix = { version = "1", features = ["fs"] }
 
 [dev-dependencies]
 tokio = { workspace = true }
-tempfile.workspace = true
-jsonschema.workspace = true
+tempfile = { workspace = true }
+jsonschema = { workspace = true }

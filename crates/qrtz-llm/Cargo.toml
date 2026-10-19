@@ -8,17 +8,17 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-qrtz-model.workspace = true
-qrtz-storage.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-rand.workspace = true
-regex = "1"
+qrtz-model = { workspace = true }
+qrtz-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+regex = { workspace = true }
 tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
-tempfile.workspace = true
-sha2 = "0.10"
+tempfile = { workspace = true }
+sha2 = { workspace = true }
 tokio = { version = "1", features = [
   "rt",
   "rt-multi-thread",

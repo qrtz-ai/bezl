@@ -8,18 +8,18 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-qrtz-model.workspace = true
-rusqlite.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-unicode-normalization.workspace = true
-indexmap.workspace = true
-regex = "1"
+qrtz-model = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+unicode-normalization = { workspace = true }
+indexmap = { workspace = true }
+regex = { workspace = true }
 tokio = { version = "1", features = ["sync"] }
-sha2 = "0.10"
-rand.workspace = true
+sha2 = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
-tempfile.workspace = true
+tempfile = { workspace = true }
 tokio = { version = "1", features = ["rt", "macros"] }
