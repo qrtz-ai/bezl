@@ -415,6 +415,11 @@ struct Inner {
     store: Store,
     hellos: u64,
     dictation_helper: u64,
+    /// N200/N201 (ADR 0225): how many times the supervisor reported the helper down (`helper_status(false)`).
+    helper_downs: u64,
+    /// N200: `hellos` and `helper_downs` when the push key last went down. A new process starts with its push key
+    /// up, so the release of a press an older process heard never comes.
+    press_helper: (u64, u64),
     via_push_key: bool,
     /// N111: the push key is physically down (last `hotkey` was `down`).
     key_held: bool,
@@ -522,6 +527,8 @@ impl TalkService {
                 store: st,
                 hellos: 0,
                 dictation_helper: 0,
+                helper_downs: 0,
+                press_helper: (0, 0),
                 via_push_key: false,
                 key_held: false,
                 press_ctrl: false,
@@ -794,6 +801,7 @@ impl TalkService {
                 if action == "down" {
                     g.key_held = true;
                     g.press_ctrl = m["ctrl"] == true;
+                    g.press_helper = (g.hellos, g.helper_downs);
                     g.press_at = self.mono();
                     if g.view.takes_a_start() {
                         g.via_push_key = true;
@@ -944,6 +952,7 @@ impl TalkService {
     /// Supervisor status: not running and not starting while a dictation is active → T1 helper-lost.
     pub fn helper_status(&self, running_or_starting: bool, why: &str) {
         if !running_or_starting {
+            self.lock().helper_downs += 1;
             self.helper_lost(why);
         }
     }
@@ -1217,10 +1226,30 @@ impl TalkService {
             tracing::info!("echo switched off while a push-key dictation was starting; not started");
             return self.state();
         }
-        let started_rx = {
+        let (started_rx, downs) = {
             let mut g = self.lock();
             if !g.view.takes_a_start() {
                 return g.view.clone();
+            }
+            // N200 (ADR 0225): the helper that heard this press died or was replaced during the engine handshake,
+            // and a new process has said hello. It starts with its push key up, so this press's release will
+            // never arrive: starting now would leave the pill listening until the next press. Drop the press and
+            // say why. (The first hello ever is the same process, unless the supervisor saw it go down first; with
+            // no new hello yet the start can't be sent and fails as helper-unavailable, as before.)
+            let (hellos_then, downs_then) = g.press_helper;
+            let replaced = g.hellos != hellos_then
+                && (g.hellos.max(1) != hellos_then.max(1) || g.helper_downs != downs_then);
+            if from_key && replaced {
+                g.via_push_key = false;
+                drop(g);
+                tracing::warn!(
+                    "the helper that heard this press restarted during the engine start; not started"
+                );
+                return self.refuse(
+                    TalkErrorKind::HelperLost,
+                    "the capture helper restarted, so dictation didn't start",
+                    None,
+                );
             }
             g.dictation_helper = g.hellos.max(1);
             g.key_down = self.mono();
@@ -1254,7 +1283,7 @@ impl TalkService {
                 to_ctrl: from_key && g.press_ctrl,
                 cut_short: false,
             });
-            Self::waiter(&mut g, format!("started:{id}"))
+            (Self::waiter(&mut g, format!("started:{id}")), g.helper_downs)
         };
         if !self.send(json!({"type": "dictation.start", "id": id})) {
             let mut g = self.lock();
@@ -1290,7 +1319,11 @@ impl TalkService {
             .wait(format!("started:{id}"), started_rx, self.deps().timeouts.started)
             .await;
         let mut g = self.lock();
+        // N201 (ADR 0225): a helper that died (or was replaced) before answering released this wait with nothing;
+        // `helper_lost` ends the dictation as helper-lost, so this is not a mic that didn't start.
+        let helper_gone = g.helper_downs != downs || g.hellos.max(1) != g.dictation_helper;
         if started.is_none()
+            && !helper_gone
             && g.view.id.as_deref() == Some(id.as_str())
             && g.view.phase == TalkPhase::Listening
         {
