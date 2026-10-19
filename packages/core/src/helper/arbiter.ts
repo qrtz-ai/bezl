@@ -191,7 +191,8 @@ function step(
     );
   }
   if ('micFailed' in e) {
-    if (!s.mic.includes(e.micFailed)) return r(s, 'ignore', [], 'not-subscribed');
+    if (!s.mic.includes(e.micFailed))
+      return r(s, 'ignore', [], 'not-subscribed');
     return r({ ...s, mic: without(s.mic, e.micFailed) }, 'accept');
   }
   if ('configure' in e) {

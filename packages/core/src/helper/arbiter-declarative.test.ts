@@ -109,6 +109,9 @@ function specStep(
       extra: [],
     };
   if ('revoked' in e) return { s, decision: 'revoke', extra: [] }; // handled by caller (needs denied set)
+  // N195 (ADR 0224): the spec doesn't track which readers attached; micFailed is pinned by the shared vectors and
+  // never generated here, so the spec leaves the state alone.
+  if ('micFailed' in e) return { s, decision: 'ignore', extra: [] };
   switch (e.cmd) {
     case 'recording.start':
       if (s.recording) return { s, decision: 'ignore', extra: [] };
