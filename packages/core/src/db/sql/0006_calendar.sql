@@ -1,4 +1,4 @@
--- ADR 0216: nano's Apple Calendar cache (EventKit, read-only, on this Mac). Only what nano shows and matches on:
+-- ADR 0217: nano's Apple Calendar cache (EventKit, read-only, on this Mac). Only what nano shows and matches on:
 -- no notes, locations, attendee names or addresses. The window is one day back to 14 days ahead, replaced whole on
 -- every read; it is re-readable, so backups may skip it.
 CREATE TABLE calendar_calendars (

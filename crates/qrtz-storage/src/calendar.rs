@@ -1,4 +1,4 @@
-//! nano's Apple Calendar cache (ADR 0216): the events EventKit gave the helper for one day back to 14 days ahead,
+//! nano's Apple Calendar cache (ADR 0217): the events EventKit gave the helper for one day back to 14 days ahead,
 //! with only the fields nano shows and matches on, and the link from a recording to the event it was titled from.
 //!
 //! The cache is replaced whole on every read ([`CalendarRepo::replace`]), so a deleted or moved event never

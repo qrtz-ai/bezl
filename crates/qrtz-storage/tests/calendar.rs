@@ -1,4 +1,4 @@
-//! ADR 0216: nano's Apple Calendar cache and the recording link.
+//! ADR 0217: nano's Apple Calendar cache and the recording link.
 use qrtz_storage::calendar::{clean_meeting_url, clean_title, pick_event, EARLY_MS, EVENTS_MAX, TITLE_MAX};
 use qrtz_storage::{CalendarEvent, CalendarInfo, Db};
 

@@ -35,7 +35,7 @@
       "version": 6,
       "name": "calendar",
       "file": "packages/core/src/db/sql/0006_calendar.sql",
-      "sha256": "6a0689b2739550de693b58be511f3ca1ab138d4d0d8641a27b42cef1dbdd016b"
+      "sha256": "f7dfa38f351df0ceae146227daf7ced6e6afebc5afc5547cea658593f1a4254e"
     }
   ]
 }

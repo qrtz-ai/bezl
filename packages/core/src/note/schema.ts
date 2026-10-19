@@ -16,6 +16,6 @@ export const noteMigrations: Migration[] = [
   { version: 4, name: 'notes_templates', up: notesTemplates },
   // Durable recording lifecycle: the live session snapshot and per-meeting post-processing pipelines.
   { version: 5, name: 'recording_lifecycle', up: recordingLifecycle },
-  // ADR 0216: nano's Apple Calendar cache and meetings.calendar_event_id.
+  // ADR 0217: nano's Apple Calendar cache and meetings.calendar_event_id.
   { version: 6, name: 'calendar', up: calendar },
 ];

@@ -268,7 +268,7 @@ fn opens_the_electron_created_db() {
     assert_eq!(
         db.migration().unwrap().applied,
         ["6_calendar"],
-        "the Electron DB (schema 5, the last it shipped) gains only the calendar cache (ADR 0216)"
+        "the Electron DB (schema 5, the last it shipped) gains only the calendar cache (ADR 0217)"
     );
     assert_same(
         &dump(&db, &f.seed, &f.results),
