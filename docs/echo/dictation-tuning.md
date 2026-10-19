@@ -1394,3 +1394,62 @@ Talk-only change (`dd70d91`); the helper does not run talk's cleanup, so `echo-b
 4. Hold fn and say "So we, we can ship it tomorrow" (stumble on "we" on purpose): it types "So we can ship it
    tomorrow.". Then "Neither have we, we were busy": both words stay.
 5. If anything reads worse: revert `dd70d91` (talk-only commit).
+
+## 38. Cycle 66: a dictionary name after "Hey" before a question gets its comma (ADR 0206, `965b990`)
+
+| Run                | Exact    | Edit distance     | Regressions | False-positive hits |
+| ------------------ | -------- | ----------------- | ----------- | ------------------- |
+| 26e5aaa, 97 cases  | 93 / 97  | 42 chars (1.40 %) | -           | 0 / 245             |
+| 965b990, same 97   | 93 / 97  | 42 chars (1.40 %) | 0           | -                   |
+| 26e5aaa, 101 cases | 93 / 101 | 50 chars (1.58 %) | -           | -                   |
+| 965b990, 101 cases | 97 / 101 | 42 chars (1.33 %) | 0           | 0 / 262             |
+
+Regressions are counted against `26e5aaa`'s own output for every case, with "Priya" already in the polish dictionary
+(it changes no old case); `polish-baseline.json` refreshed to `965b990` in the docs commit. 4 cases better (p98-p101),
+none worse.
+
+- ADR 0206: "Hey Jared are you free tomorrow afternoon" → "Hey Jared, are you free tomorrow afternoon?"; also "hey
+  jared did you get my email" → "Hey Jared, did you get my email?", "I just landed. Hey pria where are you parked" →
+  "I just landed. Hey Priya, where are you parked?". Only "hey", only a dictionary term shaped like a name (one ASCII
+  word, capital first, not a word the question test reads), only where "Hey" + the words after the name is an ADR
+  0203 question with I/you/we/they/he/she as subject (or a wh-word other than "who"), "did you" only before one of the
+  25 plain verbs. "Hey Sam are you free" (Sam not in the dictionary), "Hey Jared has it covered", "Hey Jared is that
+  guy from the meetup", "Hey Jared did you a favor last week", "Hey Jared who is the new designer", "Okay Jared can
+  you send it over" stay. 4 polish positives, 17 new keep vectors (the keep set now reads `"dict": true` to run a
+  vector with the polish dictionary), 32 new cleanup.json vectors (Rust and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries built one after the other, copied to /tmp,
+  interleaved 15×, median of medians): 495 words 0.123 → 0.116 ms (min 0.110 → 0.107); 504 words ending in a question
+  0.127 → 0.126 ms; 504 words ending in "Hey Postgres can you take the backup tonight" (new third timed text; the rule
+  runs in full and fires) 0.135 → 0.131 ms. Noise; ceiling 2 ms.
+- Path review: origin/main had not moved since `26e5aaa`; no capture, VAD, model config, drain, insert, pill or
+  timing-log change (talk's cleanup is still the only post-processing, cleanup.rs `rule_cleanup` ~l.1885, run once on
+  the final text). Findings list unchanged; backlog P1-P8 still open.
+
+Still not exact (4 of 101): p15 spoken "comma"/"period", p19/p20 email and URL, p41 a numbered list with a 4-word line.
+
+Rejected this cycle (details in ADR 0206): any capitalised word as a name without the dictionary; "okay"/"ok"/
+"alright" before a name; "it"/"this"/"that"/"there" after the auxiliary; "did you" before any word; "who"; two-word,
+non-ASCII and lowercase terms; a comma already after the name; ADR 0205's negated modals (deferred, not refused).
+
+Next polish candidates, ranked: (1) p15 spoken "comma"/"period", only after the Mac check in section 36 step 5. (2)
+negated modals in ADR 0205 ("So we, we can't make it" → "So we can't make it"; `can't`/`couldn't`/`won't`/
+`wouldn't`/`shouldn't`/`cannot`, ASCII and curly apostrophe), moving k-vectors and hardening65's refusal of "So we,
+we can't" to positives with new refusals. (3) "Hey Jared did you <verb>" for verbs outside the 25 (needs a closed verb
+list with its own refusals). When none clears the bar, backlog P1 (the local_models test timeout).
+
+### Measurement plan for Jared's Mac (cycle 66; proves no added latency and no worse transcript)
+
+Talk-only change (`965b990`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `965b990`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening66 --test polish_set --
+   --nocapture`: three budget medians well under 0.5 ms (box 0.12-0.13 ms), polish 97/101 exact, regressions 0, all
+   green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c65 26e5aaa &&
+   cd /tmp/qrtz-c65 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c65`.
+4. In Echo's dictionary add a name you dictate often (for example "Priya"). Hold fn and say "Hey Priya are you free
+   tomorrow": it types "Hey Priya, are you free tomorrow?". Then "Hey Priya has it covered": it types "Hey Priya has
+   it covered." (no comma, "."). A name not in the dictionary ("Hey Sam are you free tomorrow") types as before.
+5. If anything reads worse: revert `965b990` (talk-only commit; its vectors and tests go with it).
