@@ -11,6 +11,8 @@
 //!   skips it. An unpublished or unreachable host (a firewall that drops packets, a captive portal) then delays the
 //!   first install by about one timeout per host instead of one per range of every blob.
 //! - **Resumable**: finished range numbers are appended to `<sha256>.done`; a restart fetches only the rest.
+//! - **Progress counts each byte once** (N177, ADR 0165): a blob's bytes already reported in this fetch (ranges a
+//!   failed source finished) aren't added again when the next source resumes its part.
 //! - **Verified**: a blob enters the store only after its whole size and sha256 match ([`Store::insert_file`]);
 //!   a mismatch discards the part and its ranges.
 //!
@@ -114,6 +116,8 @@ pub async fn fetch_blobs(
                     return Ok(());
                 }
                 let mut errs = vec![];
+                // This blob's bytes already in `done` during this fetch, across its sources (N177).
+                let counted = AtomicU64::new(0);
                 for src in sources(t, b) {
                     let host = match src {
                         Source::Host(i) => Some(i),
@@ -126,7 +130,7 @@ pub async fn fetch_blobs(
                             continue;
                         }
                     }
-                    let r = fetch_one(t, store, b, &src, done, total, progress).await;
+                    let r = fetch_one(t, store, b, &src, done, &counted, total, progress).await;
                     if let Some(i) = host {
                         let n = if matches!(r, Ok(true)) { served } else { failed };
                         n[i].fetch_add(1, Ordering::SeqCst);
@@ -163,12 +167,14 @@ pub fn sources(t: &dyn Transport, b: &BlobRef) -> Vec<Source> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_one(
     t: &dyn Transport,
     store: &Store,
     b: &BlobRef,
     src: &Source,
     done: &AtomicU64,
+    counted: &AtomicU64,
     total: u64,
     progress: &(dyn Fn(u64, u64) + Send + Sync),
 ) -> Result<bool, String> {
@@ -190,7 +196,16 @@ async fn fetch_one(
         .filter(|i| **i < n)
         .map(|i| (b.size - i * RANGE_BYTES).min(RANGE_BYTES))
         .sum();
-    progress(done.fetch_add(already, Ordering::SeqCst) + already, total);
+    // Only what this fetch hasn't reported yet: after a source switch the finished ranges were counted as they
+    // landed (N177); a part that had to start over takes its bytes back out.
+    let before = counted.swap(already, Ordering::SeqCst);
+    if already >= before {
+        let d = already - before;
+        progress(done.fetch_add(d, Ordering::SeqCst) + d, total);
+    } else {
+        let d = before - already;
+        progress(done.fetch_sub(d, Ordering::SeqCst) - d, total);
+    }
     let log = Mutex::new(());
     let pending: Vec<u64> = (0..n).filter(|i| !have.contains(i)).collect();
     // Once a range from this source fails, ranges after the first round don't ask it (N176). The first round
@@ -231,6 +246,7 @@ async fn fetch_one(
                         .map_err(|e| e.to_string())?;
                     writeln!(f, "{i}").map_err(|e| e.to_string())?;
                 }
+                counted.fetch_add(len, Ordering::SeqCst);
                 progress(done.fetch_add(len, Ordering::SeqCst) + len, total);
                 Ok(())
             }
@@ -250,8 +266,8 @@ async fn fetch_one(
     let ok = store.insert_file(&part, &b.sha256, b.size).map_err(io)?;
     let _ = std::fs::remove_file(&marks);
     if !ok {
-        // The bytes counted for this source were wrong: take them back out of the progress.
-        done.fetch_sub(b.size, Ordering::SeqCst);
+        // The bytes counted for this blob were wrong: take them back out of the progress.
+        done.fetch_sub(counted.swap(0, Ordering::SeqCst), Ordering::SeqCst);
     }
     Ok(ok)
 }
