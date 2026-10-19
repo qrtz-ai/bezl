@@ -69,6 +69,8 @@ libc = "0.2"
 [target.'cfg(target_os = "macos")'.dependencies]
 # ADR 0078: only to delete Keychain items an older build saved (qrtz stores no keys).
 security-framework = "3"
+# ADR 0185 (E1): the running echo's signing information (SecCodeCopySigningInformation's dictionary).
+core-foundation = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

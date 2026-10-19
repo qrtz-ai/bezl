@@ -331,18 +331,72 @@ pub struct InstalledSpawn {
     pub check: LaunchCheck,
 }
 
+/// ADR 0185 (E1): what the spawn checks on a downloaded echo's running process beyond its requirement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningPolicy {
+    /// The install dir it runs from (`<data>/apps/echo/versions/<id>`; P3.2 and P3.3 track it).
+    pub id: String,
+    /// The lowest `CFBundleVersion` the running code may report: the high-water mark or the bundled echo's version.
+    pub min_version: String,
+}
+
 impl InstalledSpawn {
     pub fn program(&self) -> Result<PathBuf, String> {
+        self.resolve().map(|(p, _)| p)
+    }
+
+    /// The one path to spawn (checked once, E3), and for a downloaded echo what its running process must say.
+    fn resolve(&self) -> Result<(PathBuf, Option<RunningPolicy>), String> {
         // A dev override never skips the release check: only a dev build (LaunchCheck::Dev) honours it.
         if let (Some(p), LaunchCheck::Dev) = (&self.fixed, self.check) {
-            return Ok(p.clone());
+            return Ok((p.clone(), None));
         }
-        let e = match &self.bundled {
-            Some(p) => bundled_entry(&self.module, p)?,
-            None => entry(&self.root, &self.module)?,
+        let (e, policy) = match &self.bundled {
+            Some(p) => {
+                let seed = bundled_entry(&self.module, p)?;
+                self.pick_bundled(seed)?
+            }
+            None => (entry(&self.root, &self.module)?, None),
         };
         check_launch(&e, self.check)?;
-        Ok(e.program)
+        Ok((e.program, policy))
+    }
+
+    /// ADR 0185: a bundled extension (echo) runs its own downloaded, signed copy when
+    /// [`crate::echo_updates::select`] picks one (release builds only), else the seed in qrtz.app. Either way
+    /// [`check_launch`] runs on the file and the spawn checks the running code by pid.
+    fn pick_bundled(&self, seed: ModuleEntry) -> Result<(ModuleEntry, Option<RunningPolicy>), String> {
+        use crate::echo_updates as eu;
+        if self.module != "echo" || self.check != LaunchCheck::Release {
+            return Ok((seed, None));
+        }
+        let want = launch_requirement(&self.module)
+            .ok_or_else(|| format!("{}: no signing identity for this name", self.module))?;
+        match eu::select(
+            &eu::echo_root(&self.root),
+            &seed.version,
+            &want,
+            &eu::MacBundleCheck,
+        ) {
+            eu::Pick::Installed {
+                id,
+                bundle,
+                program,
+                version,
+                min_version,
+            } => Ok((
+                ModuleEntry {
+                    name: self.module.clone(),
+                    version,
+                    dir: bundle.join("Contents/MacOS"),
+                    program,
+                    identifier: Some(eu::ECHO_IDENTIFIER.to_owned()),
+                    requirement: Some(want),
+                },
+                Some(RunningPolicy { id, min_version }),
+            )),
+            eu::Pick::Bundled { .. } => Ok((seed, None)),
+        }
     }
 }
 
@@ -352,8 +406,12 @@ impl Spawn for InstalledSpawn {
     /// could be swapped between `codesign -R` and the exec, so the helper starts suspended
     /// (`POSIX_SPAWN_START_SUSPENDED`), the kernel's view of what it mapped is checked by pid against
     /// [`launch_requirement`], and it gets `SIGCONT`, or `SIGKILL` and an error.
+    ///
+    /// ADR 0185 (E1): for a downloaded echo the same suspended check also reads the running code's own signing
+    /// information and requires `ai.qrtz.echo` at a `CFBundleVersion` of at least the floor and microphone-only
+    /// entitlements, else `SIGKILL`; a start of it is counted for the crash fallback (P3.2).
     fn spawn(&self) -> std::io::Result<ChildIo> {
-        let program = self.program().map_err(std::io::Error::other)?;
+        let (program, policy) = self.resolve().map_err(std::io::Error::other)?;
         let sp = ProcessSpawn {
             program,
             args: self.base.args.clone(),
@@ -365,21 +423,45 @@ impl Spawn for InstalledSpawn {
                 let want = launch_requirement(&self.module).ok_or_else(|| {
                     std::io::Error::other(format!("{}: no signing identity for this name", self.module))
                 })?;
-                spawn_checked(&sp, &want)
-                    .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", self.module)))
+                let child = spawn_checked(&sp, &want, policy.as_ref())
+                    .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", self.module)))?;
+                if let Some(p) = &policy {
+                    crate::echo_updates::launched(
+                        &crate::echo_updates::echo_root(&self.root),
+                        &p.id,
+                        std::time::Instant::now(),
+                    );
+                }
+                Ok(child)
             }
         }
     }
 }
 
-/// Start `sp` suspended, check the running code against `requirement`, then let it run (or kill it).
+/// Start `sp` suspended, check the running code against `requirement` (and, for a downloaded echo, its own version
+/// and entitlements, E1), then let it run (or kill it).
 #[cfg(target_os = "macos")]
-fn spawn_checked(sp: &ProcessSpawn, requirement: &str) -> std::io::Result<ChildIo> {
-    sp.spawn_verified(|pid| check_running_code(pid, requirement))
+fn spawn_checked(
+    sp: &ProcessSpawn,
+    requirement: &str,
+    policy: Option<&RunningPolicy>,
+) -> std::io::Result<ChildIo> {
+    sp.spawn_verified(|pid| {
+        check_running_code(pid, requirement)?;
+        if let Some(p) = policy {
+            let info = crate::echo_updates::running_info(pid)?;
+            crate::echo_updates::check_running_info(&info, &p.min_version)?;
+        }
+        Ok(())
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
-fn spawn_checked(_sp: &ProcessSpawn, _requirement: &str) -> std::io::Result<ChildIo> {
+fn spawn_checked(
+    _sp: &ProcessSpawn,
+    _requirement: &str,
+    _policy: Option<&RunningPolicy>,
+) -> std::io::Result<ChildIo> {
     Err(std::io::Error::other("module code checks need macOS"))
 }
 
@@ -628,12 +710,16 @@ mod tests {
         let body = &body[..body.find("\n}\n").unwrap()];
         let release = &body[body.find("LaunchCheck::Release =>").unwrap()..];
         assert!(release.contains("launch_requirement(&self.module)"), "{release}");
-        assert!(release.contains("spawn_checked(&sp, &want)"), "{release}");
+        assert!(release.contains("spawn_checked(&sp, &want, policy.as_ref())"), "{release}");
         assert!(
             !release.contains(".spawn()"),
             "no unchecked spawn on the release path"
         );
-        assert!(src.contains("sp.spawn_verified(|pid| check_running_code(pid, requirement))"));
+        assert!(src.contains("sp.spawn_verified(|pid| {\n        check_running_code(pid, requirement)?;"));
+        assert!(
+            src.contains("crate::echo_updates::check_running_info(&info, &p.min_version)?;"),
+            "E1: a downloaded echo's running code is bound to its version and entitlements"
+        );
         if !cfg!(target_os = "macos") {
             let sp = ProcessSpawn {
                 program: "/bin/true".into(),
@@ -641,7 +727,7 @@ mod tests {
                 env: vec![],
             };
             assert_eq!(
-                spawn_checked(&sp, "always").err().unwrap().to_string(),
+                spawn_checked(&sp, "always", None).err().unwrap().to_string(),
                 "module code checks need macOS"
             );
         }
