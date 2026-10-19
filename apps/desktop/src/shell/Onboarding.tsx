@@ -71,7 +71,7 @@ const WATCH_MS = 120_000;
 export function onboardingPermissions(cfg: unknown) {
   const modules = cfg == null ? null : loadConfig(cfg).modules;
   return ONBOARDING_PERMISSIONS.filter(
-    (d) => !d.only || (modules?.[d.only].installed ?? false),
+    (d) => !d.only || (modules?.[d.only]?.installed ?? false),
   );
 }
 
@@ -233,13 +233,16 @@ function Steps({ onDone }: { onDone: () => void }) {
         ))}
       </PermissionSetupList>
       <Stack dir="row" justify="end" gap={2}>
-        <Button
-          onClick={finish}
-          disabled={finishing}
-          data-testid="onboarding-continue"
-        >
-          {allGranted ? 'open qrtz' : 'continue'}
-        </Button>
+        {/* Hidden until config is read: the rows (and so "open qrtz" vs "continue") depend on it. */}
+        {cfg == null ? null : (
+          <Button
+            onClick={finish}
+            disabled={finishing}
+            data-testid="onboarding-continue"
+          >
+            {allGranted ? 'open qrtz' : 'continue'}
+          </Button>
+        )}
       </Stack>
     </OnboardingFrame>
   );

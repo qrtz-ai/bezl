@@ -41,4 +41,22 @@ final class PillThemeTests: XCTestCase {
     func testTheHostsWordsAreTheSettingsValues() {
         XCTAssertEqual(PillTheme.allCases.map(\.rawValue), ["dark", "light", "system"])
     }
+
+    func testASymlinkIsNeverFollowed() throws {
+        let target = try tmpFile("light")
+        let link = (target as NSString).deletingLastPathComponent + "/link"
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: target)
+        XCTAssertNil(PillTheme.read(path: link), "symlink")
+        XCTAssertEqual(PillTheme.read(path: target), .light)
+    }
+
+    func testAFifoIsRefusedWithoutBlocking() throws {
+        let f = try tmpFile(nil)
+        guard mkfifo(f, 0o600) == 0 else { throw XCTSkip("mkfifo unavailable") }
+        XCTAssertNil(PillTheme.read(path: f), "fifo")
+    }
+
+    func testADirectoryIsNotATheme() throws {
+        XCTAssertNil(PillTheme.read(path: (try tmpFile(nil) as NSString).deletingLastPathComponent))
+    }
 }

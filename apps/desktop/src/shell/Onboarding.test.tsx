@@ -68,6 +68,10 @@ describe('onboardingPermissions (ADR 0184 amendment)', () => {
     // Before config is read: only what every install needs (no flash of a nano-only row).
     expect(ids(null)).toEqual(['microphone', 'accessibility']);
   });
+  it('never throws on a config without that app entry (modules?.[only]?.installed)', () => {
+    for (const cfg of [{}, { modules: {} }, { modules: { nano: null } }])
+      expect(() => ids(cfg)).not.toThrow();
+  });
 });
 
 describe('permissions onboarding (ADR 0184)', () => {
@@ -194,6 +198,30 @@ describe('permissions onboarding (ADR 0184)', () => {
       act(() => root.unmount());
     },
   );
+
+  it('keeps the continue button hidden until config:get answers', async () => {
+    const host = fakeHost({
+      perms: {
+        microphone: 'granted',
+        'screen-recording': 'granted',
+        accessibility: 'granted',
+      },
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const invoke = host.transport.invoke;
+    host.transport.invoke = async (e) => {
+      if (e.channel === 'config:get') await gate;
+      return invoke(e);
+    };
+    const { q, root } = await mount(host);
+    expect(q('onboarding-continue')).toBeNull();
+    expect(q('onboarding-skip')).not.toBeNull();
+    await act(async () => release());
+    await tick();
+    expect(q('onboarding-continue')!.textContent).toBe('open qrtz');
+    act(() => root.unmount());
+  });
 
   it('says open qrtz when everything is granted', async () => {
     const host = fakeHost({

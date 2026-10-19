@@ -385,7 +385,10 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // after every config:changed.
     let pill_theme = crate::pill_theme::path(&dirs.data);
     crate::pill_theme::sync(&pill_theme, &config.get());
-    crate::pill_theme::follow(pill_theme.clone(), events.subscribe());
+    {
+        let config = config.clone();
+        crate::pill_theme::follow(pill_theme.clone(), events.subscribe(), move || config.get());
+    }
     // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
     // downloaded from settings into <data>/models and read by the helper from there only.
     let model_views =
