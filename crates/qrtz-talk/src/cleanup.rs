@@ -4,7 +4,8 @@
 //! spec/vectors/talk/cleanup.json.
 use crate::contract::{CleanupMethod, DictionaryEntry};
 use fancy_regex::{Captures, Regex};
-use std::sync::LazyLock;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 
 const W: &str = "A-Za-z0-9_";
 
@@ -16,8 +17,9 @@ static NEW_PARAGRAPH: LazyLock<Regex> =
     LazyLock::new(|| re(&format!(r"(?i)\s*(?<![{W}])new paragraph(?![{W}])[,.]?\s*")));
 static NEW_LINE: LazyLock<Regex> =
     LazyLock::new(|| re(&format!(r"(?i)\s*(?<![{W}])new line(?![{W}])[,.]?\s*")));
+// The filler word is group 2; whether it goes is [`keeps_filler`]'s call (ADR 0182).
 static FILLERS: LazyLock<Regex> =
-    LazyLock::new(|| re(r"(?i)(^|[\s,])(?:u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$),?"));
+    LazyLock::new(|| re(r"(?i)(^|[\s,])(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$),?"));
 // ADR 0101: an immediate repeat of a whole word. The apostrophe is part of a word on both sides, so "you, you're"
 // and "it, it's" are not repeats. Which repeats collapse is [`collapses`]'s call.
 static REPEATS: LazyLock<Regex> =
@@ -83,6 +85,55 @@ fn ends_with_abbreviation(before: &str) -> bool {
     !word.is_empty() && whole && is_abbreviation(&word)
 }
 
+/// ADR 0182 (N186): "new line" / "new paragraph" after one of these is a noun phrase ("a new line of products",
+/// "the new line at the store", "write a new paragraph"), never the command, so the words stay. Only words that can't
+/// end a clause: "this", "that", "her", "one", "some", "each" can ("call her new line then ..."), so they don't count.
+/// Same list in cleanup.ts.
+pub const COMMAND_DETERMINERS: &[&str] = &["a", "an", "the", "my", "your", "our", "their", "its", "every"];
+
+/// Does `before` (the text up to a spoken command) end with a whole determiner word?
+fn ends_with_determiner(before: &str) -> bool {
+    let word: String = before
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect();
+    let rest = &before[..before.len() - word.len()];
+    let whole = !rest.ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '\'');
+    let word: String = word.chars().rev().collect::<String>().to_ascii_lowercase();
+    whole && COMMAND_DETERMINERS.contains(&word.as_str())
+}
+
+/// A spoken layout command (`NEW_PARAGRAPH`, `NEW_LINE`) becomes `with`, unless it is a noun phrase (ADR 0182).
+fn layout_command(r: &Regex, s: &str, with: &str) -> String {
+    r.replace_all(s, |c: &Captures| {
+        let start = c.get(0).map_or(0, |m| m.start());
+        if ends_with_determiner(s[..start].trim_end()) {
+            c[0].to_owned()
+        } else {
+            with.to_owned()
+        }
+    })
+    .into_owned()
+}
+
+/// ADR 0182 (N185): a filler-shaped word that is a real word here, so it stays. Only unambiguous forms:
+/// - written in capitals ("the ER", "UM beat Ohio State", "the AH team"): the recogniser writes a filler in lowercase
+///   (or with one capital at a sentence start), never in capitals, so a capitalized one is an acronym;
+/// - "mm" right after a number ("a 35 mm lens", "10 mm wide"): the unit.
+///
+/// ("err" never matches: the pattern's `e+r` is one "r", so "to err is human" was always kept.) `all` is the whole
+/// match (separator, word, optional comma), `before` the text before it.
+fn keeps_filler(word: &str, all: &str, before: &str) -> bool {
+    if word.len() >= 2 && word.chars().all(|c| c.is_ascii_uppercase()) {
+        return true;
+    }
+    word.eq_ignore_ascii_case("mm")
+        && all.starts_with(' ')
+        && !all.ends_with(',')
+        && before.ends_with(|c: char| c.is_ascii_digit())
+}
+
 /// ADR 0101: does this repeat (the whole match `all`, its word `word`) collapse to one word?
 fn collapses(word: &str, all: &str) -> bool {
     let w = word.to_ascii_lowercase();
@@ -125,6 +176,39 @@ fn rep(r: &Regex, s: &str, with: &str) -> String {
     r.replace_all(s, with).into_owned()
 }
 
+/// ADR 0182 (N187): compiled dictionary patterns, by pattern. Compiling one case-insensitive pattern costs about 1 ms
+/// (Unicode case folding), and it used to happen for every term and alias on every dictation, after release: a
+/// 20-term dictionary added ~19 ms to release-to-text even on a one-line dictation. Now each pattern compiles once per
+/// launch, and the full pattern (with its word-edge lookarounds, which need fancy-regex's backtracking scan) runs only
+/// when its core, the same words without the edge checks, matches somewhere: any full match is a core match, so the
+/// text out is byte for byte the same. Bounded: cleared past [`DICTIONARY_CACHE_MAX`] patterns.
+struct DictionaryRegex {
+    core: regex::Regex,
+    full: Regex,
+}
+static DICTIONARY_RES: LazyLock<Mutex<HashMap<String, Option<Arc<DictionaryRegex>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+const DICTIONARY_CACHE_MAX: usize = 4096;
+
+fn dictionary_regex(core: String) -> Option<Arc<DictionaryRegex>> {
+    let mut cache = DICTIONARY_RES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(r) = cache.get(&core) {
+        return r.clone();
+    }
+    if cache.len() >= DICTIONARY_CACHE_MAX {
+        cache.clear();
+    }
+    let full = Regex::new(&format!("(?i)(?<![{W}]){core}(?![{W}])")).ok();
+    let r = full.and_then(|full| {
+        let core = regex::Regex::new(&format!("(?i){core}")).ok()?;
+        Some(Arc::new(DictionaryRegex { core, full }))
+    });
+    cache.insert(core, r.clone());
+    r
+}
+
 /// Writes dictionary terms the way the user spells them ("cue arts" → "qrtz" when listed as an alias).
 pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
     let mut out = text.to_owned();
@@ -138,10 +222,16 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
             if words.is_empty() {
                 continue;
             }
-            let Ok(r) = Regex::new(&format!("(?i)(?<![{W}]){}(?![{W}])", words.join(r"[\s-]+"))) else {
+            let Some(r) = dictionary_regex(words.join(r"[\s-]+")) else {
                 continue;
             };
-            out = r.replace_all(&out, fancy_regex::NoExpand(&d.term)).into_owned();
+            // The core alone (no word-edge checks) is a DFA scan: no match there means no match at all.
+            if r.core.is_match(&out) {
+                out = r
+                    .full
+                    .replace_all(&out, fancy_regex::NoExpand(&d.term))
+                    .into_owned();
+            }
         }
     }
     out
@@ -151,9 +241,19 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
 /// which repeats collapse, and no "." on a short dictation).
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
-    t = rep(&NEW_PARAGRAPH, &t, "\n\n");
-    t = rep(&NEW_LINE, &t, "\n");
-    t = rep(&FILLERS, &t, "${1}");
+    t = layout_command(&NEW_PARAGRAPH, &t, "\n\n");
+    t = layout_command(&NEW_LINE, &t, "\n");
+    let src = t.clone();
+    t = FILLERS
+        .replace_all(&src, |c: &Captures| {
+            let m = c.get(0).expect("whole match");
+            if keeps_filler(&c[2], &c[0], &src[..m.start()]) {
+                c[0].to_owned()
+            } else {
+                c[1].to_owned()
+            }
+        })
+        .into_owned();
     t = REPEATS
         .replace_all(&t, |c: &Captures| {
             if collapses(&c[1], &c[0]) {

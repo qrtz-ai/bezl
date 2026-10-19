@@ -420,6 +420,401 @@
       "raw": "Amr. and then",
       "dict": false,
       "expect": "Amr and then"
+    },
+    {
+      "raw": "I spent the night in the ER with my dad.",
+      "dict": false,
+      "expect": "I spent the night in the ER with my dad."
+    },
+    {
+      "raw": "The ER was packed last night.",
+      "dict": false,
+      "expect": "The ER was packed last night."
+    },
+    {
+      "raw": "The ER, ICU and OR are all full.",
+      "dict": false,
+      "expect": "The ER, ICU and OR are all full."
+    },
+    {
+      "raw": "UM beat Ohio State on Saturday.",
+      "dict": false,
+      "expect": "UM beat Ohio State on Saturday."
+    },
+    {
+      "raw": "Ask the AH team for the slides.",
+      "dict": false,
+      "expect": "Ask the AH team for the slides."
+    },
+    {
+      "raw": "Use a 35 mm lens for portraits.",
+      "dict": false,
+      "expect": "Use a 35 mm lens for portraits."
+    },
+    {
+      "raw": "The bolt is 10 mm wide.",
+      "dict": false,
+      "expect": "The bolt is 10 mm wide."
+    },
+    {
+      "raw": "Set the margin to 5 mm on each side.",
+      "dict": false,
+      "expect": "Set the margin to 5 mm on each side."
+    },
+    {
+      "raw": "To err is human.",
+      "dict": false,
+      "expect": "To err is human."
+    },
+    {
+      "raw": "I'd rather err on the side of caution.",
+      "dict": false,
+      "expect": "I'd rather err on the side of caution."
+    },
+    {
+      "raw": "We always err on the side of shipping.",
+      "dict": false,
+      "expect": "We always err on the side of shipping."
+    },
+    {
+      "raw": "Uma sent the deck this morning.",
+      "dict": false,
+      "expect": "Uma sent the deck this morning."
+    },
+    {
+      "raw": "Ahmed and Erin joined the call.",
+      "dict": false,
+      "expect": "Ahmed and Erin joined the call."
+    },
+    {
+      "raw": "Open example.com/uh tonight please.",
+      "dict": false,
+      "expect": "Open example.com/uh tonight please."
+    },
+    {
+      "raw": "Run git commit -m fix now.",
+      "dict": false,
+      "expect": "Run git commit -m fix now."
+    },
+    {
+      "raw": "Hmmm that's the umbrella I wanted.",
+      "dict": false,
+      "expect": "That's the umbrella I wanted."
+    },
+    {
+      "raw": "I mean it this time.",
+      "dict": false,
+      "expect": "I mean it this time."
+    },
+    {
+      "raw": "That was actually good.",
+      "dict": false,
+      "expect": "That was actually good."
+    },
+    {
+      "raw": "She plays like a pro.",
+      "dict": false,
+      "expect": "She plays like a pro."
+    },
+    {
+      "raw": "One of the best demos I've seen.",
+      "dict": false,
+      "expect": "One of the best demos I've seen."
+    },
+    {
+      "raw": "We're number one in the store.",
+      "dict": false,
+      "expect": "We're number one in the store."
+    },
+    {
+      "raw": "Give me a couple of minutes.",
+      "dict": false,
+      "expect": "Give me a couple of minutes."
+    },
+    {
+      "raw": "A table for two, please.",
+      "dict": false,
+      "expect": "A table for two, please."
+    },
+    {
+      "raw": "Scratch that itch on your back.",
+      "dict": false,
+      "expect": "Scratch that itch on your back."
+    },
+    {
+      "raw": "Don't scratch that table.",
+      "dict": false,
+      "expect": "Don't scratch that table."
+    },
+    {
+      "raw": "Put a question mark at the end.",
+      "dict": false,
+      "expect": "Put a question mark at the end."
+    },
+    {
+      "raw": "The trial period ends Friday.",
+      "dict": false,
+      "expect": "The trial period ends Friday."
+    },
+    {
+      "raw": "Add a comma after the name.",
+      "dict": false,
+      "expect": "Add a comma after the name."
+    },
+    {
+      "raw": "She had had enough by then.",
+      "dict": false,
+      "expect": "She had had enough by then."
+    },
+    {
+      "raw": "I said that that was fine.",
+      "dict": false,
+      "expect": "I said that that was fine."
+    },
+    {
+      "raw": "Number 1 priority is Echo.",
+      "dict": false,
+      "expect": "Number 1 priority is Echo."
+    },
+    {
+      "raw": "Call 911 now.",
+      "dict": false,
+      "expect": "Call 911 now"
+    },
+    {
+      "raw": "My pin is 1 1 2 3.",
+      "dict": false,
+      "expect": "My pin is 1 1 2 3."
+    },
+    {
+      "raw": "Start a new line of products.",
+      "dict": false,
+      "expect": "Start a new line of products."
+    },
+    {
+      "raw": "The new line at the store is long.",
+      "dict": false,
+      "expect": "The new line at the store is long."
+    },
+    {
+      "raw": "Write a new paragraph about pricing.",
+      "dict": false,
+      "expect": "Write a new paragraph about pricing."
+    },
+    {
+      "raw": "We launched our new line in May.",
+      "dict": false,
+      "expect": "We launched our new line in May."
+    },
+    {
+      "raw": "Every new line needs a test.",
+      "dict": false,
+      "expect": "Every new line needs a test."
+    },
+    {
+      "raw": "The new paragraph reads well.",
+      "dict": false,
+      "expect": "The new paragraph reads well."
+    },
+    {
+      "raw": "Call her new line then email Sam",
+      "dict": false,
+      "expect": "Call her\nThen email Sam."
+    },
+    {
+      "raw": "I'll take that one new line next the invoices",
+      "dict": false,
+      "expect": "I'll take that one\nNext the invoices."
+    },
+    {
+      "raw": "Dear team, new line, quick update",
+      "dict": false,
+      "expect": "Dear team,\nQuick update."
+    },
+    {
+      "raw": "Um, so I think we should, uh, ship it on Friday.",
+      "dict": false,
+      "expect": "So I think we should, ship it on Friday."
+    },
+    {
+      "raw": "So, uh, the build is green now.",
+      "dict": false,
+      "expect": "So, the build is green now."
+    },
+    {
+      "raw": "Can you, um, send me the deck?",
+      "dict": false,
+      "expect": "Can you, send me the deck?"
+    },
+    {
+      "raw": "The demo is, um, basically done.",
+      "dict": false,
+      "expect": "The demo is, basically done."
+    },
+    {
+      "raw": "Hmm, let me think about it.",
+      "dict": false,
+      "expect": "Let me think about it."
+    },
+    {
+      "raw": "Uh I'll call you back in ten minutes.",
+      "dict": false,
+      "expect": "I'll call you back in ten minutes."
+    },
+    {
+      "raw": "I I think the the plan works.",
+      "dict": false,
+      "expect": "I think the plan works."
+    },
+    {
+      "raw": "We need to to finish the review today.",
+      "dict": false,
+      "expect": "We need to finish the review today."
+    },
+    {
+      "raw": "The, the release notes are ready.",
+      "dict": false,
+      "expect": "The release notes are ready."
+    },
+    {
+      "raw": "So we, we can ship it tomorrow.",
+      "dict": false,
+      "expect": "So we, we can ship it tomorrow."
+    },
+    {
+      "raw": "Dear team, new paragraph, the launch moved to Monday.",
+      "dict": false,
+      "expect": "Dear team,\n\nThe launch moved to Monday."
+    },
+    {
+      "raw": "Groceries new line eggs new line milk",
+      "dict": false,
+      "expect": "Groceries\nEggs\nMilk."
+    },
+    {
+      "raw": "Is the meeting still on question mark",
+      "dict": false,
+      "expect": "Is the meeting still on question mark."
+    },
+    {
+      "raw": "Great work everyone exclamation point",
+      "dict": false,
+      "expect": "Great work everyone exclamation point."
+    },
+    {
+      "raw": "Bring the charger comma the cable comma and the adapter period",
+      "dict": false,
+      "expect": "Bring the charger comma the cable comma and the adapter period."
+    },
+    {
+      "raw": "The meeting is at three thirty p.m.",
+      "dict": false,
+      "expect": "The meeting is at three thirty p.m."
+    },
+    {
+      "raw": "It costs twenty five dollars.",
+      "dict": false,
+      "expect": "It costs twenty five dollars."
+    },
+    {
+      "raw": "We grew by fifteen percent this quarter.",
+      "dict": false,
+      "expect": "We grew by fifteen percent this quarter."
+    },
+    {
+      "raw": "Email me at jared at gmail dot com.",
+      "dict": false,
+      "expect": "Email me at jared at gmail dot com."
+    },
+    {
+      "raw": "The docs are at qrtz dot ai slash docs.",
+      "dict": false,
+      "expect": "The docs are at qrtz dot ai slash docs."
+    },
+    {
+      "raw": "Let's meet on Tuesday. Scratch that, let's meet on Wednesday.",
+      "dict": false,
+      "expect": "Let's meet on Tuesday. Scratch that, let's meet on Wednesday."
+    },
+    {
+      "raw": "Send it to Mark. Scratch that. Send it to Sarah.",
+      "dict": false,
+      "expect": "Send it to Mark. Scratch that. Send it to Sarah."
+    },
+    {
+      "raw": "We moved the data to post gres last week.",
+      "dict": false,
+      "expect": "We moved the data to post gres last week."
+    },
+    {
+      "raw": "deploy it with kubernetes tonight",
+      "dict": false,
+      "expect": "Deploy it with kubernetes tonight."
+    },
+    {
+      "raw": "I'm testing cue arts echo right now.",
+      "dict": false,
+      "expect": "I'm testing cue arts echo right now."
+    },
+    {
+      "raw": "I looked at the logs. and the error is gone",
+      "dict": false,
+      "expect": "I looked at the logs and the error is gone."
+    },
+    {
+      "raw": "We shipped the fix. Then we wrote the tests.",
+      "dict": false,
+      "expect": "We shipped the fix. Then we wrote the tests."
+    },
+    {
+      "raw": "Can you check the numbers. because they look off",
+      "dict": false,
+      "expect": "Can you check the numbers because they look off."
+    },
+    {
+      "raw": "Use a 35 mm lens for the portrait.",
+      "dict": false,
+      "expect": "Use a 35 mm lens for the portrait."
+    },
+    {
+      "raw": "So, um, I talked to the team and, uh, we we think the launch should move to next week because the the docs aren't ready.",
+      "dict": false,
+      "expect": "So, I talked to the team and, we think the launch should move to next week because the docs aren't ready."
+    },
+    {
+      "raw": "Yeah.",
+      "dict": false,
+      "expect": "Yeah"
+    },
+    {
+      "raw": "Thanks, talk soon.",
+      "dict": false,
+      "expect": "Thanks, talk soon"
+    },
+    {
+      "raw": "what time does the store close",
+      "dict": false,
+      "expect": "What time does the store close."
+    },
+    {
+      "raw": "Do you want to grab lunch",
+      "dict": false,
+      "expect": "Do you want to grab lunch."
+    },
+    {
+      "raw": "i think i can make it at noon",
+      "dict": false,
+      "expect": "I think I can make it at noon."
+    },
+    {
+      "raw": "Notes new line one call Sam new line two book the room",
+      "dict": false,
+      "expect": "Notes\nOne call Sam\nTwo book the room."
+    },
+    {
+      "raw": "Thanks for the update. new paragraph Here's my take.",
+      "dict": false,
+      "expect": "Thanks for the update.\n\nHere's my take."
     }
   ],
   "dictionaryOnly": [

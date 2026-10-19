@@ -17,6 +17,8 @@ tokio.workspace = true
 async-trait.workspace = true
 tracing.workspace = true
 fancy-regex = "0.16"
+# ADR 0182 (N187): a DFA prefilter for dictionary patterns (already in the tree through fancy-regex).
+regex = "1"
 
 [dev-dependencies]
 # Tests drive the real speech module and its testkit (dev-only, so not an edge of echo's crate).

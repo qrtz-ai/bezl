@@ -1,0 +1,534 @@
+{
+  "note": "Echo polish test set (ADR 0182). polish: Parakeet-style raw text and the ideal polished text, scored by crates/qrtz-talk/tests/polish_set.rs (exact matches, character edit distance, regressions against polish-baseline.json, which must stay 0). keep: false-positive vectors, realistic text where a rule's pattern appears but the words must stay; rule_cleanup must produce `expect` exactly. Ideals are written by hand, never by the code.",
+  "dictionary": [
+    {
+      "term": "qrtz",
+      "aliases": [
+        "cue arts",
+        "quartz"
+      ]
+    },
+    {
+      "term": "Postgres",
+      "aliases": [
+        "post gres"
+      ]
+    },
+    {
+      "term": "Kubernetes",
+      "aliases": []
+    },
+    {
+      "term": "Jared",
+      "aliases": []
+    }
+  ],
+  "polish": [
+    {
+      "id": "p01",
+      "category": "filler",
+      "raw": "Um, so I think we should, uh, ship it on Friday.",
+      "ideal": "So I think we should ship it on Friday."
+    },
+    {
+      "id": "p02",
+      "category": "filler",
+      "raw": "So, uh, the build is green now.",
+      "ideal": "So, the build is green now."
+    },
+    {
+      "id": "p03",
+      "category": "filler",
+      "raw": "Can you, um, send me the deck?",
+      "ideal": "Can you send me the deck?"
+    },
+    {
+      "id": "p04",
+      "category": "filler",
+      "raw": "The demo is, um, basically done.",
+      "ideal": "The demo is basically done."
+    },
+    {
+      "id": "p05",
+      "category": "filler",
+      "raw": "Hmm, let me think about it.",
+      "ideal": "Let me think about it."
+    },
+    {
+      "id": "p06",
+      "category": "filler",
+      "raw": "Uh I'll call you back in ten minutes.",
+      "ideal": "I'll call you back in ten minutes."
+    },
+    {
+      "id": "p07",
+      "category": "repeat",
+      "raw": "I I think the the plan works.",
+      "ideal": "I think the plan works."
+    },
+    {
+      "id": "p08",
+      "category": "repeat",
+      "raw": "We need to to finish the review today.",
+      "ideal": "We need to finish the review today."
+    },
+    {
+      "id": "p09",
+      "category": "repeat",
+      "raw": "The, the release notes are ready.",
+      "ideal": "The release notes are ready."
+    },
+    {
+      "id": "p10",
+      "category": "repeat",
+      "raw": "So we, we can ship it tomorrow.",
+      "ideal": "So we can ship it tomorrow."
+    },
+    {
+      "id": "p11",
+      "category": "command",
+      "raw": "Dear team, new paragraph, the launch moved to Monday.",
+      "ideal": "Dear team,\n\nThe launch moved to Monday."
+    },
+    {
+      "id": "p12",
+      "category": "command",
+      "raw": "Groceries new line eggs new line milk",
+      "ideal": "Groceries\nEggs\nMilk"
+    },
+    {
+      "id": "p13",
+      "category": "punct-cmd",
+      "raw": "Is the meeting still on question mark",
+      "ideal": "Is the meeting still on?"
+    },
+    {
+      "id": "p14",
+      "category": "punct-cmd",
+      "raw": "Great work everyone exclamation point",
+      "ideal": "Great work everyone!"
+    },
+    {
+      "id": "p15",
+      "category": "punct-cmd",
+      "raw": "Bring the charger comma the cable comma and the adapter period",
+      "ideal": "Bring the charger, the cable, and the adapter."
+    },
+    {
+      "id": "p16",
+      "category": "itn",
+      "raw": "The meeting is at three thirty p.m.",
+      "ideal": "The meeting is at 3:30 p.m."
+    },
+    {
+      "id": "p17",
+      "category": "itn",
+      "raw": "It costs twenty five dollars.",
+      "ideal": "It costs $25."
+    },
+    {
+      "id": "p18",
+      "category": "itn",
+      "raw": "We grew by fifteen percent this quarter.",
+      "ideal": "We grew by 15% this quarter."
+    },
+    {
+      "id": "p19",
+      "category": "itn",
+      "raw": "Email me at jared at gmail dot com.",
+      "ideal": "Email me at jlgrimes@users.noreply.github.com."
+    },
+    {
+      "id": "p20",
+      "category": "itn",
+      "raw": "The docs are at qrtz dot ai slash docs.",
+      "ideal": "The docs are at qrtz.ai/docs."
+    },
+    {
+      "id": "p21",
+      "category": "correction",
+      "raw": "Let's meet on Tuesday. Scratch that, let's meet on Wednesday.",
+      "ideal": "Let's meet on Wednesday."
+    },
+    {
+      "id": "p22",
+      "category": "correction",
+      "raw": "Send it to Mark. Scratch that. Send it to Sarah.",
+      "ideal": "Send it to Sarah."
+    },
+    {
+      "id": "p23",
+      "category": "dictionary",
+      "raw": "We moved the data to post gres last week.",
+      "ideal": "We moved the data to Postgres last week."
+    },
+    {
+      "id": "p24",
+      "category": "dictionary",
+      "raw": "deploy it with kubernetes tonight",
+      "ideal": "Deploy it with Kubernetes tonight."
+    },
+    {
+      "id": "p25",
+      "category": "dictionary",
+      "raw": "I'm testing cue arts echo right now.",
+      "ideal": "I'm testing qrtz echo right now."
+    },
+    {
+      "id": "p26",
+      "category": "cut",
+      "raw": "I looked at the logs. and the error is gone",
+      "ideal": "I looked at the logs and the error is gone."
+    },
+    {
+      "id": "p27",
+      "category": "cut",
+      "raw": "We shipped the fix. Then we wrote the tests.",
+      "ideal": "We shipped the fix. Then we wrote the tests."
+    },
+    {
+      "id": "p28",
+      "category": "cut",
+      "raw": "Can you check the numbers. because they look off",
+      "ideal": "Can you check the numbers because they look off."
+    },
+    {
+      "id": "p29",
+      "category": "acronym",
+      "raw": "I spent the night in the ER with my dad.",
+      "ideal": "I spent the night in the ER with my dad."
+    },
+    {
+      "id": "p30",
+      "category": "acronym",
+      "raw": "UM beat Ohio State on Saturday.",
+      "ideal": "UM beat Ohio State on Saturday."
+    },
+    {
+      "id": "p31",
+      "category": "unit",
+      "raw": "Use a 35 mm lens for the portrait.",
+      "ideal": "Use a 35 mm lens for the portrait."
+    },
+    {
+      "id": "p32",
+      "category": "idiom",
+      "raw": "To err is human.",
+      "ideal": "To err is human."
+    },
+    {
+      "id": "p33",
+      "category": "idiom",
+      "raw": "I'd rather err on the side of caution.",
+      "ideal": "I'd rather err on the side of caution."
+    },
+    {
+      "id": "p34",
+      "category": "long",
+      "raw": "So, um, I talked to the team and, uh, we we think the launch should move to next week because the the docs aren't ready.",
+      "ideal": "So, I talked to the team and we think the launch should move to next week because the docs aren't ready."
+    },
+    {
+      "id": "p35",
+      "category": "short",
+      "raw": "Yeah.",
+      "ideal": "Yeah"
+    },
+    {
+      "id": "p36",
+      "category": "short",
+      "raw": "Thanks, talk soon.",
+      "ideal": "Thanks, talk soon"
+    },
+    {
+      "id": "p37",
+      "category": "short",
+      "raw": "sounds good",
+      "ideal": "Sounds good"
+    },
+    {
+      "id": "p38",
+      "category": "question",
+      "raw": "what time does the store close",
+      "ideal": "What time does the store close?"
+    },
+    {
+      "id": "p39",
+      "category": "question",
+      "raw": "Do you want to grab lunch",
+      "ideal": "Do you want to grab lunch?"
+    },
+    {
+      "id": "p40",
+      "category": "caps",
+      "raw": "i think i can make it at noon",
+      "ideal": "I think I can make it at noon."
+    },
+    {
+      "id": "p41",
+      "category": "command",
+      "raw": "Notes new line one call Sam new line two book the room",
+      "ideal": "Notes\nOne call Sam\nTwo book the room"
+    },
+    {
+      "id": "p42",
+      "category": "command",
+      "raw": "Thanks for the update. new paragraph Here's my take.",
+      "ideal": "Thanks for the update.\n\nHere's my take."
+    }
+  ],
+  "keep": [
+    {
+      "id": "k01",
+      "rule": "filler",
+      "raw": "I spent the night in the ER with my dad.",
+      "expect": "I spent the night in the ER with my dad."
+    },
+    {
+      "id": "k02",
+      "rule": "filler",
+      "raw": "The ER was packed last night.",
+      "expect": "The ER was packed last night."
+    },
+    {
+      "id": "k03",
+      "rule": "filler",
+      "raw": "The ER, ICU and OR are all full.",
+      "expect": "The ER, ICU and OR are all full."
+    },
+    {
+      "id": "k04",
+      "rule": "filler",
+      "raw": "UM beat Ohio State on Saturday.",
+      "expect": "UM beat Ohio State on Saturday."
+    },
+    {
+      "id": "k05",
+      "rule": "filler",
+      "raw": "Ask the AH team for the slides.",
+      "expect": "Ask the AH team for the slides."
+    },
+    {
+      "id": "k06",
+      "rule": "filler",
+      "raw": "Use a 35 mm lens for portraits.",
+      "expect": "Use a 35 mm lens for portraits."
+    },
+    {
+      "id": "k07",
+      "rule": "filler",
+      "raw": "The bolt is 10 mm wide.",
+      "expect": "The bolt is 10 mm wide."
+    },
+    {
+      "id": "k08",
+      "rule": "filler",
+      "raw": "Set the margin to 5 mm on each side.",
+      "expect": "Set the margin to 5 mm on each side."
+    },
+    {
+      "id": "k09",
+      "rule": "filler",
+      "raw": "To err is human.",
+      "expect": "To err is human."
+    },
+    {
+      "id": "k10",
+      "rule": "filler",
+      "raw": "I'd rather err on the side of caution.",
+      "expect": "I'd rather err on the side of caution."
+    },
+    {
+      "id": "k11",
+      "rule": "filler",
+      "raw": "We always err on the side of shipping.",
+      "expect": "We always err on the side of shipping."
+    },
+    {
+      "id": "k12",
+      "rule": "filler",
+      "raw": "Uma sent the deck this morning.",
+      "expect": "Uma sent the deck this morning."
+    },
+    {
+      "id": "k13",
+      "rule": "filler",
+      "raw": "Ahmed and Erin joined the call.",
+      "expect": "Ahmed and Erin joined the call."
+    },
+    {
+      "id": "k14",
+      "rule": "filler",
+      "raw": "Open example.com/uh tonight please.",
+      "expect": "Open example.com/uh tonight please."
+    },
+    {
+      "id": "k15",
+      "rule": "filler",
+      "raw": "Run git commit -m fix now.",
+      "expect": "Run git commit -m fix now."
+    },
+    {
+      "id": "k16",
+      "rule": "filler",
+      "raw": "Hmmm that's the umbrella I wanted.",
+      "expect": "That's the umbrella I wanted."
+    },
+    {
+      "id": "k17",
+      "rule": "general",
+      "raw": "I mean it this time.",
+      "expect": "I mean it this time."
+    },
+    {
+      "id": "k18",
+      "rule": "general",
+      "raw": "That was actually good.",
+      "expect": "That was actually good."
+    },
+    {
+      "id": "k19",
+      "rule": "general",
+      "raw": "She plays like a pro.",
+      "expect": "She plays like a pro."
+    },
+    {
+      "id": "k20",
+      "rule": "general",
+      "raw": "One of the best demos I've seen.",
+      "expect": "One of the best demos I've seen."
+    },
+    {
+      "id": "k21",
+      "rule": "general",
+      "raw": "We're number one in the store.",
+      "expect": "We're number one in the store."
+    },
+    {
+      "id": "k22",
+      "rule": "general",
+      "raw": "Give me a couple of minutes.",
+      "expect": "Give me a couple of minutes."
+    },
+    {
+      "id": "k23",
+      "rule": "general",
+      "raw": "A table for two, please.",
+      "expect": "A table for two, please."
+    },
+    {
+      "id": "k24",
+      "rule": "general",
+      "raw": "Scratch that itch on your back.",
+      "expect": "Scratch that itch on your back."
+    },
+    {
+      "id": "k25",
+      "rule": "general",
+      "raw": "Don't scratch that table.",
+      "expect": "Don't scratch that table."
+    },
+    {
+      "id": "k26",
+      "rule": "general",
+      "raw": "Put a question mark at the end.",
+      "expect": "Put a question mark at the end."
+    },
+    {
+      "id": "k27",
+      "rule": "general",
+      "raw": "The trial period ends Friday.",
+      "expect": "The trial period ends Friday."
+    },
+    {
+      "id": "k28",
+      "rule": "general",
+      "raw": "Add a comma after the name.",
+      "expect": "Add a comma after the name."
+    },
+    {
+      "id": "k29",
+      "rule": "general",
+      "raw": "She had had enough by then.",
+      "expect": "She had had enough by then."
+    },
+    {
+      "id": "k30",
+      "rule": "general",
+      "raw": "I said that that was fine.",
+      "expect": "I said that that was fine."
+    },
+    {
+      "id": "k31",
+      "rule": "general",
+      "raw": "Number 1 priority is Echo.",
+      "expect": "Number 1 priority is Echo."
+    },
+    {
+      "id": "k32",
+      "rule": "general",
+      "raw": "Call 911 now.",
+      "expect": "Call 911 now"
+    },
+    {
+      "id": "k33",
+      "rule": "general",
+      "raw": "My pin is 1 1 2 3.",
+      "expect": "My pin is 1 1 2 3."
+    },
+    {
+      "id": "k34",
+      "rule": "command",
+      "raw": "Start a new line of products.",
+      "expect": "Start a new line of products."
+    },
+    {
+      "id": "k35",
+      "rule": "command",
+      "raw": "The new line at the store is long.",
+      "expect": "The new line at the store is long."
+    },
+    {
+      "id": "k36",
+      "rule": "command",
+      "raw": "Write a new paragraph about pricing.",
+      "expect": "Write a new paragraph about pricing."
+    },
+    {
+      "id": "k37",
+      "rule": "command",
+      "raw": "We launched our new line in May.",
+      "expect": "We launched our new line in May."
+    },
+    {
+      "id": "k38",
+      "rule": "command",
+      "raw": "Every new line needs a test.",
+      "expect": "Every new line needs a test."
+    },
+    {
+      "id": "k39",
+      "rule": "command",
+      "raw": "The new paragraph reads well.",
+      "expect": "The new paragraph reads well."
+    },
+    {
+      "id": "k40",
+      "rule": "command",
+      "raw": "Call her new line then email Sam",
+      "expect": "Call her\nThen email Sam."
+    },
+    {
+      "id": "k41",
+      "rule": "command",
+      "raw": "I'll take that one new line next the invoices",
+      "expect": "I'll take that one\nNext the invoices."
+    },
+    {
+      "id": "k42",
+      "rule": "command",
+      "raw": "Dear team, new line, quick update",
+      "expect": "Dear team,\nQuick update."
+    }
+  ]
+}

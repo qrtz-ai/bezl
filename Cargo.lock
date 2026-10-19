@@ -3673,6 +3673,7 @@ dependencies = [
  "qrtz-model",
  "qrtz-speech",
  "qrtz-speech-types",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

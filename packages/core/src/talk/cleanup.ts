@@ -102,8 +102,48 @@ const endsWithAbbreviation = (before: string) => {
   return m !== null && isAbbreviation(m[1]);
 };
 
+// The filler word is group 2; whether it goes is keepsFiller's call (ADR 0182).
 const FILLERS =
-  /(^|[\s,])(?:u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$)[,]?/gi;
+  /(^|[\s,])(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$)[,]?/gi;
+
+/**
+ * ADR 0182 (N185): a filler-shaped word that is a real word here, so it stays. Only unambiguous forms: written in
+ * capitals ("the ER", "UM beat Ohio State": the recogniser never writes a filler in capitals), "mm" right after a
+ * number ("a 35 mm lens"). ("err" never matches: `e+r` is one "r".)
+ * Same rule in cleanup.rs.
+ */
+function keepsFiller(word: string, all: string, before: string): boolean {
+  if (word.length >= 2 && /^[A-Z]+$/.test(word)) return true;
+  return (
+    word.toLowerCase() === 'mm' &&
+    all.startsWith(' ') &&
+    !all.endsWith(',') &&
+    /[0-9]$/.test(before)
+  );
+}
+
+/** ADR 0182 (N186): "new line" / "new paragraph" after one of these is a noun phrase ("a new line of products"),
+ * never the command, so the words stay. Only words that can't end a clause ("call her new line then ..." is the
+ * command). Same list in cleanup.rs. */
+export const COMMAND_DETERMINERS = new Set([
+  'a',
+  'an',
+  'the',
+  'my',
+  'your',
+  'our',
+  'their',
+  'its',
+  'every',
+]);
+const layoutCommand =
+  (withText: string) =>
+  (all: string, at: number, src: string): string => {
+    const m = /(?<![\w'])([A-Za-z]+)$/.exec(src.slice(0, at).trimEnd());
+    return m !== null && COMMAND_DETERMINERS.has(m[1].toLowerCase())
+      ? all
+      : withText;
+  };
 
 /** Writes dictionary terms the way the user spells them ("cue arts" → "qrtz" when listed as an alias). */
 export function applyDictionary(
@@ -135,9 +175,13 @@ export function ruleCleanup(
 ): string {
   let t = ` ${raw} `;
   t = t
-    .replace(/\s*\bnew paragraph\b[,.]?\s*/gi, '\n\n')
-    .replace(/\s*\bnew line\b[,.]?\s*/gi, '\n');
-  t = t.replace(FILLERS, '$1');
+    .replace(/\s*\bnew paragraph\b[,.]?\s*/gi, layoutCommand('\n\n'))
+    .replace(/\s*\bnew line\b[,.]?\s*/gi, layoutCommand('\n'));
+  t = t.replace(
+    FILLERS,
+    (all: string, sep: string, word: string, at: number, src: string) =>
+      keepsFiller(word, all, src.slice(0, at)) ? all : sep,
+  );
   // Immediate repeats of stutter-prone words ("I I think", "the the"); ADR 0101.
   t = t.replace(REPEATS, (all: string, w: string) =>
     (all.includes(',') ? COMMA_STUTTERS : STUTTERS).has(w.toLowerCase())
