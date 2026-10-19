@@ -1508,3 +1508,63 @@ Talk-only change (`dd2a416`); the helper does not run talk's cleanup, so `echo-b
 5. If anything reads worse: revert `dd2a416` (talk-only commit; its vectors and tests go with it).
 6. Still open for the next cycle's p15 decision: hold fn and say "Bring the charger comma the cable comma and the
    adapter period"; note whether Parakeet writes the words or the marks (section 36 step 5).
+
+## 40. Cycle 68: "Hey <dictionary name> did you <listed verb>" is a question (ADR 0208, `6f1daed`)
+
+| Run                | Exact     | Edit distance     | Regressions | False-positive hits |
+| ------------------ | --------- | ----------------- | ----------- | ------------------- |
+| 7c008f4, 105 cases | 101 / 105 | 42 chars (1.27 %) | -           | 0 / 275             |
+| 6f1daed, same 105  | 101 / 105 | 42 chars (1.27 %) | 0           | -                   |
+| 7c008f4, 109 cases | 101 / 109 | 50 chars (1.43 %) | -           | -                   |
+| 6f1daed, 109 cases | 105 / 109 | 42 chars (1.20 %) | 0           | 0 / 292             |
+
+Regressions are counted against `7c008f4`'s own output for every case (p106-p109's old output was committed with the
+code; `polish-baseline.json` then refreshed to `6f1daed` in the docs commit); 4 cases better (p106-p109), none worse.
+
+- ADR 0208: "Hey Jared did you finish the report" → "Hey Jared, did you finish the report?"; also "hey priya did you
+  hear back from the landlord", "... Hey Jared did you read it yet", "Hey pria did you book the flights for Friday".
+  `VOCATIVE_DID_VERBS` (53 base-form verbs that never stand bare as the complement of "did you") joins the 25 plain
+  verbs only after "Hey <name> did you"; every other ADR 0206 guard unchanged; a term spelled like a listed verb is
+  never a name. "Hey Jared did you a solid / good / wrong / proud / justice / dirty / like a pro / a good turn / right
+  / no harm / well / credit ..." keep "."; so do "Hey Sam ...", "Okay Jared ...", an existing comma, "ever", "So I said
+  hey Jared ...", and a later clause. 4 polish positives, 17 new keep vectors, cleanup.json 1 flipped + 28 new (Rust
+  and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries built one after the other, copied to /tmp,
+  interleaved 15×, median of medians): 495 words 0.131 → 0.134 ms; 504 words ending in a question 0.143 → 0.142 ms;
+  504 words ending in a vocative question 0.149 → 0.153 ms. Noise; ceiling 2 ms.
+- Path review: origin/main had not moved since `7c008f4`; no capture, VAD, model config, drain, insert, pill or
+  timing-log change (talk's cleanup is still the only post-processing, cleanup.rs `rule_cleanup` ~l.1927, run once
+  on the final text; the vocative step is `vocative_question` ~l.1707, called from `terminal_punctuation`). Findings
+  list unchanged; backlog P1-P8 still open. Note (Qrtz Nano): packages/features/note vitest green (with talk, 15
+  files, 283 tests).
+
+Still not exact (4 of 109): p15 spoken "comma"/"period", p19/p20 email and URL, p41 a numbered list with a 4-word line.
+
+Rejected this cycle (details in ADR 0208): "did you" before any word; like/turn/forward/save/close/clean/open/fine/
+miss/love/harm/damage/service/honor/credit on the list; the same list after a bare "So"; still-rejected ADR 0206
+shapes; p15 (still waiting on the Mac check).
+
+Next polish candidates, ranked: (1) p15 spoken "comma"/"period", only after the Mac check in section 36 step 5. (2)
+None other above the bar on the current set; p19/p20 (spoken email/URL) and p41 (a numbered list with a 4-word line)
+need their own evidence. Next cycle: backlog P1 (the qrtz-app `local_models::speech_calls_scoped_to_one_module_touch_
+only_its_models` timeout, flake vs hang, root cause).
+
+### Measurement plan for Jared's Mac (cycle 68; proves no added latency and no worse transcript)
+
+Talk-only change (`6f1daed`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `6f1daed`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening68 --test polish_set --
+   --nocapture`: three budget medians well under 0.5 ms (box 0.13-0.15 ms), polish 105/109 exact, regressions 0, all
+   green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c67 7c008f4 &&
+   cd /tmp/qrtz-c67 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c67`.
+4. With a name in Echo's dictionary (for example "Priya"), hold fn and say "Hey Priya did you finish the report": it
+   types "Hey Priya, did you finish the report?". Then "Hey Priya did you a favor last week": it types "Hey Priya did
+   you a favor last week." (no comma, "."). A name not in the dictionary ("Hey Sam did you finish the report") types
+   as before.
+5. If anything reads worse: revert `6f1daed` (talk-only commit; its vectors and tests go with it).
+6. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period"; note whether
+   Parakeet writes the words or the marks (section 36 step 5).
