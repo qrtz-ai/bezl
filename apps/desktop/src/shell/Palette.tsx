@@ -5,11 +5,29 @@ import { registry } from './subapps';
 import { shellClient } from './shellClient';
 import { filterCommands, type Command } from './filter';
 import { useModuleSwitches } from './useModuleSwitches';
-import { QRTZ, QRTZ_PARTS } from './routes';
+import { QRTZ, QRTZ_PARTS, isReservedNav } from './routes';
 
 const QRTZ_PAGE_PARTS = new Set(Object.values(QRTZ_PARTS));
 /** Dev-only sub apps with a route but no palette entry (the gallery). */
 const HIDDEN_FROM_NAV = new Set(['gallery']);
+
+/**
+ * The modules that get a "go to" entry: switched on, not a qrtz page part or dev-only, and (security review) not
+ * posing as the shell's apps or opts entries by id or display name, any case or padding.
+ */
+export function paletteNavModules<M extends { id: string; name: string }>(
+  manifests: readonly M[],
+  isOn: (id: string) => boolean,
+): M[] {
+  return manifests.filter(
+    (m) =>
+      isOn(m.id) &&
+      !QRTZ_PAGE_PARTS.has(m.id) &&
+      !HIDDEN_FROM_NAV.has(m.id) &&
+      !isReservedNav(m.id) &&
+      !isReservedNav(m.name),
+  );
+}
 
 type Client = ReturnType<typeof shellClient>;
 const listMeetings = (c: Client, query: string) =>
@@ -96,21 +114,16 @@ export function Palette({
         keywords: 'open opts preferences settings theme backup logs updates',
         run: () => requestNavigate({ app: QRTZ, settings: true }),
       },
-      ...registry
-        .list()
-        .filter(
-          ({ manifest }) =>
-            isViewOn(switches, manifest.id) &&
-            !QRTZ_PAGE_PARTS.has(manifest.id) &&
-            !HIDDEN_FROM_NAV.has(manifest.id),
-        )
-        .map(({ manifest }) => ({
-          id: `nav.${manifest.id}`,
-          title: `go to ${manifest.name}`,
-          icon: manifest.icon,
-          keywords: `open ${manifest.id}`,
-          run: () => onNavigate(manifest.id),
-        })),
+      ...paletteNavModules(
+        registry.list().map(({ manifest }) => manifest),
+        (id) => isViewOn(switches, id),
+      ).map((manifest) => ({
+        id: `nav.${manifest.id}`,
+        title: `go to ${manifest.name}`,
+        icon: manifest.icon,
+        keywords: `open ${manifest.id}`,
+        run: () => onNavigate(manifest.id),
+      })),
     ];
   }, [session, client, onNavigate, toast, nanoOn, switches]);
 

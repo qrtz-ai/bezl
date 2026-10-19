@@ -116,3 +116,14 @@ export function navTarget(r: NavRequest, apps: readonly string[]): string {
   if (r.settings) return resolveRoute(joinRoute(r.app, SETTINGS_PATH), apps);
   return joinRoute(r.app);
 }
+
+/** The sidebar ids of the qrtz page's two halves: apps (/qrtz, the app manager) and opts (/qrtz/settings). */
+export const APPS = 'apps';
+export const OPTS = 'opts';
+/**
+ * Shell-owned sidebar ids and labels. A module whose id or display name is one of these (any case, any padding)
+ * gets no sidebar row and no palette entry, so no module can pose as, or collide with, the apps or opts rows.
+ */
+export const RESERVED_NAV: ReadonlySet<string> = new Set([APPS, OPTS]);
+export const isReservedNav = (s: string) =>
+  RESERVED_NAV.has(s.trim().toLowerCase());

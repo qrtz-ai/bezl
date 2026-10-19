@@ -24,6 +24,7 @@ import {
 import { isViewOn, onNavigateRequest } from '@qrtz/core';
 import type { SubAppRoute } from '@qrtz/core/react';
 import { registry } from './subapps';
+import { APPS, OPTS, isReservedNav } from './routes';
 import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
 import { useModuleSwitches } from './useModuleSwitches';
@@ -52,15 +53,8 @@ const Onboarding = lazy(() =>
 export const SIDEBAR_FOOT: ReadonlySet<string> = new Set<string>();
 /** Dev-only sub apps that keep their route (/gallery, for e2e and the dev mock) but get no sidebar row or palette entry. */
 export const HIDDEN_FROM_NAV: ReadonlySet<string> = new Set(['gallery']);
-/** The sidebar ids of the qrtz page's two halves: apps (/qrtz, the app manager) and opts (/qrtz/settings). */
-export const APPS = 'apps';
-export const OPTS = 'opts';
-/**
- * Shell-owned sidebar ids and labels. A module whose id or display name is one of these (any case, any padding)
- * gets no row, so no module can pose as, or collide with, the apps or opts rows.
- */
-export const RESERVED_NAV: ReadonlySet<string> = new Set([APPS, OPTS]);
-const reserved = (s: string) => RESERVED_NAV.has(s.trim().toLowerCase());
+export { APPS, OPTS, RESERVED_NAV } from './routes';
+const reserved = isReservedNav;
 /** The sub apps that make up the qrtz page (never a sidebar row of their own). */
 export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
   Object.values(QRTZ_PARTS),

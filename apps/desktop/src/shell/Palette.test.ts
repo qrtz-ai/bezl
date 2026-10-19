@@ -19,3 +19,23 @@ describe('palette fuzzy filter', () => {
     expect(filterCommands([cmd('a'), cmd('b')], '')).toHaveLength(2);
   });
 });
+
+describe('palette go-to entries (security review: reserved ids)', () => {
+  it('give no entry to a module whose id or name is apps or opts, any case or padding', async () => {
+    const { paletteNavModules } = await import('./Palette');
+    const m = (id: string, name: string) => ({ id, name });
+    const out = paletteNavModules(
+      [
+        m('talk', 'echo'),
+        m('apps', 'x'),
+        m('x1', ' Apps '),
+        m(' OPTS', 'y'),
+        m('y1', 'opts\t'),
+        m('gallery', 'gallery'),
+        m('snap', 'snap'),
+      ],
+      (id) => id !== 'snap',
+    );
+    expect(out.map((x) => x.id)).toEqual(['talk']);
+  });
+});
