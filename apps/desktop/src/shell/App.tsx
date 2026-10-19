@@ -28,8 +28,8 @@ import { joinRoute, navTarget, resolveRoute, splitRoute } from './routes';
 const loadPalette = () => import('./Palette');
 const Palette = lazy(() => loadPalette().then((m) => ({ default: m.Palette })));
 
-/** Pinned to the bottom of the sidebar; everything else (modules, marketplace) lists above. */
-const FOOT = new Set(['settings', 'gallery']);
+/** Pinned to the bottom of the sidebar (marketplace directly above settings); the apps list at the top. */
+export const SIDEBAR_FOOT = new Set(['marketplace', 'gallery', 'settings']);
 
 /** One splat route: the shell owns the whole path and stays mounted across every navigation (ADR 0091). */
 export const routes: RouteObject[] = [{ path: '*', element: <Shell /> }];
@@ -134,7 +134,7 @@ export function Shell() {
                 id: manifest.id,
                 label: manifest.name,
                 icon: manifest.icon,
-                group: FOOT.has(manifest.id) ? 'foot' : 'main',
+                group: SIDEBAR_FOOT.has(manifest.id) ? 'foot' : 'main',
               }))}
               active={active}
               onSelect={selectApp}

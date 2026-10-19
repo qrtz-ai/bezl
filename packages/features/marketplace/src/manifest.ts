@@ -5,7 +5,8 @@ export const manifest = SubAppManifest.parse({
   id: 'marketplace',
   name: 'marketplace',
   icon: 'package',
-  order: 800,
+  // At the bottom with settings, directly above it (gallery, dev only, is 900).
+  order: 950,
   capabilities: [
     // ADR 0157: the package manager (list is local; refresh and install go online only when the user asks).
     'packages.read',
