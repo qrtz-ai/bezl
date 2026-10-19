@@ -177,28 +177,56 @@ pub trait KeyStore: Send + Sync {
     fn delete(&self) -> Result<(), String>;
 }
 
+/// Bozniak M6: the release keychain group. Only the helper's entitlements
+/// (entitlements/ai.qrtz.dash-net.entitlements) hold it; the app doesn't, so it can't read the item.
+pub const ACCESS_GROUP: &str = "MR26CCZ496.ai.qrtz.dash-net";
+
+/// The owner key in the macOS Keychain.
+///
+/// Release builds (signed, with the entitlements above): the data-protection keychain, access group
+/// [`ACCESS_GROUP`], `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (no iCloud sync, no backup restore to another Mac).
+/// Debug builds: the login keychain (an unsigned dev binary can't hold a keychain group); dash only runs in debug
+/// builds today. The release path needs a signed Mac build to verify (ADR 0231).
 #[cfg(target_os = "macos")]
 pub struct KeychainStore;
 
 #[cfg(target_os = "macos")]
+fn keychain_options(write: bool) -> Result<security_framework::passwords::PasswordOptions, String> {
+    use security_framework::passwords::PasswordOptions;
+    let mut o = PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+    if cfg!(not(debug_assertions)) {
+        o.use_protected_keychain();
+        o.set_access_group(ACCESS_GROUP);
+        if write {
+            use security_framework::access_control::{ProtectionMode, SecAccessControl};
+            let ac = SecAccessControl::create_with_protection(
+                Some(ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly),
+                0,
+            )
+            .map_err(|e| e.to_string())?;
+            o.set_access_control(ac);
+        }
+    }
+    Ok(o)
+}
+
+#[cfg(target_os = "macos")]
 impl KeyStore for KeychainStore {
     fn load(&self) -> Option<String> {
-        security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        security_framework::passwords::generic_password(keychain_options(false).ok()?)
             .ok()
             .and_then(|b| String::from_utf8(b).ok())
             .filter(|k| is_owner_key(k))
     }
     fn save(&self, key: &str) -> Result<(), String> {
-        security_framework::passwords::set_generic_password(
-            KEYCHAIN_SERVICE,
-            KEYCHAIN_ACCOUNT,
-            key.as_bytes(),
-        )
-        .map_err(|e| e.to_string())
+        // Delete first, so an older item can't keep weaker attributes through an update.
+        self.delete()?;
+        security_framework::passwords::set_generic_password_options(key.as_bytes(), keychain_options(true)?)
+            .map_err(|e| e.to_string())
     }
     fn delete(&self) -> Result<(), String> {
         const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
-        match security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+        match security_framework::passwords::delete_generic_password_options(keychain_options(false)?) {
             Ok(()) => Ok(()),
             Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
             Err(e) => Err(e.to_string()),

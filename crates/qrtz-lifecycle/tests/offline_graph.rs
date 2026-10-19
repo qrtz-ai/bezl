@@ -1192,7 +1192,38 @@ fn extension_and_inference_entitlements_stay_inside_their_allowlists() {
     let mut files = vec![];
     entitlements_files(&root(), &mut files);
     let mut errs = vec![];
+    // ADR 0231 (M6): a network-role crate's entitlements file is linted by its networkRoles entry instead: exactly
+    // the listed keys, and never a sandbox, network or TCC key.
+    let role_files: BTreeMap<PathBuf, BTreeSet<String>> = network_roles()
+        .values()
+        .filter_map(|r| {
+            let f = r["entitlements"]["file"].as_str()?;
+            let keys = r["entitlements"]["keys"]
+                .as_array()?
+                .iter()
+                .filter_map(|k| k.as_str().map(str::to_owned))
+                .collect();
+            Some((root().join(f), keys))
+        })
+        .collect();
+    for (f, keys) in &role_files {
+        let got = granted(&std::fs::read_to_string(f).unwrap_or_else(|e| panic!("{}: {e}", f.display())));
+        assert_eq!(&got, keys, "{}: entitlements", f.display());
+        for k in &got {
+            assert!(
+                !k.starts_with("com.apple.security.") && !is_tcc_entitlement(k),
+                "{}: {k}",
+                f.display()
+            );
+        }
+    }
     for f in &files {
+        if role_files
+            .keys()
+            .any(|p| p.canonicalize().ok() == f.canonicalize().ok())
+        {
+            continue;
+        }
         let name = f.file_name().unwrap().to_string_lossy().into_owned();
         // Anything named *.entitlements must follow the naming, so a service can't dodge the lint by name.
         if !name.starts_with("ai.qrtz.") {

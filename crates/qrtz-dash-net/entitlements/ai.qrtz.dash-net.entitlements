@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ADR 0231 amendment 1 (Bozniak M6): Agent Dash's network helper. Only its own data-protection keychain group;
+     no TCC, no sandbox exceptions. The app does not hold this group, so it can't read the owner key. Unverified until
+     a signed Mac build (a Developer ID keychain group may need a provisioning profile). -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.application-identifier</key>
+	<string>MR26CCZ496.ai.qrtz.dash-net</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>MR26CCZ496</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>MR26CCZ496.ai.qrtz.dash-net</string>
+	</array>
+</dict>
+</plist>

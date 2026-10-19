@@ -237,3 +237,20 @@ fn the_release_gate_marker_is_in_the_binary_and_in_verify_bundle() {
         "verify-bundle.sh greps a different marker"
     );
 }
+
+#[test]
+fn the_entitlements_hold_exactly_the_access_group_the_code_uses() {
+    let e = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/entitlements/ai.qrtz.dash-net.entitlements"
+    ))
+    .unwrap();
+    assert_eq!(
+        e.matches(ACCESS_GROUP).count(),
+        2,
+        "application-identifier and the one keychain group"
+    );
+    for k in ["com.apple.security.", "com.apple.developer.icloud", "network"] {
+        assert!(!e.contains(&format!("<key>{k}")), "{k}");
+    }
+}
