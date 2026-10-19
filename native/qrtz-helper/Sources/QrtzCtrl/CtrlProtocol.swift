@@ -87,6 +87,8 @@ public enum CtrlDoPolicy {
     public static let reservedCombos: Set<String> = ["escape", "cmd+option+escape", "cmd+tab", "cmd+shift+tab", "cmd+space"]
     /// Rust `normalize_combo`'s order.
     public static let modifiers = ["cmd", "ctrl", "option", "shift"]
+    /// Refused while the focused element is secure (review, low).
+    public static let clipboardCombos: Set<String> = ["cmd+v", "cmd+c", "cmd+x", "cmd+a", "cmd+shift+v", "cmd+option+shift+v"]
     /// Rust `act::TEXT_MAX`.
     public static let maxText = 500
 

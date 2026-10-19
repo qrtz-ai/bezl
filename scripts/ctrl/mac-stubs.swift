@@ -44,7 +44,7 @@ public func AXIsProcessTrusted() -> Bool { false }
 public let kAXRoleAttribute = "AXRole", kAXSubroleAttribute = "AXSubrole", kAXTitleAttribute = "AXTitle",
     kAXDescriptionAttribute = "AXDescription", kAXChildrenAttribute = "AXChildren", kAXWindowsAttribute = "AXWindows",
     kAXFocusedWindowAttribute = "AXFocusedWindow", kAXMainWindowAttribute = "AXMainWindow",
-    kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement",
+    kAXParentAttribute = "AXParent", kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement",
     kAXRoleDescriptionAttribute = "AXRoleDescription", kAXDocumentAttribute = "AXDocument",
     kAXMinimizedAttribute = "AXMinimized", kAXValueAttribute = "AXValue", kAXEnabledAttribute = "AXEnabled",
     kAXSizeAttribute = "AXSize", kAXFocusedAttribute = "AXFocused", kAXMenuBarAttribute = "AXMenuBar",

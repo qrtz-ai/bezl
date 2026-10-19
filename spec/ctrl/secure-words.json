@@ -1,0 +1,5 @@
+{
+  "about": "ADR 0214 review H4: the one list of words that make a text input a password, identity or payment field (excluded from ctrl's tree on both sides). scripts/ctrl/gen-secure-words.mjs generates crates/qrtz-ctrl/src/secure_words.rs and native/qrtz-helper/Sources/QrtzCtrl/CtrlSecureWords.swift from it; tests fail when either drifts.",
+  "words": ["password", "passwort", "passcode", "passphrase", "pin", "cvv", "cvv2", "cvc", "csc", "iban", "ssn", "otp", "2fa", "expiry", "expiration", "card", "creditcard", "routing", "swift", "bic"],
+  "phrases": [["security", "code"], ["account", "number"], ["social", "security"], ["verification", "code"], ["one", "time"], ["card", "number"], ["credit", "card"], ["debit", "card"], ["routing", "number"]]
+}

@@ -39,7 +39,8 @@ final class CtrlTreeTests: XCTestCase {
         let pw2 = El("AXTextField", "", sub: "AXSecureTextField", value: "hunter3")
         let card = El("AXTextField", "card number", value: "4111111111111111")
         let cvc = El("AXTextField", "", placeholder: "CVC", value: "123")
-        let name = El("AXTextField", "name on card", value: "jared")
+        // "name on card" names a card: dropped since the shared list (review H4); a plain field stays.
+        let name = El("AXTextField", "full name", value: "jared")
         let search = El("AXSearchField", "search", value: "cats", actions: ["AXPress", "AXRaise"])
         let web = El("AXWebArea", "page", value: "https://example.com")
         let button = El("AXButton", "send", value: "never read", actions: ["AXPress"])
@@ -95,5 +96,27 @@ final class CtrlTreeTests: XCTestCase {
         XCTAssertTrue(CtrlTreeRules.sensitive(role: "AXTextField", labels: ["", "Credit card", ""]))
         XCTAssertFalse(CtrlTreeRules.sensitive(role: "AXTextField", labels: ["pinned notes"]))
         XCTAssertFalse(CtrlTreeRules.sensitive(role: "AXButton", labels: ["password"]), "only text inputs")
+    }
+}
+
+/// ADR 0214 review H4: the helper's secure words are the spec's, card numbers and URL queries never leave.
+final class CtrlSecureWordsTests: XCTestCase {
+    func testTheListIsTheSpecs() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../../../spec/ctrl/secure-words.json").standardized
+        let spec = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        XCTAssertEqual(Set(spec["words"] as! [String]), CtrlSecureWords.words, "node scripts/ctrl/gen-secure-words.mjs")
+        XCTAssertEqual((spec["phrases"] as! [[String]]).map { $0.joined(separator: " ") },
+                       CtrlSecureWords.phrases.map { "\($0.0) \($0.1)" })
+        for l in ["SSN", "Social Security number", "Verification code", "CVV2", "Passwort", "Routing", "BIC", "One-time code"] {
+            XCTAssertTrue(CtrlTreeRules.sensitive(role: "AXTextField", labels: [l]), l)
+        }
+        XCTAssertFalse(CtrlTreeRules.sensitive(role: "AXTextField", labels: ["search"]))
+    }
+
+    func testLuhnRunsAndUrlQueriesAreScrubbed() {
+        XCTAssertFalse(CtrlTreeRules.scrub("pay 4242 4242 4242 4242 now").contains("4242"))
+        XCTAssertTrue(CtrlTreeRules.scrub("order 1234567890123 shipped").contains("1234567890123"), "not luhn")
+        XCTAssertEqual(CtrlTreeRules.scrub("https://ex.com/a?token=s3cr3t#frag", url: true), "https://ex.com/a")
     }
 }

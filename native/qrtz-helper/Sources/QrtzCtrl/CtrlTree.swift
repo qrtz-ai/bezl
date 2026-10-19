@@ -54,10 +54,8 @@ public enum CtrlTreeRules {
     public static let secureRoles: Set<String> = ["AXSecureTextField"]
     public static let secureSubroles: Set<String> = ["AXSecureTextField"]
     public static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
-    /// Words that mark a password or payment field (whole words of the lowercased label, or these phrases).
-    public static let sensitivePhrases = ["password", "passcode", "passphrase", "card number", "credit card", "debit card",
-                                          "security code", "cvv", "cvc", "csc", "expiry", "expiration", "iban",
-                                          "routing number", "account number", "pin", "one-time code", "2fa", "otp"]
+    /// Review H4: the words that mark a password, identity or payment field come from spec/ctrl/secure-words.json
+    /// (`CtrlSecureWords`, generated; the Rust host uses the same list).
     /// The only actions the host may ask for (Rust `ax::KNOWN_AX_ACTIONS`); anything else an element offers is dropped.
     public static let actions: Set<String> = ["AXPress", "AXIncrement", "AXDecrement", "AXShowMenu"]
     public static let maxValue = 500
@@ -73,8 +71,37 @@ public enum CtrlTreeRules {
     public static func sensitive(role: String, labels: [String]) -> Bool {
         guard textRoles.contains(role) else { return false }
         let text = labels.joined(separator: " ").lowercased()
-        let words = Set(text.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "-" }).map(String.init))
-        return sensitivePhrases.contains { p in p.contains(" ") ? text.contains(p) : words.contains(p) }
+        let list = text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        if list.contains(where: CtrlSecureWords.words.contains) { return true }
+        return zip(list, list.dropFirst()).contains { p in CtrlSecureWords.phrases.contains { $0 == p } }
+    }
+
+    /// Review H4: a value or title as it may leave the helper. Digit runs that pass the Luhn check (card numbers,
+    /// spaces and dashes allowed inside) are dropped, and a page URL loses its query and fragment.
+    public static func scrub(_ s: String, url: Bool = false) -> String {
+        var t = s
+        if url, var c = URLComponents(string: t) { c.query = nil; c.fragment = nil; t = c.string ?? t }
+        var out = "", run = ""
+        func flush() {
+            let digits = run.filter(\.isNumber)
+            if digits.count >= 13 && digits.count <= 19 && luhn(digits) { out += " " } else { out += run }
+            run = ""
+        }
+        for ch in t {
+            if ch.isASCII && ch.isNumber || (!run.isEmpty && (ch == " " || ch == "-")) { run.append(ch) } else { flush(); out.append(ch) }
+        }
+        flush()
+        return out
+    }
+
+    static func luhn(_ d: String) -> Bool {
+        var sum = 0
+        for (i, c) in d.reversed().enumerated() {
+            guard var n = c.wholeNumberValue else { return false }
+            if i % 2 == 1 { n *= 2; if n > 9 { n -= 9 } }
+            sum += n
+        }
+        return sum % 10 == 0
     }
 
     static func cap(_ s: String, _ n: Int) -> String { s.count > n ? String(s.prefix(n)) : s }
@@ -106,6 +133,21 @@ public protocol CtrlAXSource {
     func children(_ e: Element) -> [Element]
     func childCount(_ e: Element) -> Int
     func same(_ a: Element, _ b: Element) -> Bool
+    /// Review H4: more labels that can name a secure field (the AXTitleUIElement's title, AXDOMIdentifier,
+    /// AXDOMClassList).
+    func extraLabels(_ e: Element) -> [String]
+    /// Review M2: the fingerprint's identity parts: AXIdentifier, the process, and the titles of the ancestors
+    /// (window included).
+    func identifier(_ e: Element) -> String
+    func pid(_ e: Element) -> Int32
+    func parent(_ e: Element) -> Element?
+}
+
+public extension CtrlAXSource {
+    func extraLabels(_ e: Element) -> [String] { [] }
+    func identifier(_ e: Element) -> String { "" }
+    func pid(_ e: Element) -> Int32 { 0 }
+    func parent(_ e: Element) -> Element? { nil }
 }
 
 /// Handles this helper created → elements, per app. A new top-level read of an app drops that app's old handles.
@@ -118,7 +160,11 @@ public final class CtrlHandles<Element>: @unchecked Sendable {
 
     public func remember(_ el: Element, app: String, sig: String, prefix: String = "e") -> String {
         lock.lock(); defer { lock.unlock() }
-        if map.count >= Self.limit { map.removeAll() }
+        if map.count >= Self.limit {
+            // Review (low): say so; every older handle is now stale.
+            FileHandle.standardError.write(Data("ctrl: handle table reset at \(Self.limit)\n".utf8))
+            map.removeAll()
+        }
         next += 1
         let id = "\(prefix):\(next)"
         map[id] = (app, el, sig)
@@ -141,12 +187,23 @@ public struct CtrlTreeReader<S: CtrlAXSource> {
     public let handles: CtrlHandles<S.Element>
     public init(source: S, handles: CtrlHandles<S.Element>) { self.source = source; self.handles = handles }
 
-    /// The element's fingerprint: role, subrole, title and offered actions (no value).
+    /// The element's fingerprint: role, subrole, title, offered actions, and (review M2) AXIdentifier, the
+    /// process, and every ancestor's role and title up to the window (no value).
     public func sig(_ e: S.Element) -> String? {
         guard let role = source.role(e) else { return nil }
         let sub = source.subrole(e)
-        if CtrlTreeRules.secure(role: role, subrole: sub) { return ctrlSig([role, sub ?? ""]) }
-        return ctrlSig([role, sub ?? "", source.title(e), source.actions(e).sorted().joined(separator: ",")])
+        var parts = ["\(source.pid(e))", role, sub ?? ""]
+        if !CtrlTreeRules.secure(role: role, subrole: sub) {
+            parts += [source.title(e), source.actions(e).sorted().joined(separator: ","), source.identifier(e)]
+        }
+        var p = source.parent(e)
+        var hops = 0
+        while let a = p, hops < 24 {
+            parts += [source.role(a) ?? "", source.title(a)]
+            if source.role(a) == "AXWindow" { break }
+            p = source.parent(a); hops += 1
+        }
+        return ctrlSig(parts)
     }
 
     /// Read `root` down to `depth` levels. Returns nil if the root itself is secure or unreadable.
@@ -157,16 +214,16 @@ public struct CtrlTreeReader<S: CtrlAXSource> {
             guard budget > 0, let role = source.role(e) else { return nil }
             let sub = source.subrole(e)
             if CtrlTreeRules.secure(role: role, subrole: sub) { return nil }
-            let title = CtrlTreeRules.cap(source.title(e), CtrlTreeRules.maxTitle)
+            let title = CtrlTreeRules.cap(CtrlTreeRules.scrub(source.title(e)), CtrlTreeRules.maxTitle)
             let placeholder = CtrlTreeRules.cap(source.placeholder(e), CtrlTreeRules.maxTitle)
-            if CtrlTreeRules.sensitive(role: role, labels: [title, placeholder, source.help(e)]) { return nil }
+            if CtrlTreeRules.sensitive(role: role, labels: [title, placeholder, source.help(e)] + source.extraLabels(e)) { return nil }
             budget -= 1
             let actions = source.actions(e).filter(CtrlTreeRules.actions.contains)
             var value: String?
             if CtrlTreeRules.textRoles.contains(role) || role == "AXWebArea" {
-                value = source.value(e).map { CtrlTreeRules.cap($0, CtrlTreeRules.maxValue) }
+                value = source.value(e).map { CtrlTreeRules.cap(CtrlTreeRules.scrub($0, url: role == "AXWebArea"), CtrlTreeRules.maxValue) }
             }
-            let sig = ctrlSig([role, sub ?? "", source.title(e), source.actions(e).sorted().joined(separator: ",")])
+            let sig = self.sig(e) ?? ctrlSig([role])
             let id = handles.remember(e, app: app, sig: sig)
             let isFocused = focused.map { source.same($0, e) } ?? false
             if isFocused { focusedId = id }

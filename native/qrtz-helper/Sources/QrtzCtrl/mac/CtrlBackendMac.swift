@@ -56,6 +56,18 @@ struct MacAXSource: CtrlAXSource {
     }
     func placeholder(_ e: AXUIElement) -> String { Self.string(e, "AXPlaceholderValue") ?? "" }
     func help(_ e: AXUIElement) -> String { Self.string(e, "AXHelp") ?? "" }
+    func extraLabels(_ e: AXUIElement) -> [String] {
+        var out: [String] = []
+        if let t = Self.element(Self.raw(e, "AXTitleUIElement")) { out.append(title(t)); out.append(Self.string(t, kAXValueAttribute) ?? "") }
+        if let d = Self.string(e, "AXDOMIdentifier") { out.append(d) }
+        if let v = Self.raw(e, "AXDOMClassList"), CFGetTypeID(v) == CFArrayGetTypeID() {
+            out += (((v as! CFArray) as NSArray) as? [String]) ?? []
+        }
+        return out
+    }
+    func identifier(_ e: AXUIElement) -> String { Self.string(e, "AXIdentifier") ?? "" }
+    func pid(_ e: AXUIElement) -> Int32 { var p: pid_t = 0; AXUIElementGetPid(e, &p); return p }
+    func parent(_ e: AXUIElement) -> AXUIElement? { Self.element(Self.raw(e, kAXParentAttribute)) }
     func value(_ e: AXUIElement) -> String? {
         if role(e) == "AXWebArea" {
             guard let v = Self.raw(e, "AXURL"), CFGetTypeID(v) == CFURLGetTypeID() else { return nil }
@@ -349,9 +361,17 @@ public final class MacCtrlBackend: CtrlBackend {
             guard let a = runningApp(app) else { throw CtrlFailure("app.not_running") }
             // Only to the app ctrl brought forward: a combo never lands in another app.
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == a.processIdentifier else { throw CtrlFailure("act.refused") }
+            // Review (low): no clipboard or select-all combo into a secure field.
+            if CtrlDoPolicy.clipboardCombos.contains(combo) {
+                let appEl = AXUIElementCreateApplication(a.processIdentifier)
+                AXUIElementSetMessagingTimeout(appEl, 1.0)
+                if let f = MacAXSource.element(MacAXSource.raw(appEl, kAXFocusedUIElementAttribute)),
+                   CtrlTreeRules.secure(role: ax.role(f) ?? "", subrole: ax.subrole(f)) { throw CtrlFailure("act.refused") }
+            }
             try Self.post(combo: combo, to: a.processIdentifier)
         case let .openURL(app, url):
-            guard let u = URL(string: url) else { throw CtrlFailure("act.refused") }
+            // Review (low): the helper itself only opens a URL in a browser.
+            guard Self.browserIds().contains(app), let u = URL(string: url) else { throw CtrlFailure("act.refused") }
             let at = try appURL(app)
             let cfg = NSWorkspace.OpenConfiguration()
             cfg.activates = true
@@ -359,6 +379,10 @@ public final class MacCtrlBackend: CtrlBackend {
             try Self.wait(10) { done in NSWorkspace.shared.open([u], withApplicationAt: at, configuration: cfg) { _, e in done(e) } }
         case let .openApp(app):
             let at = try appURL(app)
+            // Review (low): only an installed app bundle (the Applications folders), never qrtz itself.
+            let dirs = ["/Applications/", "/System/Applications/", NSHomeDirectory() + "/Applications/"]
+            guard app != Bundle.main.bundleIdentifier, !app.hasPrefix("ai.qrtz."),
+                  dirs.contains(where: at.standardizedFileURL.path.hasPrefix) else { throw CtrlFailure("act.refused") }
             let cfg = NSWorkspace.OpenConfiguration()
             cfg.activates = true
             cfg.promptsUserIfNeeded = false

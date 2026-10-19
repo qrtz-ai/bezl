@@ -265,7 +265,7 @@ impl Pruner {
         }
         self.kept += 1;
         let value_tokens = match (&n.value, text_input || n.role == "AXWebArea") {
-            (Some(v), true) => label_tokens(v),
+            (Some(v), true) => label_tokens(&scrub(v, n.role == "AXWebArea")),
             _ => Vec::new(),
         };
         out.push(AxNode {
@@ -414,6 +414,57 @@ pub fn find_by_fingerprint(root: &AxNode, fp: &str) -> Vec<String> {
     }
     let mut out = Vec::new();
     walk(root, root, fp, &mut out);
+    out
+}
+
+/// Review H4 (the host's copy of the helper's `CtrlTreeRules.scrub`): digit runs that pass the Luhn check are
+/// dropped, and a page URL loses its query and fragment, before anything is hashed.
+pub fn scrub(v: &str, url: bool) -> String {
+    let v = if url {
+        v.split(['?', '#']).next().unwrap_or("")
+    } else {
+        v
+    };
+    fn luhn(d: &[u32]) -> bool {
+        d.iter()
+            .rev()
+            .enumerate()
+            .map(|(i, n)| {
+                if i % 2 == 1 {
+                    let m = n * 2;
+                    if m > 9 {
+                        m - 9
+                    } else {
+                        m
+                    }
+                } else {
+                    *n
+                }
+            })
+            .sum::<u32>()
+            % 10
+            == 0
+    }
+    let mut out = String::new();
+    let mut run = String::new();
+    let flush = |run: &mut String, out: &mut String| {
+        let d: Vec<u32> = run.chars().filter_map(|c| c.to_digit(10)).collect();
+        if (13..=19).contains(&d.len()) && luhn(&d) {
+            out.push(' ');
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    };
+    for c in v.chars() {
+        if c.is_ascii_digit() || (!run.is_empty() && (c == ' ' || c == '-')) {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut run, &mut out);
     out
 }
 

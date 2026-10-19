@@ -80,36 +80,8 @@ const LABEL_PHRASES: &[(&str, &str, &str)] = &[
     ("cancel", "subscription", "cancelsubscription"),
 ];
 
-/// Words that make a text input a password or payment field: excluded from the tree entirely.
-pub const SENSITIVE_WORDS: &[&str] = &[
-    "password",
-    "passwort",
-    "passcode",
-    "passphrase",
-    "pin",
-    "cvv",
-    "cvv2",
-    "cvc",
-    "csc",
-    "iban",
-    "ssn",
-    "otp",
-    "2fa",
-    "expiry",
-    "expiration",
-    "card",
-    "creditcard",
-    "routing",
-    "swift",
-    "bic",
-];
-const SENSITIVE_PHRASES: &[(&str, &str)] = &[
-    ("security", "code"),
-    ("account", "number"),
-    ("social", "security"),
-    ("verification", "code"),
-    ("one", "time"),
-];
+/// Review H4: one list for the host and the helper, generated from spec/ctrl/secure-words.json.
+pub use crate::secure_words::{SENSITIVE_PHRASES, SENSITIVE_WORDS};
 
 /// Apps where any change asks (System Settings).
 pub const SETTINGS_APPS: &[&str] = &["com.apple.systempreferences", "com.apple.Settings"];
@@ -479,6 +451,45 @@ mod tests {
             label_risk("sender").is_empty(),
             "a longer word isn't the rule word"
         );
+    }
+
+    #[test]
+    fn card_numbers_and_url_queries_are_scrubbed() {
+        use crate::ax::scrub;
+        assert!(!scrub("pay 4242 4242 4242 4242 now", false).contains("4242"));
+        assert!(scrub("order 1234567890123", false).contains("1234567890123"));
+        assert_eq!(scrub("https://ex.com/a?token=x#f", true), "https://ex.com/a");
+    }
+
+    #[test]
+    fn the_secure_words_are_the_specs() {
+        let spec: serde_json::Value =
+            serde_json::from_str(include_str!("../../../spec/ctrl/secure-words.json")).unwrap();
+        let words: Vec<&str> = spec["words"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_str().unwrap())
+            .collect();
+        assert_eq!(words, SENSITIVE_WORDS, "node scripts/ctrl/gen-secure-words.mjs");
+        let phrases: Vec<(&str, &str)> = spec["phrases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| (p[0].as_str().unwrap(), p[1].as_str().unwrap()))
+            .collect();
+        assert_eq!(phrases, SENSITIVE_PHRASES);
+        for l in [
+            "SSN",
+            "Social Security",
+            "Verification code",
+            "CVV2",
+            "Passwort",
+            "Routing",
+            "BIC",
+        ] {
+            assert!(sensitive_field(l), "{l}");
+        }
     }
 
     #[test]

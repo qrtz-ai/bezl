@@ -34,5 +34,7 @@ pub mod helper;
 pub mod laya;
 pub mod log;
 pub mod runner;
+#[rustfmt::skip]
+pub mod secure_words;
 pub mod service;
 pub mod store;
