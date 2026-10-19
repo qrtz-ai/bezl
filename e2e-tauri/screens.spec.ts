@@ -266,6 +266,22 @@ test('settings speech section: re-download, delete', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('settings → open-source licenses shows the notices that ship (audit P0-4)', async ({
+  page,
+}) => {
+  await page.goto('/?dev=1');
+  await tab(page, 'settings').click();
+  await page.getByTestId('licenses-open').click();
+  const text = page.getByTestId('licenses-text');
+  await expect(text).toContainText('Draft for legal review by Jared');
+  await expect(text).toContainText(
+    'Licensed by NVIDIA Corporation under the NVIDIA Open Model License',
+  );
+  await clean(page, 'settings-licenses');
+  await page.keyboard.press('Escape');
+  await expect(text).toHaveCount(0);
+});
+
 test('cold start: the note view paints within budget', async ({ page }) => {
   await page.goto('/?dev=1');
   await expect(page.getByTestId('note-app')).toBeVisible();

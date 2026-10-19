@@ -164,6 +164,25 @@
         "additionalProperties": false
       }
     },
+    "app:licenses": {
+      "version": 1,
+      "capability": "app.info",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
     "config:get": {
       "version": 1,
       "capability": "config.read",

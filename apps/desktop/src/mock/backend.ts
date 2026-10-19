@@ -39,6 +39,8 @@ import { resolveManifest } from '../shared/manifests';
 import { ctrlHandlers } from './ctrl';
 import { SNAP_DEFAULT_SHORTCUTS } from '@qrtz/core';
 import { packagesHandlers } from './packages';
+// The real notices, as the Rust backend builds them in (audit P0-4).
+import notices from '../../../../THIRD_PARTY_NOTICES.md?raw';
 
 type Json = Record<string, unknown>;
 const params = new URLSearchParams(window.location.search);
@@ -308,6 +310,7 @@ export function createMockBridge(): TauriBridge {
   }
 
   const handlers: Partial<Handlers> = {
+    'app:licenses': () => ({ text: notices }),
     'app:get-info': () => ({
       ...ipcSamples['app:get-info'].response,
       electron: 'tauri (mock ipc)',

@@ -687,6 +687,7 @@ impl AppService {
                 "name": self.info.name, "version": self.info.version, "platform": self.info.platform,
                 "arch": self.info.arch, "electron": self.info.shell,
             })),
+            "app:licenses" => Ok(json!({ "text": crate::THIRD_PARTY_NOTICES })),
             "config:get" => Ok(self.config()),
             "config:set" => self.set_config(&p["patch"]),
             // ADR 0146 M1.4: the caller's module comes from its view, so a page can only reach its own settings.

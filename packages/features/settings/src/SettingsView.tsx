@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import {
   Button,
   Callout,
+  Dialog,
   Heading,
+  LongText,
   Page,
   Progress,
   Select,
@@ -51,6 +53,13 @@ export default function SettingsView() {
   const h = live ?? helper;
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [logsMsg, setLogsMsg] = useState<string | null>(null);
+  // Audit P0-4: the third-party notices built into this qrtz (THIRD_PARTY_NOTICES.md), loaded only when opened.
+  const [licenses, setLicenses] = useState<string | null>(null);
+  const openLicenses = () =>
+    void qrtz.invoke('app:licenses').then(
+      (r) => setLicenses(r.text),
+      (e: Error) => setError(e.message),
+    );
   // ADR 0083: the local logs (~/Library/Logs/qrtz), for sending to us when something breaks.
   const logs = (reveal: boolean) => {
     setLogsMsg(null);
@@ -390,6 +399,14 @@ export default function SettingsView() {
           >
             check for updates
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openLicenses}
+            data-testid="licenses-open"
+          >
+            open-source licenses
+          </Button>
         </Stack>
         {logsMsg ? (
           <Text variant="caption" muted data-testid="logs-result" role="status">
@@ -407,6 +424,14 @@ export default function SettingsView() {
           </Text>
         ) : null}
       </SettingsSection>
+      <Dialog
+        open={licenses !== null}
+        onClose={() => setLicenses(null)}
+        title="open-source licenses"
+        width={760}
+      >
+        <LongText data-testid="licenses-text">{licenses}</LongText>
+      </Dialog>
     </Page>
   );
 }

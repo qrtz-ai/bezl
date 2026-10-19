@@ -87,6 +87,13 @@ export const ipcContract = {
     request: z.void(),
     response: AppInfo,
   }),
+  /** The third-party notices (THIRD_PARTY_NOTICES.md, built into the app) for settings → "open-source licenses". */
+  'app:licenses': defineChannel({
+    version: 1,
+    capability: 'app.info',
+    request: z.void(),
+    response: z.object({ text: z.string() }),
+  }),
   'config:get': defineChannel({
     version: 1,
     capability: 'config.read',

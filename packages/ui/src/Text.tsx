@@ -198,3 +198,26 @@ export function Link({
     </button>
   );
 }
+
+/** A long preformatted text inside a dialog (settings → "open-source licenses"): it scrolls, at most 60% of the window. */
+export function LongText({
+  children,
+  'data-testid': testId,
+}: {
+  children: ReactNode;
+  'data-testid'?: string;
+}) {
+  const t = useTheme();
+  return (
+    <div style={{ padding: t.space[4] }}>
+      <Code
+        block
+        data-testid={testId}
+        tabIndex={0}
+        style={{ maxHeight: '60vh' }}
+      >
+        {children}
+      </Code>
+    </div>
+  );
+}

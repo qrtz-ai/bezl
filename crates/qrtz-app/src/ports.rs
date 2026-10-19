@@ -47,6 +47,8 @@ pub const STORAGE_CHANNELS: &[&str] = &[
 /// Channels the app service itself answers.
 pub const APP_CHANNELS: &[&str] = &[
     "app:get-info",
+    // Audit P0-4: the third-party notices, built into the binary (settings → "open-source licenses").
+    "app:licenses",
     "config:get",
     "config:set",
     "note:set-auto-record",

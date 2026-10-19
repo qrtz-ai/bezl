@@ -502,6 +502,10 @@ const packagePlan = {
 };
 
 export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
+  'app:licenses': {
+    request: undefined,
+    response: { text: '# Third-party notices\n' },
+  },
   'app:get-info': {
     request: undefined,
     response: {

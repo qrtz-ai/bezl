@@ -123,3 +123,48 @@ describe('global settings (ADR 0146 M1.4)', () => {
     root.unmount();
   });
 });
+
+describe('open-source licenses (audit P0-4)', () => {
+  it('shows the notices the build carries, fetched only when asked', async () => {
+    const calls: string[] = [];
+    const client = {
+      subApp: 'settings',
+      invoke: async (channel: string) => {
+        calls.push(channel);
+        if (channel === 'config:get') return defaultConfig();
+        if (channel === 'app:licenses')
+          return {
+            text: 'Licensed by NVIDIA Corporation under the NVIDIA Open Model License',
+          };
+        return (ipcSamples as Record<string, { response: unknown }>)[channel]
+          ?.response;
+      },
+      on: () => () => {},
+    } as unknown as QrtzClient;
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () =>
+      root.render(
+        <ThemeProvider mode="light">
+          <QrtzClientProvider client={client}>
+            <SettingsView />
+          </QrtzClientProvider>
+        </ThemeProvider>,
+      ),
+    );
+    const q = (id: string) =>
+      document.body.querySelector(`[data-testid="${id}"]`);
+    expect(q('licenses-text')).toBeNull();
+    expect(calls).not.toContain('app:licenses');
+    await act(async () => (q('licenses-open') as HTMLElement).click());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(q('licenses-text')?.textContent).toContain(
+      'NVIDIA Open Model License',
+    );
+    root.unmount();
+    el.remove();
+  });
+});

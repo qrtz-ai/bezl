@@ -101,6 +101,19 @@ async fn app_channels_and_capabilities() {
     let (_svc, r, hud) = app(&dir.path().join("config.json"), None);
     let res = call(&r, "settings", "app:get-info", Value::Null).await;
     assert_eq!(res["data"]["electron"], "tauri test");
+    // Audit P0-4: the notices the build carries, for settings → "open-source licenses".
+    let lic = call(&r, "settings", "app:licenses", Value::Null).await;
+    let text = lic["data"]["text"].as_str().unwrap_or_default();
+    assert_eq!(text, qrtz_app::THIRD_PARTY_NOTICES);
+    for s in [
+        "Draft for legal review by Jared",
+        "Licensed by NVIDIA Corporation under the NVIDIA Open Model License",
+        "FluidInference/parakeet-tdt-0.6b-v2-coreml",
+        "OpenMDW",
+        "FluidAudio",
+    ] {
+        assert!(text.contains(s), "{s}");
+    }
     assert_eq!(
         call(&r, "shell", "helper:status", Value::Null).await["data"]["state"],
         "stopped"
