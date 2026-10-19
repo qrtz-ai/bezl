@@ -192,3 +192,48 @@ async fn the_stdio_protocol_checks_channel_and_capability_against_the_contract()
     }
     assert_eq!(seen.lock().unwrap().len(), 1, "refused lines send nothing");
 }
+
+#[tokio::test]
+async fn stdin_lines_are_capped_and_an_overlong_line_is_drained_to_its_newline() {
+    let mut data = vec![b'a'; MAX_LINE * 5];
+    data.extend_from_slice(b"\n{\"id\":1}\nlast");
+    let mut r = tokio::io::BufReader::with_capacity(1024, &data[..]);
+    assert_eq!(read_line_capped(&mut r, MAX_LINE).await.unwrap(), Line::TooLong);
+    assert_eq!(
+        read_line_capped(&mut r, MAX_LINE).await.unwrap(),
+        Line::Ok(b"{\"id\":1}".to_vec())
+    );
+    assert_eq!(
+        read_line_capped(&mut r, MAX_LINE).await.unwrap(),
+        Line::Ok(b"last".to_vec())
+    );
+    assert_eq!(read_line_capped(&mut r, MAX_LINE).await.unwrap(), Line::Eof);
+    // Exactly MAX_LINE is fine.
+    let mut ok = vec![b'b'; MAX_LINE];
+    ok.push(b'\n');
+    let mut r = &ok[..];
+    assert_eq!(
+        read_line_capped(&mut r, MAX_LINE).await.unwrap(),
+        Line::Ok(vec![b'b'; MAX_LINE])
+    );
+    assert_eq!(line_too_long()["error"]["code"], "E_VALIDATION");
+}
+
+#[test]
+fn the_release_gate_marker_is_in_the_binary_and_in_verify_bundle() {
+    let bin = std::fs::read(env!("CARGO_BIN_EXE_qrtz-dash-net")).unwrap();
+    let m = BUNDLE_MARKER.as_bytes();
+    assert!(
+        bin.windows(m.len()).any(|w| w == m),
+        "marker not compiled into the helper"
+    );
+    let sh = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../scripts/release/verify-bundle.sh"
+    ))
+    .unwrap();
+    assert!(
+        sh.contains(BUNDLE_MARKER),
+        "verify-bundle.sh greps a different marker"
+    );
+}

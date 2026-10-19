@@ -46,6 +46,18 @@ for name in qrtz-app qrtz-echo qrtz; do [[ -x "$macos/$name" ]] || fail "$name i
 while IFS= read -r -d '' f; do
   fail "${f#"$app"/}: qrtz-dash-net (Agent Dash's network helper) must not ship in a release bundle (ADR 0231)"
 done < <(find "$app" -name 'qrtz-dash-net*' -print0)
+# Bozniak M5: a renamed copy is caught too. Every file is grepped for the marker compiled into the helper
+# (qrtz_dash_net::BUNDLE_MARKER, kept equal by a test), and every signed file's identifier is checked.
+dash_marker="qrtz-dash-net:adr-0231:never-in-a-release-bundle:5c1e9b"
+while IFS= read -r -d '' f; do
+  if grep -a -q -F "$dash_marker" "$f" 2>/dev/null; then
+    fail "${f#"$app"/}: contains the qrtz-dash-net marker (a renamed copy of Agent Dash's network helper) (ADR 0231)"
+  fi
+  if command -v codesign >/dev/null 2>&1; then
+    sid="$(codesign -dv "$f" 2>&1 | sed -n 's/^Identifier=//p')"
+    case "$sid" in *dash-net* | *dash_net*) fail "${f#"$app"/}: signed as $sid (Agent Dash's network helper) (ADR 0231)" ;; esac
+  fi
+done < <(find "$app" -type f -print0)
 
 for bin in "$macos"/*; do
   [[ -f "$bin" ]] || continue

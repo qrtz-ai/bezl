@@ -59,6 +59,29 @@ describe('verify-bundle.sh', () => {
     }
   });
 
+  it('fails on a renamed copy of the helper by its compiled-in marker (ADR 0231, M5)', () => {
+    const marker = read('crates/qrtz-dash-net/src/lib.rs').match(
+      /BUNDLE_MARKER: &str = "([^"]+)"/,
+    )[1];
+    expect(read('scripts/release/verify-bundle.sh')).toContain(marker);
+    const app = path.join(mkdtempSync(path.join(os.tmpdir(), 'vb-')), 'qrtz.app');
+    mkdirSync(path.join(app, 'Contents/MacOS'), { recursive: true });
+    mkdirSync(path.join(app, 'Contents/Resources'), { recursive: true });
+    const blob = Buffer.concat([
+      Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]),
+      Buffer.from(marker),
+      Buffer.alloc(16),
+    ]);
+    writeFileSync(path.join(app, 'Contents/Resources/innocent-tool'), blob, {
+      mode: 0o755,
+    });
+    const r = spawnSync('bash', [script, app], { encoding: 'utf8' });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(
+      'Contents/Resources/innocent-tool: contains the qrtz-dash-net marker',
+    );
+  });
+
   it('is called by release:mac, publish-local.sh and app-release.yml', () => {
     expect(read('scripts/release/sign-notarize.sh')).toContain(
       'scripts/release/verify-bundle.sh" "$APP"',

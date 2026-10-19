@@ -10,7 +10,7 @@ use qrtz_ipc::{AppError, ErrorCode};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 
 pub const HELPER_NAME: &str = "qrtz-dash-net";
@@ -27,10 +27,29 @@ pub fn default_helper_path() -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
+/// One line of at most `max` bytes (`read_until` capped at `max + 1`); `None` at EOF or when the line is longer
+/// (the caller then drops the helper, so the rest is never read).
+pub async fn read_line_capped<R: AsyncBufRead + Unpin>(
+    r: &mut R,
+    max: usize,
+) -> std::io::Result<Option<Vec<u8>>> {
+    let mut buf = Vec::new();
+    let n = (&mut *r).take(max as u64 + 1).read_until(b'\n', &mut buf).await?;
+    if n == 0 {
+        return Ok(None);
+    }
+    if buf.last() == Some(&b'\n') {
+        buf.pop();
+    } else if buf.len() > max {
+        return Ok(None);
+    }
+    Ok(Some(buf))
+}
+
 pub struct DashNet {
     child: Child,
     stdin: ChildStdin,
-    stdout: Lines<BufReader<ChildStdout>>,
+    stdout: BufReader<ChildStdout>,
     next: u64,
 }
 
@@ -60,7 +79,7 @@ impl DashNet {
         Ok(DashNet {
             child,
             stdin,
-            stdout: BufReader::new(stdout).lines(),
+            stdout: BufReader::new(stdout),
             next: 1,
         })
     }
@@ -75,15 +94,13 @@ impl DashNet {
         let gone = || unavailable("the dash helper stopped");
         self.stdin.write_all(line.as_bytes()).await.map_err(|_| gone())?;
         self.stdin.flush().await.map_err(|_| gone())?;
-        let reply = tokio::time::timeout(TIMEOUT, self.stdout.next_line())
+        // Bozniak M2: the reply line is read with a byte limit, never in full.
+        let reply = tokio::time::timeout(TIMEOUT, read_line_capped(&mut self.stdout, MAX_REPLY))
             .await
             .map_err(|_| unavailable("the dash helper timed out"))?
             .map_err(|_| gone())?
             .ok_or_else(gone)?;
-        if reply.len() > MAX_REPLY {
-            return Err(gone());
-        }
-        let v: Value = serde_json::from_str(&reply).map_err(|_| gone())?;
+        let v: Value = serde_json::from_slice(&reply).map_err(|_| gone())?;
         if v["id"] != json!(id) {
             return Err(gone());
         }
@@ -110,5 +127,22 @@ impl DashNet {
         {
             let _ = self.child.kill().await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn reply_lines_are_read_with_a_byte_limit() {
+        let mut big = vec![b'a'; 100];
+        big.push(b'\n');
+        let mut r = BufReader::new(&big[..]);
+        assert!(read_line_capped(&mut r, 99).await.unwrap().is_none());
+        let mut r = BufReader::new(&big[..]);
+        assert_eq!(read_line_capped(&mut r, 100).await.unwrap().unwrap().len(), 100);
+        let mut r = BufReader::new(&b""[..]);
+        assert!(read_line_capped(&mut r, 10).await.unwrap().is_none());
     }
 }

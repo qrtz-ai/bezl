@@ -20,6 +20,54 @@ pub const KEYCHAIN_SERVICE: &str = "ai.qrtz.dash-net";
 pub const KEYCHAIN_ACCOUNT: &str = "owner-key";
 /// Longest stdin line accepted (a `dash:*` call is a few hundred bytes).
 pub const MAX_LINE: usize = 16 * 1024;
+/// Largest server response body read (Bozniak M2).
+pub const MAX_RESPONSE: usize = 1024 * 1024;
+/// Compiled into the helper binary (Bozniak M5): scripts/release/verify-bundle.sh greps every bundle file for it, so
+/// a renamed copy of the helper still fails the release gate. Keep the two in sync (a test checks).
+pub const BUNDLE_MARKER: &str = "qrtz-dash-net:adr-0231:never-in-a-release-bundle:5c1e9b";
+
+/// The answer to a line over [`MAX_LINE`] (its id is never parsed).
+pub fn line_too_long() -> Value {
+    json!({"id": Value::Null, "error": bad("line too long").to_json()})
+}
+
+/// One line read with a byte cap (Bozniak M1).
+#[derive(Debug, PartialEq, Eq)]
+pub enum Line {
+    /// The line, without its newline.
+    Ok(Vec<u8>),
+    /// Longer than the cap: dropped, and the input drained to the next newline.
+    TooLong,
+    Eof,
+}
+
+/// Reads one line holding at most `max` bytes in memory: `read_until` capped at `max + 1`, then, if the line is
+/// longer, drains (and discards) up to the next newline in 64 KB pieces.
+pub async fn read_line_capped<R: tokio::io::AsyncBufRead + Unpin>(
+    r: &mut R,
+    max: usize,
+) -> std::io::Result<Line> {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt};
+    let mut buf = Vec::new();
+    let n = (&mut *r).take(max as u64 + 1).read_until(b'\n', &mut buf).await?;
+    if n == 0 {
+        return Ok(Line::Eof);
+    }
+    if buf.last() == Some(&b'\n') {
+        buf.pop();
+        return Ok(Line::Ok(buf));
+    }
+    if buf.len() <= max {
+        return Ok(Line::Ok(buf)); // the last line, with no newline
+    }
+    loop {
+        let mut sink = Vec::new();
+        let k = (&mut *r).take(64 * 1024).read_until(b'\n', &mut sink).await?;
+        if k == 0 || sink.last() == Some(&b'\n') {
+            return Ok(Line::TooLong);
+        }
+    }
+}
 
 /// The channels this helper answers, with the capability each needs (must match ipc-contract.json).
 pub const CHANNELS: &[(&str, &str)] = &[
@@ -219,19 +267,21 @@ fn unavailable() -> AppError {
     AppError::new(ErrorCode::Unavailable, "the dash server can't be reached").retryable(true)
 }
 
-/// The real transport: reqwest with rustls, a 10 s timeout and no redirects.
+/// The real transport: reqwest with rustls, a 10 s timeout, no redirects, https only and no proxy.
 pub struct Https(reqwest::Client);
 
-impl Default for Https {
-    fn default() -> Self {
-        Https(
-            reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .redirect(reqwest::redirect::Policy::none())
-                .https_only(true)
-                .build()
-                .unwrap_or_default(),
-        )
+impl Https {
+    /// Bozniak M3: no fallback. If this client can't be built there is no client (a default one would follow
+    /// redirects, allow plain http and use proxies), and the helper exits.
+    pub fn new() -> Result<Self, AppError> {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .https_only(true)
+            .no_proxy()
+            .build()
+            .map(Https)
+            .map_err(|_| unavailable())
     }
 }
 
@@ -258,7 +308,17 @@ impl Transport for Https {
         // Errors are mapped to one fixed message: nothing from the URL or headers reaches the app.
         let r = rb.send().await.map_err(|_| unavailable())?;
         let status = r.status().as_u16();
-        let bytes = r.bytes().await.map_err(|_| unavailable())?;
+        // Bozniak M2: read in chunks and stop past MAX_RESPONSE (never r.bytes(), which buffers it all).
+        let mut r = r;
+        let mut bytes = Vec::new();
+        while let Some(c) = r.chunk().await.map_err(|_| unavailable())? {
+            if bytes.len() + c.len() > MAX_RESPONSE {
+                return Err(
+                    AppError::new(ErrorCode::Unavailable, "the dash server sent too much").retryable(false),
+                );
+            }
+            bytes.extend_from_slice(&c);
+        }
         Ok((status, serde_json::from_slice(&bytes).unwrap_or(Value::Null)))
     }
 }
@@ -373,7 +433,7 @@ impl Helper {
     /// refused without any request.
     pub async fn handle_line(&self, line: &str) -> Value {
         if line.len() > MAX_LINE {
-            return json!({"id": Value::Null, "error": bad("line too long").to_json()});
+            return line_too_long();
         }
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return json!({"id": Value::Null, "error": bad("invalid json").to_json()});
