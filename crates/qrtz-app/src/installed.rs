@@ -86,9 +86,19 @@ pub fn installed_modules(lock: &QrtzLock) -> InstalledModules {
 
 /// True if a renderer's `config:set` patch touches `modules.<id>.installed` (only the host writes it).
 pub fn patch_touches_installed(patch: &Value) -> bool {
+    patch_touches(patch, "installed")
+}
+
+/// True if a renderer's `config:set` patch touches `modules.<id>.bundledFallback`: the host says when a bundled app
+/// (echo) runs the copy inside qrtz.app instead of its update (ADR 0180); a renderer can neither set nor clear it.
+pub fn patch_touches_bundled_fallback(patch: &Value) -> bool {
+    patch_touches(patch, "bundledFallback")
+}
+
+fn patch_touches(patch: &Value, key: &str) -> bool {
     patch["modules"]
         .as_object()
-        .is_some_and(|m| m.values().any(|v| v.get("installed").is_some()))
+        .is_some_and(|m| m.values().any(|v| v.get(key).is_some()))
 }
 
 /// An installed extension's helper, as the lock and its `qrtz.json` name it.
@@ -633,5 +643,18 @@ mod tests {
             &json!({"modules": {"echo": {"enabled": true}}})
         ));
         assert!(!patch_touches_installed(&json!({"theme": "dark"})));
+    }
+
+    #[test]
+    fn only_the_host_writes_bundled_fallback() {
+        for v in [json!(true), json!(false), Value::Null] {
+            assert!(patch_touches_bundled_fallback(
+                &json!({"modules": {"echo": {"bundledFallback": v}}})
+            ));
+        }
+        assert!(!patch_touches_bundled_fallback(
+            &json!({"modules": {"echo": {"enabled": false}}})
+        ));
+        assert!(!patch_touches_bundled_fallback(&json!({"echo": {"bundledFallback": true}})));
     }
 }

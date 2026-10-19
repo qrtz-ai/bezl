@@ -236,6 +236,20 @@ async fn config_defaults_validation_persistence_and_events() {
     assert_eq!(cfg, contract().config_defaults);
     let bad = call(&r, "settings", "config:set", json!({"patch": {"theme": "neon"}})).await;
     assert_eq!(bad["error"]["code"], "E_VALIDATION");
+    // ADR 0180: modules.<id>.bundledFallback is host-written (like installed): a renderer can't set or clear it.
+    for v in [json!(true), json!(false)] {
+        let bad = call(
+            &r,
+            "settings",
+            "config:set",
+            json!({"patch": {"modules": {"echo": {"bundledFallback": v}}}}),
+        )
+        .await;
+        assert_eq!(bad["error"]["code"], "E_VALIDATION", "{bad}");
+        assert!(bad.to_string().contains("set by qrtz"), "{bad}");
+    }
+    let after = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
+    assert!(after["modules"]["echo"].get("bundledFallback").is_none(), "{after}");
     let ok = call(
         &r,
         "settings",
