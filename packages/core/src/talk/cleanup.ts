@@ -145,6 +145,94 @@ const layoutCommand =
       : withText;
   };
 
+/** ADR 0186: words that, right after "Scratch that," or "Scratch that.", make it a literal request ("Scratch that,
+ * please."), not the correction. Same list in cleanup.rs. */
+export const SCRATCH_LITERAL_NEXT = new Set([
+  'please',
+  'would',
+  'will',
+  'can',
+  'could',
+  'and',
+  'or',
+  'but',
+  'too',
+  'again',
+  'now',
+  'for',
+  'gently',
+  'here',
+  'there',
+  'okay',
+  'ok',
+]);
+
+const asciiLower = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/** Is the ".", "!" or "?" that ends `p` an unambiguous sentence end? The word before it is ASCII letters or digits
+ * (an apostrophe inside is fine), at least two, with no dot of its own. Same rule in cleanup.rs. */
+function cleanSentenceEnd(p: string): boolean {
+  const mark = p.at(-1);
+  if (mark !== '.' && mark !== '!' && mark !== '?') return false;
+  const body = p.slice(0, -1);
+  const token = body.split(/[ \n]/).at(-1) ?? '';
+  if (token.length < 2 || !/^[A-Za-z0-9']+$/.test(token)) return false;
+  if (!/[A-Za-z0-9]$/.test(token)) return false;
+  return !(mark === '.' && endsWithAbbreviation(body));
+}
+
+/** The text with the "Scratch that" at `at` applied, or null to leave it as spoken (ADR 0186). */
+function scratchAt(t: string, at: number): string | null {
+  const before = t.slice(0, at);
+  const p = before.replace(/ +$/, '');
+  if (p.length === before.length || !cleanSentenceEnd(p)) return null;
+  let after = t.slice(at + 'scratch that'.length);
+  if (!after.startsWith(',') && !after.startsWith('.')) return null;
+  after = after.slice(1);
+  const rest = after.replace(/^ +/, '');
+  if (rest.length === after.length || !/^[A-Za-z0-9]/.test(rest)) return null;
+  const next = asciiLower(/^[A-Za-z0-9]*/.exec(rest)?.[0] ?? '');
+  if (SCRATCH_LITERAL_NEXT.has(next)) return null;
+  const body = p.slice(0, -1);
+  let start = 0;
+  for (let j = body.length; j >= 1; j--) {
+    const c = body[j - 1];
+    if (c === '\n') {
+      start = j;
+      break;
+    }
+    if ((c === '.' || c === '!' || c === '?') && body[j] === ' ') {
+      if (!cleanSentenceEnd(body.slice(0, j))) return null;
+      start =
+        j + (body.slice(j).length - body.slice(j).replace(/^ +/, '').length);
+      break;
+    }
+  }
+  return t.slice(0, start) + rest;
+}
+
+/**
+ * ADR 0186: the explicit self-correction "Scratch that", only as its own sentence after a clean sentence end and
+ * followed by "," or "." and the replacing words: the sentence before it goes, with the command. Anything unclear is
+ * left as spoken. Same rule in cleanup.rs.
+ */
+function scratchThat(t: string): string {
+  const CMD = 'scratch that';
+  // One lowercase copy, redone only after a rewrite (rare).
+  let lower = asciiLower(t);
+  let from = 0;
+  for (let at = lower.indexOf(CMD); at >= 0; at = lower.indexOf(CMD, from)) {
+    from = at + CMD.length;
+    const out = scratchAt(t, at);
+    if (out !== null) {
+      t = out;
+      lower = asciiLower(t);
+      from = 0;
+    }
+  }
+  return t;
+}
+
 /** Writes dictionary terms the way the user spells them ("cue arts" → "qrtz" when listed as an alias). */
 export function applyDictionary(
   text: string,
@@ -165,8 +253,8 @@ export function applyDictionary(
 }
 
 /**
- * On-device cleanup: spoken commands, fillers, stutters, spacing, capitalization, terminal punctuation (ADR 0101:
- * which repeats collapse, and no "." on a short dictation).
+ * On-device cleanup: spoken commands, fillers, stutters, spacing, "Scratch that" (ADR 0186), capitalization, terminal
+ * punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation).
  * Deterministic and instant; talk's only cleanup (no LLM pass, ADR 0071).
  */
 export function ruleCleanup(
@@ -199,6 +287,7 @@ export function ruleCleanup(
     t = t.replace(CONTINUED_DOT, (all: string, w: string) =>
       isAbbreviation(w) ? all : w,
     );
+  t = scratchThat(t);
   t = t.replace(
     // Not after a dotted abbreviation ("e.g. the", "3 p.m. today"), nor after "Mr." / "etc." (ADR 0120).
     /(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])/g,

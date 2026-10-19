@@ -734,12 +734,12 @@
     {
       "raw": "Let's meet on Tuesday. Scratch that, let's meet on Wednesday.",
       "dict": false,
-      "expect": "Let's meet on Tuesday. Scratch that, let's meet on Wednesday."
+      "expect": "Let's meet on Wednesday."
     },
     {
       "raw": "Send it to Mark. Scratch that. Send it to Sarah.",
       "dict": false,
-      "expect": "Send it to Mark. Scratch that. Send it to Sarah."
+      "expect": "Send it to Sarah."
     },
     {
       "raw": "We moved the data to post gres last week.",
@@ -815,6 +815,111 @@
       "raw": "Thanks for the update. new paragraph Here's my take.",
       "dict": false,
       "expect": "Thanks for the update.\n\nHere's my take."
+    },
+    {
+      "raw": "Book the flight for Monday. Scratch that, book it for Tuesday morning.",
+      "dict": false,
+      "expect": "Book it for Tuesday morning."
+    },
+    {
+      "raw": "Thanks for the notes. The demo is on Friday. Scratch that, the demo is on Thursday.",
+      "dict": false,
+      "expect": "Thanks for the notes. The demo is on Thursday."
+    },
+    {
+      "raw": "Is the call at noon? Scratch that, is the call at one?",
+      "dict": false,
+      "expect": "Is the call at one?"
+    },
+    {
+      "raw": "Hi Sam,\n\nThe launch is Monday. Scratch that, the launch is Tuesday.",
+      "dict": false,
+      "expect": "Hi Sam,\n\nThe launch is Tuesday."
+    },
+    {
+      "raw": "I need to scratch that off my list.",
+      "dict": false,
+      "expect": "I need to scratch that off my list."
+    },
+    {
+      "raw": "My back itches. Scratch that itch for me.",
+      "dict": false,
+      "expect": "My back itches. Scratch that itch for me."
+    },
+    {
+      "raw": "My back itches. Scratch that, please.",
+      "dict": false,
+      "expect": "My back itches. Scratch that, please."
+    },
+    {
+      "raw": "The cat has a sore spot. Don't scratch that, okay?",
+      "dict": false,
+      "expect": "The cat has a sore spot. Don't scratch that, okay?"
+    },
+    {
+      "raw": "Scratch that, I meant Friday.",
+      "dict": false,
+      "expect": "Scratch that, I meant Friday."
+    },
+    {
+      "raw": "Meet at 3 p.m. Scratch that, meet at 4 p.m.",
+      "dict": false,
+      "expect": "Meet at 3 p.m. Scratch that, meet at 4 p.m."
+    },
+    {
+      "raw": "I met John F. Kennedy Jr. today. Scratch that, I met his cousin.",
+      "dict": false,
+      "expect": "I met John F. Kennedy Jr. today. Scratch that, I met his cousin."
+    },
+    {
+      "raw": "Use a tool, e.g. a hammer. Scratch that, use glue.",
+      "dict": false,
+      "expect": "Use a tool, e.g. a hammer. Scratch that, use glue."
+    },
+    {
+      "raw": "The draft is done. Scratch that.",
+      "dict": false,
+      "expect": "The draft is done. Scratch that."
+    },
+    {
+      "raw": "Lottery tickets are fun. Scratch that, and you might win.",
+      "dict": false,
+      "expect": "Lottery tickets are fun. Scratch that, and you might win."
+    },
+    {
+      "raw": "Here is the scratch that I found on the car.",
+      "dict": false,
+      "expect": "Here is the scratch that I found on the car."
+    },
+    {
+      "raw": "Go to qrtz.ai. Scratch that, go to the docs.",
+      "dict": false,
+      "expect": "Go to qrtz.ai. Scratch that, go to the docs."
+    },
+    {
+      "raw": "Wait... Scratch that, never mind.",
+      "dict": false,
+      "expect": "Wait... Scratch that, never mind."
+    },
+    {
+      "raw": "The car has a scratch. That, I can fix.",
+      "dict": false,
+      "expect": "The car has a scratch. That, I can fix."
+    },
+    {
+      "raw": "Go with plan A. Scratch that, go with plan B.",
+      "dict": false,
+      "expect": "Go with plan A. Scratch that, go with plan B."
+    },
+    {
+      "raw": "Groceries new line scratch that, eggs",
+      "dict": false,
+      "expect": "Groceries\nScratch that, eggs."
+    },
+    {
+      "raw": "My arm itches. Scratch that, can you?",
+      "dict": false,
+      "expect": "My arm itches. Scratch that, can you?"
     }
   ],
   "dictionaryOnly": [

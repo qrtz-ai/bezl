@@ -20,6 +20,7 @@ fn long_dictation() -> String {
         "We launched our new line in May, and the numbers look good, hmm, better than last year.",
         "Email jlgrimes@users.noreply.github.com or go to https://qrtz.ai/docs for details. i.e. the setup guide",
         "Mr. and Mrs. Smith will join at 3 p.m. today with the team, etc. and post gres is migrated.",
+        "Book the room for Monday. Scratch that, book it for Tuesday. My back itches. Scratch that itch.",
     ];
     let mut s = String::new();
     while s.split_whitespace().count() < 400 {

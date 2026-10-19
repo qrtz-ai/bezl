@@ -134,6 +134,102 @@ fn keeps_filler(word: &str, all: &str, before: &str) -> bool {
         && before.ends_with(|c: char| c.is_ascii_digit())
 }
 
+/// ADR 0186: words that, right after "Scratch that," or "Scratch that.", make it a literal request ("Scratch that,
+/// please.", "Scratch that, and you might win."), not the correction. Same list in cleanup.ts.
+pub const SCRATCH_LITERAL_NEXT: &[&str] = &[
+    "please", "would", "will", "can", "could", "and", "or", "but", "too", "again", "now", "for", "gently",
+    "here", "there", "okay", "ok",
+];
+
+/// Is the sentence mark that ends `p` (".", "!" or "?") an unambiguous sentence end? The word before it is plain
+/// ASCII letters or digits (an apostrophe inside is fine), at least two of them, with no dot of its own ("today.",
+/// "don't." yes; "p.m.", "qrtz.ai.", "Wait...", "Mr.", "F.", "5." no: a dotted token, an abbreviation, an initial or a
+/// lone digit can't be told from a sentence end with certainty).
+fn clean_sentence_end(p: &str) -> bool {
+    let Some(mark) = p.chars().last() else {
+        return false;
+    };
+    if !matches!(mark, '.' | '!' | '?') {
+        return false;
+    }
+    let body = &p[..p.len() - 1];
+    let token = body.rsplit([' ', '\n']).next().unwrap_or_default();
+    if token.len() < 2 || !token.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'\'') {
+        return false;
+    }
+    if !token.ends_with(|c: char| c.is_ascii_alphanumeric()) {
+        return false;
+    }
+    !(mark == '.' && ends_with_abbreviation(body))
+}
+
+/// ADR 0186: the explicit self-correction "Scratch that". Only its unambiguous form: its own sentence, right after
+/// a clean sentence end (see [`clean_sentence_end`]), followed by "," or "." and the words that replace it. The
+/// sentence before it (back to the previous clean sentence end or line break) goes, with the command: "Let's meet on
+/// Tuesday. Scratch that, let's meet on Wednesday." → "Let's meet on Wednesday." Left exactly as spoken when anything
+/// is unclear: mid-sentence ("scratch that off my list", "don't scratch that"), no punctuation after it ("Scratch
+/// that itch"), nothing before or after it, a literal request ([`SCRATCH_LITERAL_NEXT`]), or a dotted word,
+/// abbreviation or initial anywhere at the sentence edges.
+fn scratch_that(t: String) -> String {
+    const CMD: &str = "scratch that";
+    let mut t = t;
+    // One lowercase copy, redone only after a rewrite (rare): a dictation with no "Scratch that" pays one scan.
+    let mut lower = t.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(off) = lower[from..].find(CMD) {
+        let at = from + off;
+        from = at + CMD.len();
+        if let Some(out) = scratch_at(&t, at) {
+            t = out;
+            lower = t.to_ascii_lowercase();
+            from = 0;
+        }
+    }
+    t
+}
+
+/// The text with the "Scratch that" at byte `at` applied, or `None` to leave it as spoken.
+fn scratch_at(t: &str, at: usize) -> Option<String> {
+    let before = &t[..at];
+    let p = before.trim_end_matches(' ');
+    if p.len() == before.len() || !clean_sentence_end(p) {
+        return None;
+    }
+    let after = &t[at + "scratch that".len()..];
+    let after = after.strip_prefix(',').or_else(|| after.strip_prefix('.'))?;
+    let rest = after.trim_start_matches(' ');
+    if rest.len() == after.len() || !rest.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+        return None;
+    }
+    let next: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if SCRATCH_LITERAL_NEXT.contains(&next.as_str()) {
+        return None;
+    }
+    // The start of the sentence being scratched: after the nearest line break or clean sentence end before it.
+    let body = &p[..p.len() - 1];
+    let bytes = body.as_bytes();
+    let mut start = 0;
+    for j in (1..=bytes.len()).rev() {
+        let c = bytes[j - 1];
+        if c == b'\n' {
+            start = j;
+            break;
+        }
+        if matches!(c, b'.' | b'!' | b'?') && bytes.get(j) == Some(&b' ') {
+            if !clean_sentence_end(&body[..j]) {
+                return None;
+            }
+            start = j + body[j..].len() - body[j..].trim_start_matches(' ').len();
+            break;
+        }
+    }
+    Some(format!("{}{rest}", &t[..start]))
+}
+
 /// ADR 0101: does this repeat (the whole match `all`, its word `word`) collapse to one word?
 fn collapses(word: &str, all: &str) -> bool {
     let w = word.to_ascii_lowercase();
@@ -237,8 +333,8 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
     out
 }
 
-/// On-device cleanup: spoken commands, fillers, stutters, spacing, capitalization, terminal punctuation (ADR 0101:
-/// which repeats collapse, and no "." on a short dictation).
+/// On-device cleanup: spoken commands, fillers, stutters, spacing, "Scratch that" (ADR 0186), capitalization, terminal
+/// punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation).
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(&NEW_PARAGRAPH, &t, "\n\n");
@@ -281,6 +377,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
             })
             .into_owned();
     }
+    t = scratch_that(t);
     let src = t.clone();
     t = SENTENCE_START
         .replace_all(&src, |c: &Captures| {

@@ -41,7 +41,11 @@
     "p39": "Do you want to grab lunch.",
     "p40": "I think I can make it at noon.",
     "p41": "Notes\nOne call Sam\nTwo book the room.",
-    "p42": "Thanks for the update.\n\nHere's my take."
+    "p42": "Thanks for the update.\n\nHere's my take.",
+    "p43": "Book the flight for Monday. Scratch that, book it for Tuesday morning.",
+    "p44": "Thanks for the notes. The demo is on Friday. Scratch that, the demo is on Thursday.",
+    "p45": "Is the call at noon? Scratch that, is the call at one?",
+    "p46": "Hi Sam,\n\nThe launch is Monday. Scratch that, the launch is Tuesday."
   },
   "note": "rule_cleanup's output for each polish case at the last accepted change (ADR 0182, after N185/N186; the first baseline was origin/main d457ff0). A case may only get closer to its ideal; polish_set.rs fails on any case that moves further. Refresh with QRTZ_POLISH_BASELINE=1 cargo test -p qrtz-talk --test polish_set after an accepted change."
 }

@@ -275,6 +275,30 @@
       "category": "command",
       "raw": "Thanks for the update. new paragraph Here's my take.",
       "ideal": "Thanks for the update.\n\nHere's my take."
+    },
+    {
+      "id": "p43",
+      "category": "correction",
+      "raw": "Book the flight for Monday. Scratch that, book it for Tuesday morning.",
+      "ideal": "Book it for Tuesday morning."
+    },
+    {
+      "id": "p44",
+      "category": "correction",
+      "raw": "Thanks for the notes. The demo is on Friday. Scratch that, the demo is on Thursday.",
+      "ideal": "Thanks for the notes. The demo is on Thursday."
+    },
+    {
+      "id": "p45",
+      "category": "correction",
+      "raw": "Is the call at noon? Scratch that, is the call at one?",
+      "ideal": "Is the call at one?"
+    },
+    {
+      "id": "p46",
+      "category": "correction",
+      "raw": "Hi Sam,\n\nThe launch is Monday. Scratch that, the launch is Tuesday.",
+      "ideal": "Hi Sam,\n\nThe launch is Tuesday."
     }
   ],
   "keep": [
@@ -529,6 +553,108 @@
       "rule": "command",
       "raw": "Dear team, new line, quick update",
       "expect": "Dear team,\nQuick update."
+    },
+    {
+      "id": "k43",
+      "rule": "correction",
+      "raw": "I need to scratch that off my list.",
+      "expect": "I need to scratch that off my list."
+    },
+    {
+      "id": "k44",
+      "rule": "correction",
+      "raw": "My back itches. Scratch that itch for me.",
+      "expect": "My back itches. Scratch that itch for me."
+    },
+    {
+      "id": "k45",
+      "rule": "correction",
+      "raw": "My back itches. Scratch that, please.",
+      "expect": "My back itches. Scratch that, please."
+    },
+    {
+      "id": "k46",
+      "rule": "correction",
+      "raw": "The cat has a sore spot. Don't scratch that, okay?",
+      "expect": "The cat has a sore spot. Don't scratch that, okay?"
+    },
+    {
+      "id": "k47",
+      "rule": "correction",
+      "raw": "Scratch that, I meant Friday.",
+      "expect": "Scratch that, I meant Friday."
+    },
+    {
+      "id": "k48",
+      "rule": "correction",
+      "raw": "Meet at 3 p.m. Scratch that, meet at 4 p.m.",
+      "expect": "Meet at 3 p.m. Scratch that, meet at 4 p.m."
+    },
+    {
+      "id": "k49",
+      "rule": "correction",
+      "raw": "I met John F. Kennedy Jr. today. Scratch that, I met his cousin.",
+      "expect": "I met John F. Kennedy Jr. today. Scratch that, I met his cousin."
+    },
+    {
+      "id": "k50",
+      "rule": "correction",
+      "raw": "Use a tool, e.g. a hammer. Scratch that, use glue.",
+      "expect": "Use a tool, e.g. a hammer. Scratch that, use glue."
+    },
+    {
+      "id": "k51",
+      "rule": "correction",
+      "raw": "The draft is done. Scratch that.",
+      "expect": "The draft is done. Scratch that."
+    },
+    {
+      "id": "k52",
+      "rule": "correction",
+      "raw": "Lottery tickets are fun. Scratch that, and you might win.",
+      "expect": "Lottery tickets are fun. Scratch that, and you might win."
+    },
+    {
+      "id": "k53",
+      "rule": "correction",
+      "raw": "Here is the scratch that I found on the car.",
+      "expect": "Here is the scratch that I found on the car."
+    },
+    {
+      "id": "k54",
+      "rule": "correction",
+      "raw": "Go to qrtz.ai. Scratch that, go to the docs.",
+      "expect": "Go to qrtz.ai. Scratch that, go to the docs."
+    },
+    {
+      "id": "k55",
+      "rule": "correction",
+      "raw": "Wait... Scratch that, never mind.",
+      "expect": "Wait... Scratch that, never mind."
+    },
+    {
+      "id": "k56",
+      "rule": "correction",
+      "raw": "The car has a scratch. That, I can fix.",
+      "expect": "The car has a scratch. That, I can fix."
+    },
+    {
+      "id": "k57",
+      "rule": "correction",
+      "raw": "Go with plan A. Scratch that, go with plan B.",
+      "expect": "Go with plan A. Scratch that, go with plan B."
+    },
+    {
+      "id": "k58",
+      "rule": "correction",
+      "raw": "Groceries new line scratch that, eggs",
+      "expect": "Groceries\nScratch that, eggs."
+    },
+    {
+      "id": "k59",
+      "rule": "correction",
+      "raw": "My arm itches. Scratch that, can you?",
+      "expect": "My arm itches. Scratch that, can you?"
     }
   ]
 }
