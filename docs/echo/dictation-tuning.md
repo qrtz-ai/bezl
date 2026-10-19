@@ -837,3 +837,35 @@ status, it now says so with a retry, and the switch still works (`83fc45e`). Wit
 on asks to download Parakeet even when it is already there (N184, proposed to Bobs: check again on the click). Module
 releases in CI (ADR 0179) leave the bundled echo and its Parakeet alone. The ranked plan above is unchanged; its open
 items still wait on the helper side or the Mac bench.
+
+## 28. Cycle 55: the polish test set, two false-positive fixes, and the cleanup's cost (ADR 0182)
+
+Polish is now first in the plan (Jared, Oct 18 10:08 PM PT: no LLM, no network, no added latency, strict improvement
+only). Scored by `cargo test -p qrtz-talk --test polish_set -- --nocapture` on `spec/vectors/talk/polish.json`:
+
+| Run                | Exact   | Edit distance      | Regressions | False-positive hits |
+| ------------------ | ------- | ------------------ | ----------- | ------------------- |
+| d457ff0 (baseline) | 20 / 42 | 211 chars          | -           | 14 / 42             |
+| b07898b (cycle 55) | 23 / 42 | 201 chars (15.5 %) | 0           | 0 / 42              |
+
+- N185 fixed: fillers kept "ER", "UM", "AH" and "35 mm" (they were deleted). "I spent the night in the ER with my dad."
+  was typed as "I spent the night in the with my dad."
+- N186 fixed: "Start a new line of products." was typed as "Start a" + line break + "Of products."
+- N187 fixed: the dictionary step recompiled every pattern on every dictation, after release. Cleanup on a 495-word
+  dictation with a 20-term dictionary: **22.3 ms → 1.64 ms** median (release build, box CPU); a one-line dictation
+  with that dictionary was ~19 ms, now well under 1 ms. Same text out. `tests/cleanup_budget.rs` holds the 2 ms budget.
+- Release-to-text otherwise unchanged: nothing in capture, segmenting, the decode schedule or Parakeet's settings moved.
+
+Next polish candidates, ranked: (1) what Parakeet/FluidAudio already does (punctuation, capitals, digits; any
+vocabulary boosting for the TDT model), checked against the FluidAudio source, as a proposal to Bobs; (2) end-of-
+dictation-only spoken punctuation ("... question mark") measured against the keep set; (3) warming dictionary patterns
+off the press path.
+
+### Production-readiness backlog (Bobs, Oct 18 10:13 PM PT)
+
+All open; worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
+touch_only_its_models` timeout; P2 model download pause/resume/background/crash recovery with sha256; P3 no network
+or a failed index refresh never blocks dictation with an installed model; P4 mic edge cases (unplug, AirPods profile,
+permission revoked, sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks
+(secure fields, Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety
+(pill reset, echo restart with backoff).

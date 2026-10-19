@@ -1,5 +1,4 @@
 {
-  "note": "rule_cleanup's output for each polish case at the last accepted change (ADR 0182: origin/main d457ff0, before N185/N186). A case may only get closer to its ideal; polish_set.rs fails on any case that moves further. Refresh with QRTZ_POLISH_BASELINE=1 cargo test -p qrtz-talk --test polish_set after an accepted change.",
   "baseline": {
     "p01": "So I think we should, ship it on Friday.",
     "p02": "So, the build is green now.",
@@ -29,9 +28,9 @@
     "p26": "I looked at the logs and the error is gone.",
     "p27": "We shipped the fix. Then we wrote the tests.",
     "p28": "Can you check the numbers because they look off.",
-    "p29": "I spent the night in the with my dad.",
-    "p30": "Beat Ohio State on Saturday.",
-    "p31": "Use a 35 lens for the portrait.",
+    "p29": "I spent the night in the ER with my dad.",
+    "p30": "UM beat Ohio State on Saturday.",
+    "p31": "Use a 35 mm lens for the portrait.",
     "p32": "To err is human.",
     "p33": "I'd rather err on the side of caution.",
     "p34": "So, I talked to the team and, we think the launch should move to next week because the docs aren't ready.",
@@ -43,5 +42,6 @@
     "p40": "I think I can make it at noon.",
     "p41": "Notes\nOne call Sam\nTwo book the room.",
     "p42": "Thanks for the update.\n\nHere's my take."
-  }
+  },
+  "note": "rule_cleanup's output for each polish case at the last accepted change (ADR 0182, after N185/N186; the first baseline was origin/main d457ff0). A case may only get closer to its ideal; polish_set.rs fails on any case that moves further. Refresh with QRTZ_POLISH_BASELINE=1 cargo test -p qrtz-talk --test polish_set after an accepted change."
 }
