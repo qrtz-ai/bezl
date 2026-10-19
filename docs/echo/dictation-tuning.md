@@ -791,3 +791,11 @@ confidence histogram against the 0.6 floor (rank 10's Core ML calibration); talk
 the mic was quiet (rank 7). Its notes flag `tail_decode_ms` p90 over 150 ms (§18), timeouts, `gate=off-no-*` and too
 few tails to calibrate. Talk's latency line now has plain stage times (`final_ms=160`, not `Some(160.0)`;
 `311f89e`). No numbers from the Mac yet; the ranked plan above is unchanged.
+
+## 22. Cycle 48: the first model download through the package manager (ADR 0160, N176)
+
+No dictation speed or accuracy change. Echo's Parakeet set now installs through the package manager (`5c824f8`),
+trying `modules.qrtz.ai` and its mirror before the pinned Hugging Face URL. When those hosts can't be reached and are
+slow to fail, the first download used to wait about 14 minutes of timeouts before any byte came; now about 30 s
+(`8a3b994`). Already-downloaded models are kept as they are. The ranked plan above is unchanged.
+
