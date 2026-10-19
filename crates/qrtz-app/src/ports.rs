@@ -81,7 +81,7 @@ pub const SETUP_CHANNELS: &[&str] = &[
     "speech:delete",
 ];
 
-/// ADR 0180: qrtz's own update (settings → qrtz, the sidebar dot): `crate::self_update`.
+/// ADR 0181: qrtz's own update (settings → qrtz, the sidebar dot): `crate::self_update`.
 pub const APP_UPDATE_PREFIX: &str = "app-update:";
 
 /// The package manager (ADR 0157; the Extensions screen): `crate::packages_ipc`.

@@ -1,4 +1,4 @@
-//! ADR 0180: qrtz updates itself, the way the marketplace updates apps, from the same pinned host.
+//! ADR 0181: qrtz updates itself, the way the marketplace updates apps, from the same pinned host.
 //!
 //! The feed is `https://modules.qrtz.ai/v1/app/latest.json` (Tauri's static updater JSON, plus `sha256` and `size`):
 //! one `darwin-aarch64` release whose archive is the immutable `v1/app/<version>/qrtz_<version>_aarch64.app.tar.gz`
@@ -298,7 +298,7 @@ pub struct SelfUpdate {
     high_water: Option<std::path::PathBuf>,
 }
 
-/// ADR 0180: the high-water mark file, in qrtz's data dir.
+/// ADR 0181: the high-water mark file, in qrtz's data dir.
 pub const HIGH_WATER_FILE: &str = "app-update-high-water";
 
 fn now_ms() -> u64 {
@@ -329,7 +329,7 @@ impl SelfUpdate {
         })
     }
 
-    /// ADR 0180: keep the highest signed version accepted in `path`; a feed or archive below it is refused even
+    /// ADR 0181: keep the highest signed version accepted in `path`; a feed or archive below it is refused even
     /// when it is newer than this build and validly signed (a replayed old release after a rollback of the app).
     pub fn with_high_water(self: Arc<Self>, path: impl Into<std::path::PathBuf>) -> Arc<Self> {
         let mut me = Arc::try_unwrap(self).unwrap_or_else(|_| panic!("with_high_water before sharing"));
@@ -564,7 +564,7 @@ impl SelfUpdate {
     }
 }
 
-/// The pinned host's app files through the package manager's one fetcher (ADR 0157 §5, ADR 0180).
+/// The pinned host's app files through the package manager's one fetcher (ADR 0157 §5, ADR 0181).
 #[cfg(feature = "runtime")]
 pub struct PinnedBackend {
     pub transport: crate::module_hosting::HttpTransport,
@@ -778,7 +778,7 @@ mod tests {
     fn the_key_file_is_a_todo_or_one_valid_key() {
         match pinned_key() {
             None => assert!(
-                KEY_FILE.contains("TODO(ADR 0180)"),
+                KEY_FILE.contains("TODO(ADR 0181)"),
                 "an empty key file keeps its TODO"
             ),
             Some(k) => assert!(key_is_valid(k), "app_update_key.pub: not a minisign public key"),
@@ -787,14 +787,14 @@ mod tests {
         assert_eq!(key_from("# only comments\n"), None);
     }
 
-    /// ADR 0180 TODO: a release build without the app-update key could never update itself again. `cargo test
+    /// ADR 0181 TODO: a release build without the app-update key could never update itself again. `cargo test
     /// --release` (app-release.yml runs it) fails loudly until `setup-secrets.sh app-update` wrote the key.
     #[cfg(not(debug_assertions))]
     #[test]
     fn release_builds_pin_the_app_update_key() {
         let k = pinned_key().expect(
             "crates/qrtz-app/src/app_update_key.pub has no key: run `scripts/ci/setup-secrets.sh app-update` on the \
-             release Mac and commit the file (ADR 0180)",
+             release Mac and commit the file (ADR 0181)",
         );
         assert!(key_is_valid(k));
     }

@@ -75,7 +75,7 @@ async function mount(
   return { el, q, calls, emit, click, done: () => root.unmount() };
 }
 
-describe('settings → qrtz: its own update (ADR 0180)', () => {
+describe('settings → qrtz: its own update (ADR 0181)', () => {
   it('shows the version and checks only when pressed', async () => {
     const m = await mount(base, {
       'app-update:check': st({ state: 'up-to-date', checkedAtMs: 1 }),

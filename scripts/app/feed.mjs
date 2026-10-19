@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ADR 0180: qrtz.app's update feed, v1/app/latest.json on modules.qrtz.ai. Tauri's static-feed shape plus the
+// ADR 0181: qrtz.app's update feed, v1/app/latest.json on modules.qrtz.ai. Tauri's static-feed shape plus the
 // archive's sha256 and size (the app checks both before the signature; crates/qrtz-app/src/self_update.rs parses it
 // strictly: the url must be exactly the immutable versioned archive on the same host).
 //

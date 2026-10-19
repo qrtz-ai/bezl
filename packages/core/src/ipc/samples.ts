@@ -43,7 +43,7 @@ const speechDownloading = {
     total: 412_000_000,
   },
 };
-/** ADR 0180: qrtz's own update row before any check, and with a newer release found. */
+/** ADR 0181: qrtz's own update row before any check, and with a newer release found. */
 export const appUpdateIdle = {
   current: '0.2.0',
   state: 'idle',

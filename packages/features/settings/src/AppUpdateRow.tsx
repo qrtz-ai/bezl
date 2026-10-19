@@ -31,7 +31,7 @@ export function appUpdateLine(s: AppUpdateStatus): string {
 }
 
 /**
- * ADR 0180: the "qrtz" row in settings: this build's version, "check for updates", "update" (with its progress)
+ * ADR 0181: the "qrtz" row in settings: this build's version, "check for updates", "update" (with its progress)
  * and, once the new qrtz.app is in place, "restart to update" (ADR 0172's restart). The host checks quietly at
  * launch and every 6 hours; this row follows `app-update:state`.
  */

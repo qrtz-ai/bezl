@@ -486,14 +486,14 @@ export const ipcContract = {
       })
       .strict(),
   }),
-  /** ADR 0180: qrtz's own update state (no request is made). */
+  /** ADR 0181: qrtz's own update state (no request is made). */
   'app-update:status': defineChannel({
     version: 1,
     capability: 'app.update.read',
     request: z.void(),
     response: AppUpdateStatus,
   }),
-  /** ADR 0180: "check for updates" for qrtz itself: asks modules.qrtz.ai/v1/app/latest.json; installs nothing. */
+  /** ADR 0181: "check for updates" for qrtz itself: asks modules.qrtz.ai/v1/app/latest.json; installs nothing. */
   'app-update:check': defineChannel({
     version: 1,
     capability: 'app.update',
@@ -501,7 +501,7 @@ export const ipcContract = {
     response: AppUpdateStatus,
   }),
   /**
-   * ADR 0180: "update": download, verify (signature, notarized Developer ID bundle) and put the new qrtz.app in
+   * ADR 0181: "update": download, verify (signature, notarized Developer ID bundle) and put the new qrtz.app in
    * place. Answers at once (`downloading`); `app-update:state` follows. Nothing new runs until a restart.
    */
   'app-update:download': defineChannel({
@@ -510,7 +510,7 @@ export const ipcContract = {
     request: z.void(),
     response: AppUpdateStatus,
   }),
-  /** ADR 0180: "restart to update", only once the new version is in place (`ready`). */
+  /** ADR 0181: "restart to update", only once the new version is in place (`ready`). */
   'app-update:restart': defineChannel({
     version: 1,
     capability: 'app.update',

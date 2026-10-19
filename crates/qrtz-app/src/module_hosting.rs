@@ -138,7 +138,7 @@ impl HttpTransport {
     }
 }
 
-/// ADR 0180: qrtz's own update files (`v1/app/…`: the feed and the archives), from the pinned package host only,
+/// ADR 0181: qrtz's own update files (`v1/app/…`: the feed and the archives), from the pinned package host only,
 /// through the same fetcher. Nothing else is reachable here: a path outside `v1/app/` is refused.
 impl HttpTransport {
     fn app_host(&self, path: &str) -> Result<&Downloader, String> {

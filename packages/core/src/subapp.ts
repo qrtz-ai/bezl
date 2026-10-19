@@ -61,7 +61,7 @@ export const SHELL_MANIFEST: SubAppManifest = {
     'talk.dictate',
     // ADR 0083: uncaught errors and player errors from every window go to the local log.
     'log.write',
-    // ADR 0180: the sidebar dot when a newer qrtz is waiting (reads only).
+    // ADR 0181: the sidebar dot when a newer qrtz is waiting (reads only).
     'app.update.read',
   ],
   permissions: [],

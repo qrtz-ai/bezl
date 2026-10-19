@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ADR 0180: put one qrtz.app release on modules.qrtz.ai (R2 bucket qrtz-modules, under v1/app/). app-release.yml runs it.
+# ADR 0181: put one qrtz.app release on modules.qrtz.ai (R2 bucket qrtz-modules, under v1/app/). app-release.yml runs it.
 #
 #   scripts/app/upload.sh <dir with qrtz_<v>_aarch64.app.tar.gz{,.sig} and latest.json> <notarized dmg>
 #

@@ -20,7 +20,7 @@ macOS minutes count 10x on a private repo, so the macOS job only does what Linux
 stub sidecar in `src-tauri/binaries/`; the real helper is built only for releases. Caches: cargo
 (`Swatinem/rust-cache`), bun's install cache, SwiftPM `.build`, and the Playwright browsers.
 
-## `app-release.yml`: qrtz.app releases (ADR 0180)
+## `app-release.yml`: qrtz.app releases (ADR 0181)
 
 Replaces `release.yml` (unsigned `v*` tag builds). It runs on a push to main whose
 `apps/desktop/src-tauri/tauri.conf.json` version went up (`node scripts/app/version.mjs bump` writes every version

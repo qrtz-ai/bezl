@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ADR 0180: what https://modules.qrtz.ai serves for qrtz.app is exactly what app-release.yml signed and uploaded.
+# ADR 0181: what https://modules.qrtz.ai serves for qrtz.app is exactly what app-release.yml signed and uploaded.
 #
 #   scripts/app/verify-live.sh <dir with the archive, its .sig and latest.json> <notarized dmg>
 #

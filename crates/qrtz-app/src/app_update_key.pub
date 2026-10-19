@@ -1,8 +1,8 @@
-# ADR 0180: the app-update public key (minisign, as `tauri signer generate` writes it: base64 of the .pub file), on
+# ADR 0181: the app-update public key (minisign, as `tauri signer generate` writes it: base64 of the .pub file), on
 # the first line that isn't a comment. qrtz verifies every self-update archive against it; it is NOT the module root,
 # index or timestamp key.
 #
-# TODO(ADR 0180): no key yet, so this build can't update itself ("updates aren't set up yet"), app-release.yml
+# TODO(ADR 0181): no key yet, so this build can't update itself ("updates aren't set up yet"), app-release.yml
 # builds and notarizes the dmg but publishes no update archive, and a release build's tests fail
 # (`release_builds_pin_the_app_update_key`). On the release Mac, run `scripts/ci/setup-secrets.sh app-update`: it
 # makes the key pair in ~/.qrtz-keys/app-update.key, sets the APP_UPDATE_KEY secret and writes the public key into

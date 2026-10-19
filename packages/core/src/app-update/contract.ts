@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * ADR 0180: qrtz's own update, as settings → qrtz shows it and the sidebar dot reads it (`app-update:status`, the
+ * ADR 0181: qrtz's own update, as settings → qrtz shows it and the sidebar dot reads it (`app-update:status`, the
  * `app-update:state` event). `not-set-up`: this build has no app-update key, so nothing is asked of any host.
  */
 export const AppUpdateState = z.enum([

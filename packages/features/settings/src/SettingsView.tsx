@@ -154,7 +154,7 @@ export default function SettingsView() {
           }
         />
       ) : null}
-      {/* ADR 0180: qrtz itself: its version and its own update. */}
+      {/* ADR 0181: qrtz itself: its version and its own update. */}
       <SettingsSection title="qrtz" data-testid="about-qrtz">
         <AppUpdateRow />
       </SettingsSection>

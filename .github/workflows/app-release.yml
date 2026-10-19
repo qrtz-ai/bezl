@@ -1,4 +1,4 @@
-# qrtz.app releases (ADR 0180, docs/release.md "qrtz.app releases"). Replaces release.yml (v* tags, unsigned).
+# qrtz.app releases (ADR 0181, docs/release.md "qrtz.app releases"). Replaces release.yml (v* tags, unsigned).
 #
 # A push to main whose apps/desktop/src-tauri/tauri.conf.json version went up (scripts/app/version.mjs bump), or a
 # workflow_dispatch, builds qrtz.app with echo bundled (ADR 0174), signs it (Developer ID, MR26CCZ496), notarizes and

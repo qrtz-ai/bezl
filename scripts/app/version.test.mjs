@@ -70,7 +70,7 @@ function fixture() {
   return repo;
 }
 
-describe('scripts/app/version.mjs (ADR 0180)', () => {
+describe('scripts/app/version.mjs (ADR 0181)', () => {
   it('an old v tag is the last release; nothing changed → no bump', () => {
     const repo = fixture();
     expect(lastTag(repo)).toEqual({ tag: 'v0.2.0', version: '0.2.0' });

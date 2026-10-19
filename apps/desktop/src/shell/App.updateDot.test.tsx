@@ -41,7 +41,7 @@ window.qrtzTransport = transport;
 
 const { routes } = await import('./App');
 
-describe('the sidebar dot (ADR 0180)', () => {
+describe('the sidebar dot (ADR 0181)', () => {
   it('shows on the qrtz row only while an update is available or ready', async () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/note'] });
     const el = document.createElement('div');

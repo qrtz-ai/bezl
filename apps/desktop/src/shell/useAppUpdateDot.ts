@@ -3,7 +3,7 @@ import { appUpdateDot, type AppUpdateStatus } from '@qrtz/core';
 import { shellClient } from './shellClient';
 
 /**
- * ADR 0180: the sidebar's "update ready" dot: a newer qrtz is available or downloaded. Reads the host's state
+ * ADR 0181: the sidebar's "update ready" dot: a newer qrtz is available or downloaded. Reads the host's state
  * (its quiet launch and 6-hour checks); asks no host itself.
  */
 export function useAppUpdateDot(): boolean {

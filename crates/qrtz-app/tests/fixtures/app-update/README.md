@@ -2,7 +2,7 @@
 
 Throwaway minisign keys made with `tauri signer generate --ci` on the box for these tests only; their private keys
 were deleted right after signing and never were the real app-update key (that one is made on the release Mac by
-`scripts/ci/setup-secrets.sh app-update`, ADR 0180). Nothing here is trusted by a qrtz build.
+`scripts/ci/setup-secrets.sh app-update`, ADR 0181). Nothing here is trusted by a qrtz build.
 
 - `test.pub`: the key `good-0.3.0.sig` and `old-0.2.5.sig` were made with.
 - `other.pub`: a second key; `otherkey-0.3.0.sig` is from it.

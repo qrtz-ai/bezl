@@ -87,7 +87,7 @@ pub struct AppService {
     pub events: Events,
     setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
     packages: std::sync::OnceLock<Arc<dyn crate::ports::PackagesPort>>,
-    /// ADR 0180: qrtz's own updater (`app-update:*`).
+    /// ADR 0181: qrtz's own updater (`app-update:*`).
     self_update: std::sync::OnceLock<Arc<crate::self_update::SelfUpdate>>,
     ctrl: std::sync::OnceLock<Arc<qrtz_ctrl::service::CtrlService>>,
     /// ADR 0116: ctrl's Laya model (consent + download), behind `ctrl:model` / `ctrl:model-consent`.
@@ -293,13 +293,13 @@ impl AppService {
         let _ = self.packages.set(p);
     }
 
-    /// ADR 0180: plug in qrtz's own updater (set once by `build_app`; without it `app-update:status` answers
+    /// ADR 0181: plug in qrtz's own updater (set once by `build_app`; without it `app-update:status` answers
     /// "not set up").
     pub fn set_self_update(&self, u: Arc<crate::self_update::SelfUpdate>) {
         let _ = self.self_update.set(u);
     }
 
-    /// ADR 0180: the quiet update checks (a minute after launch, then every 6 hours). Call once, inside tokio.
+    /// ADR 0181: the quiet update checks (a minute after launch, then every 6 hours). Call once, inside tokio.
     pub fn start_app_update_checks(&self) {
         if let Some(u) = self.self_update.get() {
             u.start_schedule();
@@ -940,7 +940,7 @@ impl AppService {
                 ErrorCode::Validation,
                 "modules are installed from the marketplace, not through config",
             )),
-            // ADR 0180: whether echo runs the copy in qrtz.app is the host's to say, never a renderer's.
+            // ADR 0181: whether echo runs the copy in qrtz.app is the host's to say, never a renderer's.
             "config:set" if crate::installed::patch_touches_bundled_fallback(&p["patch"]) => {
                 Err(AppError::new(
                     ErrorCode::Validation,

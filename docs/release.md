@@ -5,7 +5,7 @@ bundler signs, then `scripts/release/sign-mac.sh` re-signs the nested executable
 app's entitlements; ADR 0162), reseals, notarizes and staples.
 
 CI builds, signs, notarizes and (with the app-update key) publishes qrtz.app (`.github/workflows/app-release.yml`,
-"qrtz.app releases" below, ADR 0180); the steps below are the local, signed path, the same scripts.
+"qrtz.app releases" below, ADR 0181); the steps below are the local, signed path, the same scripts.
 
 Step by step, with the exact commands and checks: [docs/modules/production-setup.md](modules/production-setup.md) Part A.
 
@@ -119,7 +119,7 @@ ADR 0179.
 
 The workflows need a push from a token with the `workflow` scope (`gh auth refresh -s workflow`).
 
-## qrtz.app releases (ADR 0180)
+## qrtz.app releases (ADR 0181)
 
 qrtz updates itself from settings → qrtz: it checks `https://modules.qrtz.ai/v1/app/latest.json` quietly at launch
 (after a minute) and every 6 hours, a dot on the sidebar's qrtz row says a newer qrtz is there, "update" downloads it
@@ -153,7 +153,7 @@ then builds say "updates aren't set up in this build yet" and app-release.yml pu
 Package hosting is `modules.qrtz.ai` only (Cloudflare R2; ADR 0167 — no Backblaze B2 mirror). Publish with
 `scripts/modules/publish.sh`; setup in [docs/modules/production-setup.md](modules/production-setup.md) Part B.
 
-- **Check for updates** (settings → qrtz) is qrtz's own updater (ADR 0180, above). `packages:check-update` (the
+- **Check for updates** (settings → qrtz) is qrtz's own updater (ADR 0181, above). `packages:check-update` (the
   signed index's newest `qrtz`) stays as a channel; settings no longer calls it.
 - **Export diagnostics** (settings → system) saves one text file of the local logs plus macOS's crash, hang and spin
   reports for qrtz and its helpers (`~/Library/Logs/DiagnosticReports/qrtz*.ips`, last 30 days, at most 20, 2 MB

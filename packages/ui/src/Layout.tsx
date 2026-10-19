@@ -161,7 +161,7 @@ export type SideNavItem = {
   icon?: string;
   /** `foot` items sit pinned at the bottom of the sidebar (settings, gallery). */
   group?: 'main' | 'foot';
-  /** A small dot after the label (ADR 0180: a qrtz update is ready); `dotLabel` names it for screen readers. */
+  /** A small dot after the label (ADR 0181: a qrtz update is ready); `dotLabel` names it for screen readers. */
   dot?: boolean;
   dotLabel?: string;
 };

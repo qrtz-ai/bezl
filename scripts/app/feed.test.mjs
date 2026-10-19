@@ -1,4 +1,4 @@
-// scripts/app/feed.mjs: the latest.json the app parses (ADR 0180), with the test fixtures self_update.rs uses.
+// scripts/app/feed.mjs: the latest.json the app parses (ADR 0181), with the test fixtures self_update.rs uses.
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -46,7 +46,7 @@ describe('scripts/app/feed.mjs', () => {
       'utf8',
     );
     const test = fs.readFileSync(path.join(fx, 'test.pub'), 'utf8').trim();
-    if (keyFrom(todo) === null) expect(todo).toContain('TODO(ADR 0180)');
+    if (keyFrom(todo) === null) expect(todo).toContain('TODO(ADR 0181)');
     expect(keyFrom(`# comment\n${test}\n`)).toBe(test);
     expect(keyFrom(`${test}\n${test}\n`)).toBeNull();
     expect(keyFrom('not a key')).toBeNull();

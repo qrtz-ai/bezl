@@ -60,7 +60,7 @@ export function sidebarItems(
   updateReady = false,
 ): SideNavItem[] {
   return [
-    // ADR 0180: the dot says a newer qrtz is ready (settings → qrtz updates it).
+    // ADR 0181: the dot says a newer qrtz is ready (settings → qrtz updates it).
     {
       id: QRTZ,
       label: 'qrtz',

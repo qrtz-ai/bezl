@@ -132,7 +132,7 @@ describe('global settings (ADR 0146 M1.4)', () => {
     expect(q('logs-result')?.textContent).toBe(
       'saved 2 log files and 3 crash reports',
     );
-    // ADR 0180: "check for updates" is qrtz's own updater now (settings → qrtz).
+    // ADR 0181: "check for updates" is qrtz's own updater now (settings → qrtz).
     expect(q('about-qrtz')).not.toBeNull();
     expect(calls.some(([c]) => c === 'app-update:check')).toBe(false);
     await act(async () => {

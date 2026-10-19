@@ -7,7 +7,7 @@
 #   scripts/ci/macos-signing.sh setup     import the Developer ID identity, store the notary profile, write the keys;
 #                                         appends QRTZ_SIGN_ID, QRTZ_NOTARY_PROFILE, QRTZ_NOTARY_KEYCHAIN, QRTZ_KEYS
 #                                         to $GITHUB_ENV
-#   scripts/ci/macos-signing.sh setup-identity   the same without the index/timestamp keys (app-release, ADR 0180:
+#   scripts/ci/macos-signing.sh setup-identity   the same without the index/timestamp keys (app-release, ADR 0181:
 #                                         qrtz.app's release needs only the identity and the notary profile)
 #   scripts/ci/macos-signing.sh keys      only write the signing keys (QRTZ_KEYS)
 #   scripts/ci/macos-signing.sh cleanup   delete the keychain and every secret file (safe to run twice)

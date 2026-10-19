@@ -83,7 +83,7 @@ export const eventContract = {
     payload: PackagesProgress,
     stream: true,
   }),
-  /** ADR 0180: qrtz's own update state changed (checking, available, download progress, ready). */
+  /** ADR 0181: qrtz's own update state changed (checking, available, download progress, ready). */
   'app-update:state': defineEvent({
     capability: 'app.update.read',
     payload: AppUpdateStatus,

@@ -557,7 +557,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 .with_app_version(app_version),
         ));
     }
-    // ADR 0180: qrtz's own updater, over the pinned host; quiet checks start with the app (`start_app_update_checks`).
+    // ADR 0181: qrtz's own updater, over the pinned host; quiet checks start with the app (`start_app_update_checks`).
     service.set_self_update(
         crate::self_update::SelfUpdate::new(
             service_version.clone(),

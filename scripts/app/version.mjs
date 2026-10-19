@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// qrtz.app's own version (ADR 0180). The shell's release is the git tag `app-v<version>` (the old `v<version>` tags of
+// qrtz.app's own version (ADR 0181). The shell's release is the git tag `app-v<version>` (the old `v<version>` tags of
 // release.yml count as earlier releases). A change to the shell since its last tag gets a patch bump in every file
 // that carries the app's version (tauri.conf.json, the root and desktop package.json, the workspace Cargo.toml and
 // its Cargo.lock entries) and a CHANGELOG.md section: the "## Unreleased" notes become "## <version> (<date>)", or,
@@ -12,7 +12,7 @@
 //   node scripts/app/version.mjs current           print the version in tauri.conf.json
 //
 // echo is part of the shell: qrtz.app carries qrtz-echo and it changes only with the whole signed bundle (ADR 0174;
-// Bozniak's rule, ADR 0180), so a change to echo's code bumps qrtz. nano, ctrl and snap are their own releases
+// Bozniak's rule, ADR 0181), so a change to echo's code bumps qrtz. nano, ctrl and snap are their own releases
 // (scripts/modules/version.mjs, ADR 0179) and never bump the shell.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

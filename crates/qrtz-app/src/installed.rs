@@ -90,7 +90,7 @@ pub fn patch_touches_installed(patch: &Value) -> bool {
 }
 
 /// True if a renderer's `config:set` patch touches `modules.<id>.bundledFallback`: the host says when a bundled app
-/// (echo) runs the copy inside qrtz.app instead of its update (ADR 0180); a renderer can neither set nor clear it.
+/// (echo) runs the copy inside qrtz.app instead of its update (ADR 0181); a renderer can neither set nor clear it.
 pub fn patch_touches_bundled_fallback(patch: &Value) -> bool {
     patch_touches(patch, "bundledFallback")
 }

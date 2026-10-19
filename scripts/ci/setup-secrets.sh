@@ -4,7 +4,7 @@
 #
 #   scripts/ci/setup-secrets.sh                 every secret
 #   scripts/ci/setup-secrets.sh cert|notary|keys|r2   just one group (e.g. to rotate it)
-#   scripts/ci/setup-secrets.sh app-update      qrtz.app's update key (ADR 0180): made here once, never on a server
+#   scripts/ci/setup-secrets.sh app-update      qrtz.app's update key (ADR 0181): made here once, never on a server
 #   scripts/ci/setup-secrets.sh --list          what it sets, from where (sets nothing)
 #
 # Every value goes from its source straight into `gh secret set` on stdin: from the keychain (`security`), from a
@@ -177,7 +177,7 @@ do_r2() {
 }
 
 do_app_update() {
-  # ADR 0180: the key that signs qrtz.app's update archives. Separate from the module root, index and timestamp keys;
+  # ADR 0181: the key that signs qrtz.app's update archives. Separate from the module root, index and timestamp keys;
   # its public half is compiled into the app. The private key is made here and lives only in this file and in the
   # APP_UPDATE_KEY secret: never printed, never on a command line, never on a server.
   local root key pub out
@@ -189,7 +189,7 @@ do_app_update() {
   chmod 700 "$keys"
   if [[ -e "$key" ]]; then
     not_root "$key"
-    [[ -f "$key.pub" ]] || die "$key exists but $key.pub doesn't: not replacing it (see ADR 0180, rotation)"
+    [[ -f "$key.pub" ]] || die "$key exists but $key.pub doesn't: not replacing it (see ADR 0181, rotation)"
     say "$key exists: uploading it again (never replaced here)"
   else
     local tauri="$root/node_modules/.bin/tauri"
@@ -203,9 +203,9 @@ do_app_update() {
   out="$(tr -d '[:space:]' <"$key.pub")"
   [[ "$out" =~ ^[A-Za-z0-9+/]+=*$ ]] || die "$key.pub isn't a base64 public key"
   {
-    echo "# ADR 0180: qrtz.app's update public key (minisign, base64 of the .pub text), compiled into the app."
+    echo "# ADR 0181: qrtz.app's update public key (minisign, base64 of the .pub text), compiled into the app."
     echo "# Made by scripts/ci/setup-secrets.sh app-update; the private key is ~/.qrtz-keys/app-update.key and the"
-    echo "# APP_UPDATE_KEY secret only. Rotation: ADR 0180."
+    echo "# APP_UPDATE_KEY secret only. Rotation: ADR 0181."
     echo "$out"
   } >"$pub"
   chmod 644 "$pub"

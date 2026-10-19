@@ -16,7 +16,7 @@ bucket="${R2_BUCKET:-qrtz-modules}"
 sha() { if command -v shasum >/dev/null; then shasum -a 256 "$1"; else sha256sum "$1"; fi | cut -d' ' -f1; }
 
 mkdir -p "$out/v1"
-# ADR 0180: v1/app/ is qrtz.app's own update (app-release.yml); never part of a module publish.
+# ADR 0181: v1/app/ is qrtz.app's own update (app-release.yml); never part of a module publish.
 rclone copy "qrtzr2:$bucket/v1" "$out/v1" --exclude "app/**" --transfers 8 --checkers 16 --stats-one-line -v 2>&1 | tail -5
 [[ -f "$out/v1/root/1.root.json" ]] || { echo "hydrate: the bucket has no v1/root/1.root.json" >&2; exit 1; }
 pin="$(grep -o '"root1Sha256": *"[0-9a-f]\{64\}"' "$repo/crates/qrtz-app/src/module_hosts.json" | grep -o '[0-9a-f]\{64\}')"

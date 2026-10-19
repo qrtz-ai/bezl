@@ -339,7 +339,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     service.start_helper();
     // ADR 0105: ctrl's local scheduler (catch-up + cadences) while the process is alive.
     service.start_ctrl_scheduler();
-    // ADR 0180: qrtz's own quiet update checks (a minute after launch, then every 6 hours; nothing is downloaded).
+    // ADR 0181: qrtz's own quiet update checks (a minute after launch, then every 6 hours; nothing is downloaded).
     service.start_app_update_checks();
     // A speech download a quit cut short resumes in the background (not one the user paused).
     {

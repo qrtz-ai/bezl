@@ -431,7 +431,7 @@ export function createMockBridge(): TauriBridge {
       return isModuleOn(config, name);
     }),
     'packages:check-update': () => ipcSamples['packages:check-update'].response,
-    // ADR 0180: qrtz's own update (?mockAppUpdate=available starts with a newer qrtz found; nothing downloads).
+    // ADR 0181: qrtz's own update (?mockAppUpdate=available starts with a newer qrtz found; nothing downloads).
     'app-update:status': () => appUpdate as never,
     'app-update:check': () =>
       setAppUpdate({

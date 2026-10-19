@@ -1,4 +1,4 @@
-//! ADR 0180: qrtz's own updater, with a fake host. Fixtures (TEST ONLY keys): tests/fixtures/app-update/README.md.
+//! ADR 0181: qrtz's own updater, with a fake host. Fixtures (TEST ONLY keys): tests/fixtures/app-update/README.md.
 use async_trait::async_trait;
 use qrtz_app::self_update::{
     archive_path, parse_feed, verify_signature, Backend, Release, SelfUpdate, State, TARGET,
@@ -234,7 +234,7 @@ async fn the_download_channel_answers_at_once_and_the_events_follow() {
     assert_eq!(u.call("app-update:status").await.unwrap()["state"], "ready");
 }
 
-/// ADR 0180: the highest signed version this install accepted is kept; nothing at or below it is offered or
+/// ADR 0181: the highest signed version this install accepted is kept; nothing at or below it is offered or
 /// installed again, even when it is newer than the running build and validly signed (a replayed old release).
 #[tokio::test]
 async fn the_high_water_mark_only_goes_up() {
