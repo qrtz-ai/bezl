@@ -161,22 +161,10 @@ pub struct Extension {
     pub permissions: Vec<crate::manifest::Permission>,
     #[serde(default)]
     pub settings: crate::manifest::SettingsDecl,
-    /// Models the extension's own process reads. Only [`EXTENSION_READS`] may appear here (ctrl's `model.laya`,
-    /// time-boxed until `inference.laya` runs it), and each must also be one of its dependencies.
+    /// Models the extension's own process reads (ADR 0212): each one of its model dependencies. The resolver grants
+    /// the process read-only store paths for exactly these ([`crate::resolve::extension_grants`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reads: Vec<String>,
-}
-
-/// ADR 0157 §9 (Bozniak's ruling, 2026-10-18): the one model an extension may read in its own process, a
-/// time-boxed exception whose exit is moving Laya into a sandboxed `inference.laya` XPC service. Exactly one entry
-/// (offline_graph's `at_most_one_extension_reads_a_model_in_its_own_process` fails on a second); validation here and
-/// in the index entry refuses any `extension.reads` not listed.
-pub const EXTENSION_READS: &[(&str, &str)] = &[("ctrl", "model.laya")];
-
-/// Some extension's own process reads `model` ([`EXTENSION_READS`]): it gets code's freshness rule and an
-/// immutable, re-verified install (ADR 0157 §6, §9).
-pub fn read_by_extension(model: &str) -> bool {
-    EXTENSION_READS.iter().any(|(_, m)| *m == model)
 }
 
 /// A sandboxed XPC service (ADR 0144 §2, 0157 §7): no network, no TCC, models only by handle.
@@ -288,17 +276,12 @@ impl PackageManifest {
                     "the extension name",
                 ));
             }
-            if e.reads.len() > 1 {
-                return Err(ModuleError::invalid(
-                    "extension.reads",
-                    "at most one model (ADR 0157 §9)",
-                ));
-            }
-            for r in &e.reads {
-                if !EXTENSION_READS.contains(&(self.name.as_str(), r.as_str())) {
+            // ADR 0212: each read is one of its model dependencies, once.
+            for (i, r) in e.reads.iter().enumerate() {
+                if e.reads[..i].contains(r) {
                     return Err(ModuleError::invalid(
                         "extension.reads",
-                        format!("{r}: only ctrl may read model.laya in its own process (ADR 0157 §9)"),
+                        format!("{r}: listed twice"),
                     ));
                 }
                 if kind_of(r).ok() != Some(PackageKind::Model) || !self.dependencies.contains_key(r) {

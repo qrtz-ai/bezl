@@ -882,16 +882,25 @@ impl Installer {
             w.locked.kind.has_code() && w.tree.blobs().iter().any(|b| !self.store.has(&b.sha256, b.size))
         });
         // ADR 0157 §6: the data exemption is data-only AND no extension.reads consumer. A model an extension's own
-        // process reads (model.laya) follows code's rule, whether or not its bytes are already in the store.
-        let read_model = plan.wants.values().any(|w| {
-            w.locked.kind == PackageKind::Model
-                && (crate::qrtz_json::read_by_extension(&w.name)
-                    || plan
-                        .next
-                        .packages
-                        .values()
-                        .any(|l| l.kind == PackageKind::Extension && l.models.contains(&w.name)))
-        });
+        // process declares it reads (ADR 0212) follows code's rule, whether or not its bytes are already in the store.
+        // Readers come from data only: the extensions in the next lock, in the cached signed index, and this
+        // build's downloadable module manifests.
+        let mut readers = read_in_process(&plan.next);
+        readers.extend(crate::bundled::declared_reads().into_iter().flat_map(|(_, r)| r));
+        if let Ok((_, v)) = self.cached_index() {
+            readers.extend(
+                v.index
+                    .packages
+                    .values()
+                    .flat_map(|vs| vs.values())
+                    .filter(|e| e.kind == PackageKind::Extension)
+                    .flat_map(|e| e.models.iter().cloned()),
+            );
+        }
+        let read_model = plan
+            .wants
+            .values()
+            .any(|w| w.locked.kind == PackageKind::Model && readers.contains(&w.name));
         // Rule 1, no override.
         if (plan.online || fetches_code || read_model) && !fresh {
             return Err(Refusal::RevocationListExpired.into());
@@ -983,9 +992,10 @@ impl Installer {
         {
             return Err(mismatch("qrtz.json sha256"));
         }
-        // ADR 0157 §9: a model an extension reads in its own process is loaded straight from this dir, so every file
-        // is re-hashed after the clone (or link) and must be read-only.
-        if w.locked.kind == PackageKind::Model && crate::qrtz_json::read_by_extension(&w.name) {
+        // ADR 0212: every model is loaded straight from this dir by a unit that declares it (an extension's process
+        // or a service handed it), and which one may change after install, so every model file is re-hashed after
+        // the clone (or link) and must be read-only.
+        if w.locked.kind == PackageKind::Model {
             for f in &w.tree.files {
                 let p = dir.join(&f.path);
                 if !file_is_immutable_copy(&p, &f.sha256, f.size)? {
@@ -1372,30 +1382,42 @@ impl Installer {
         Ok(reqs)
     }
 
-    /// The models a service may be handed for an extension (ADR 0157 §7): each (service, model, dir) pair where the
-    /// extension depends on both and the service's `qrtz.json` declares the model. The shell opens the dir and passes
-    /// the handle (or a sandbox extension token) at connect; the service never opens a path itself.
-    /// ADR 0157 §9: the dir an extension's own process may load `model` from (ctrl's `model.laya`), straight from
-    /// the store-linked package: only a [`crate::qrtz_json::EXTENSION_READS`] model, installed and not disabled,
-    /// every file read-only and of its locked size (cheap, at every load; the sha256 was re-checked after linking,
-    /// and `verify_sha256` re-checks it now as well).
+    /// ADR 0212: the dir the process of extension `extension` may load `model` from, straight from the store-linked
+    /// package: only a model that extension declares in its own `extension.reads` (as [`crate::resolve::grants_in_lock`]
+    /// derives it from `qrtz.lock`, at the exact version it depends on), installed and not disabled, every file
+    /// read-only and of its locked size (cheap, at every load; the sha256 was re-checked after linking, and
+    /// `verify_sha256` re-checks it now as well). Another unit's model, or an undeclared one, is refused.
     pub fn extension_read_path(
         &self,
         extension: &str,
         model: &str,
         verify_sha256: bool,
     ) -> Result<PathBuf, InstallError> {
-        if !crate::qrtz_json::EXTENSION_READS.contains(&(extension, model)) {
-            return Err(InstallError::NotLocked(format!("{extension} reads {model}")));
-        }
         let lock = self.lock()?;
-        let v = lock
-            .workspace
-            .resolved
-            .get(model)
-            .cloned()
-            .or_else(|| lock.versions(model).last().map(|(v, _)| v.to_string()))
-            .ok_or_else(|| InstallError::NotInstalled(model.into()))?;
+        let refused = || InstallError::NotLocked(format!("{extension} reads {model}"));
+        let v = if lock.workspace.resolved.contains_key(extension) {
+            let grants = crate::resolve::grants_in_lock(&lock, extension).map_err(|_| refused())?;
+            grants
+                .iter()
+                .find(|g| g.own_process && g.model == model)
+                .map(|g| g.model_version.clone())
+                .ok_or_else(refused)?
+        } else {
+            // Not installed (yet): this build's manifest of it must declare the read, and the model's installed
+            // version is the one (a model that arrives before its module, e.g. from the module's settings).
+            if !crate::bundled::declared_reads()
+                .iter()
+                .any(|(e, r)| e == extension && r.iter().any(|m| m == model))
+            {
+                return Err(refused());
+            }
+            lock.workspace
+                .resolved
+                .get(model)
+                .cloned()
+                .or_else(|| lock.versions(model).last().map(|(v, _)| v.to_string()))
+                .ok_or_else(|| InstallError::NotInstalled(model.into()))?
+        };
         let l = lock
             .get(model, &v)
             .ok_or_else(|| InstallError::NotInstalled(model.into()))?;
@@ -1427,29 +1449,54 @@ impl Installer {
         Ok(dir)
     }
 
+    /// The models a service may be handed for an extension (ADR 0157 §7, ADR 0212): each (service, model, dir) pair
+    /// [`crate::resolve::grants_in_lock`] derives from the services' declared `service.models`, for a model that is
+    /// installed and not disabled. The shell opens the dir and passes the handle (or a sandbox extension token) at
+    /// connect; the service never opens a path itself.
     pub fn model_grants(&self, extension: &str) -> Result<Vec<(String, String, PathBuf)>, InstallError> {
         let lock = self.lock()?;
-        let v = lock
-            .workspace
-            .resolved
-            .get(extension)
-            .ok_or_else(|| InstallError::NotInstalled(extension.into()))?;
-        let e = lock
-            .get(extension, v)
-            .ok_or_else(|| InstallError::NotInstalled(extension.into()))?;
+        if !lock.workspace.resolved.contains_key(extension) {
+            return Err(InstallError::NotInstalled(extension.into()));
+        }
+        let grants = crate::resolve::grants_in_lock(&lock, extension)?;
         let mut out = vec![];
-        for (s, sv) in &e.dependencies {
-            let Some(sl) = lock.get(s, sv).filter(|l| l.kind == PackageKind::Service) else {
-                continue;
-            };
-            for (m, mv) in &e.dependencies {
-                if sl.models.contains(m) && lock.get(m, mv).is_some_and(|l| l.disabled.is_none()) {
-                    out.push((key(s, sv), key(m, mv), self.package_path(m, mv)));
-                }
+        for g in grants.iter().filter(|g| !g.own_process) {
+            if lock
+                .get(&g.model, &g.model_version)
+                .is_some_and(|l| l.disabled.is_none())
+            {
+                out.push((
+                    key(&g.unit, &g.unit_version),
+                    key(&g.model, &g.model_version),
+                    self.package_path(&g.model, &g.model_version),
+                ));
             }
         }
         Ok(out)
     }
+
+    /// ADR 0212, at launch: every model the process of `extension` declares it reads, each as the read-only dir
+    /// [`Self::extension_read_path`] checks. A model that isn't installed (yet) is left out; nothing else is ever in it.
+    pub fn process_reads(&self, extension: &str) -> Result<Vec<(String, PathBuf)>, InstallError> {
+        let lock = self.lock()?;
+        let grants = crate::resolve::grants_in_lock(&lock, extension)?;
+        let mut out = vec![];
+        for g in grants.iter().filter(|g| g.own_process) {
+            if let Ok(dir) = self.extension_read_path(extension, &g.model, false) {
+                out.push((g.model.clone(), dir));
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// The models some extension in `lock` reads in its own process (its declared `extension.reads`, ADR 0212).
+fn read_in_process(lock: &QrtzLock) -> BTreeSet<String> {
+    lock.packages
+        .values()
+        .filter(|l| l.kind == PackageKind::Extension)
+        .flat_map(|l| l.models.iter().cloned())
+        .collect()
 }
 
 /// The lock entry an index entry and its resolution make.

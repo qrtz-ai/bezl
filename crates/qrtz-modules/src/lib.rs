@@ -73,6 +73,30 @@ pub mod bundled {
     pub fn manifests() -> [(&'static str, &'static str); 4] {
         [("echo", ECHO), ("nano", NANO), ("ctrl", CTRL), ("snap", SNAP)]
     }
+
+    /// This build's package manifests (`modules/<id>/qrtz.json`), next to [`manifests`].
+    pub fn package_manifests() -> [(&'static str, &'static str); 4] {
+        [
+            ("echo", include_str!("../../../modules/echo/qrtz.json")),
+            ("nano", include_str!("../../../modules/nano/qrtz.json")),
+            ("ctrl", include_str!("../../../modules/ctrl/qrtz.json")),
+            ("snap", include_str!("../../../modules/snap/qrtz.json")),
+        ]
+    }
+
+    /// ADR 0212: `(extension, its extension.reads)` from this build's manifests of the downloadable modules (a
+    /// module bundled in qrtz.app isn't installed through the package manager). Data, not an allowlist: what a
+    /// module declares in its qrtz.json is what is read here, for a model that arrives before its module's lock
+    /// entry does (the installed lock and the signed index are the other sources).
+    pub fn declared_reads() -> Vec<(String, Vec<String>)> {
+        package_manifests()
+            .iter()
+            .filter(|(id, _)| !crate::is_bundled_extension(id))
+            .filter_map(|(_, t)| crate::qrtz_json::PackageManifest::parse(t.as_bytes()).ok())
+            .filter_map(|m| m.extension.map(|e| (m.name, e.reads)))
+            .filter(|(_, r)| !r.is_empty())
+            .collect()
+    }
 }
 
 /// Lowercase hex sha256 of `bytes`.

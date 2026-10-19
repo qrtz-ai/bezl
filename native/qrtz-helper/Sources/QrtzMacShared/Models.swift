@@ -20,11 +20,46 @@ public enum LocalModels {
         public var description: String { "speech models not downloaded (\(set))" }
     }
 
+    /// The `model.*` package each set is (`local_models.json`), to find its grant in `QRTZ_READ_MODELS`.
+    public static let packages: [String: String] = [
+        asr: "model.nemotron", diarizer: "model.nemotron-diarizer", echo: "model.localvqe", echoAsr: "model.parakeet-tdt-v2-en",
+    ]
+    /// ADR 0212: set by the host for a downloaded module (one `model.<name>=<dir>` per line): the read-only store dirs
+    /// of exactly the models this process declares it reads. When it is set, no other dir is ever used.
+    public static let readsEnv = "QRTZ_READ_MODELS"
+
     public static func dir(_ set: String) throws -> URL {
-        guard let root = ProcessInfo.processInfo.environment["QRTZ_MODELS_DIR"], !root.isEmpty else { throw Missing(set: set) }
+        let env = ProcessInfo.processInfo.environment
+        if let reads = env[readsEnv] {
+            guard let pkg = packages[set], let d = granted(reads, pkg) else { throw Missing(set: set) }
+            return d
+        }
+        guard let root = env["QRTZ_MODELS_DIR"], !root.isEmpty else { throw Missing(set: set) }
         let d = URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent(set, isDirectory: true)
         guard FileManager.default.fileExists(atPath: d.appendingPathComponent(marker).path) else { throw Missing(set: set) }
         return d
+    }
+
+    /// `pkg`'s granted dir in a `QRTZ_READ_MODELS` value, only while it is an installed package (its `qrtz.json` is
+    /// there) whose every regular file is read-only for everyone.
+    static func granted(_ reads: String, _ pkg: String) -> URL? {
+        for line in reads.split(separator: "\n") {
+            guard let eq = line.firstIndex(of: "="), line[..<eq] == pkg else { continue }
+            let d = URL(fileURLWithPath: String(line[line.index(after: eq)...]), isDirectory: true)
+            return readOnly(d) ? d : nil
+        }
+        return nil
+    }
+
+    static func readOnly(_ d: URL) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: d.appendingPathComponent("qrtz.json").path),
+              let e = fm.enumerator(at: d, includingPropertiesForKeys: nil) else { return false }
+        for case let u as URL in e {
+            guard let a = try? fm.attributesOfItem(atPath: u.path) else { return false }
+            if (a[.type] as? FileAttributeType) == .typeRegular, let p = a[.posixPermissions] as? Int, p & 0o222 != 0 { return false }
+        }
+        return true
     }
 }
 /// ADR 0087: what we can and can't keep of a model's compile. The downloaded sets already are compiled Core ML
@@ -39,7 +74,12 @@ public struct CompiledModelStamp {
     public let set: String
     public let dir: URL
     public init(set: String, dir: URL) { self.set = set; self.dir = dir }
-    public var file: URL { dir.deletingLastPathComponent().appendingPathComponent("compiled", isDirectory: true).appendingPathComponent(set + ".json") }
+    /// `<data>/models/compiled/<set>.json`: next to the views, never inside a read-only store package (ADR 0212).
+    public var file: URL {
+        let models = ProcessInfo.processInfo.environment["QRTZ_MODELS_DIR"].filter { !$0.isEmpty }
+            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? dir.deletingLastPathComponent()
+        return models.appendingPathComponent("compiled", isDirectory: true).appendingPathComponent(set + ".json")
+    }
 
     public struct Key: Codable, Equatable { var model: String; var osBuild: String; var path: String }
     public struct Saved: Codable { var key: Key; var loadMs: Int; var at: String }

@@ -318,6 +318,33 @@ fn want_identifier(name: &str) -> Option<String> {
     qrtz_modules::qrtz_json::identifier_for(name, PackageKind::Extension)
 }
 
+/// ADR 0212: the env var naming the read-only store dirs a downloaded module's process may load its declared models
+/// from, one `model.<name>=<dir>` per line. Set for every downloaded module (empty when it declares none or its
+/// grants don't derive), so its helper never falls back to a writable copy; unset for a module bundled in qrtz.app.
+pub const READ_MODELS_ENV: &str = "QRTZ_READ_MODELS";
+
+/// The [`READ_MODELS_ENV`] value for `module`'s next launch: exactly the grants
+/// [`qrtz_modules::resolve::grants_in_lock`] derives for its own process from `qrtz.lock`, each dir checked
+/// read-only by [`qrtz_modules::install::Installer::extension_read_path`]. `None` for a bundled module.
+pub fn read_models_env(root: &Path, module: &str) -> Option<String> {
+    if qrtz_modules::is_bundled_extension(module) {
+        return None;
+    }
+    let installer =
+        qrtz_modules::install::Installer::new(root, None, Box::new(crate::module_hosting::AppleCodeChecks));
+    let reads = installer.process_reads(module).unwrap_or_else(|e| {
+        tracing::warn!(module, error = %e, "no model grants for this launch");
+        vec![]
+    });
+    Some(
+        reads
+            .iter()
+            .map(|(m, d)| format!("{m}={}", d.display()))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
 /// A module helper run from its installed package (see the module doc). `base` carries the arguments and the
 /// environment (`QRTZ_MODULE`, the models dir, the native pill); `program` in `base` is ignored unless `fixed`.
 pub struct InstalledSpawn {
@@ -412,10 +439,14 @@ impl Spawn for InstalledSpawn {
     /// entitlements, else `SIGKILL`; a start of it is counted for the crash fallback (P3.2).
     fn spawn(&self) -> std::io::Result<ChildIo> {
         let (program, policy) = self.resolve().map_err(std::io::Error::other)?;
+        let mut env = self.base.env.clone();
+        if let Some(v) = read_models_env(&self.root, &self.module) {
+            env.push((READ_MODELS_ENV.to_owned(), v));
+        }
         let sp = ProcessSpawn {
             program,
             args: self.base.args.clone(),
-            env: self.base.env.clone(),
+            env,
         };
         match self.check {
             LaunchCheck::Dev => sp.spawn(),

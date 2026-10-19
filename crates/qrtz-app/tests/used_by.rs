@@ -88,14 +88,53 @@ fn expected() -> Vec<(String, Vec<String>)> {
     .collect()
 }
 
+/// ADR 0212: nano declares it reads its three models in its own process, so they have no view (it loads them from
+/// the read-only store package); echo's Parakeet keeps its view.
 fn on_disk(data: &Path) {
     for (_, package, dir) in SETS {
         assert!(
             data.join(format!("packages/{package}/1.0.0/w.bin")).is_file(),
             "{package}"
         );
-        assert!(data.join(format!("models/{dir}/{MARKER}")).is_file(), "{dir}");
+        assert_eq!(
+            data.join(format!("models/{dir}/{MARKER}")).is_file(),
+            package == "model.parakeet-tdt-v2-en",
+            "{dir}"
+        );
     }
+}
+
+/// A signed, empty index on its own loopback server and its root pin: nano's declared reads install only under a
+/// fresh signed list, like code (ADR 0157 §6, ADR 0212).
+async fn index() -> (tempfile::TempDir, Server, String) {
+    let out = tempfile::tempdir().unwrap();
+    let keys = qrtz_publish::keys::Keys::ephemeral();
+    let now = qrtz_publish::now_ms();
+    let (_, pin) = qrtz_publish::write_root(out.path(), &keys, None, 1, now).unwrap();
+    let spec = qrtz_publish::Spec {
+        team_id: qrtz_publish::dry_run::TEAM.into(),
+        packages: vec![],
+        pinned_models: vec![],
+        models: vec![],
+        revoked: vec![],
+    };
+    qrtz_publish::build(out.path(), &spec, &keys, now).unwrap();
+    let srv = Server::start().await;
+    fn put(dir: &Path, base: &Path, srv: &Server) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                put(&p, base, srv);
+            } else {
+                srv.put(
+                    &p.strip_prefix(base).unwrap().to_string_lossy(),
+                    std::fs::read(&p).unwrap(),
+                );
+            }
+        }
+    }
+    put(out.path(), out.path(), &srv);
+    (out, srv, pin)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -103,11 +142,14 @@ async fn the_speech_models_echo_and_nano_use_are_labeled_with_them_and_never_pru
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path();
     let srv = Server::start().await;
-    let models = LocalModels::with_manifest(data.join("models"), serve(&srv), Some(srv.base.clone()));
+    let (_out, ix, pin) = index().await;
+    let models = LocalModels::with_manifest(data.join("models"), serve(&srv), Some(srv.base.clone()))
+        .with_index(Some(pin), vec![ix.base.clone()]);
 
-    // Upgrade from before the package manager: the views are there and usable, the lock isn't.
+    // Upgrade from before the package manager: the views are there, the lock isn't. nano's writable views no longer
+    // count (ADR 0212: its process reads only the read-only store packages); echo's still does.
     legacy_views(&data.join("models"));
-    assert!(models.installed());
+    assert!(!models.installed());
     assert!(!data.join("qrtz.lock").exists());
     // Switching echo and nano on (or settings → speech) adopts them through the package manager.
     models

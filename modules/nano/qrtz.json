@@ -34,6 +34,7 @@
     "settings": {
       "namespace": "nano",
       "legacySections": ["note", "speech", "privacy"]
-    }
+    },
+    "reads": ["model.localvqe", "model.nemotron", "model.nemotron-diarizer"]
   }
 }

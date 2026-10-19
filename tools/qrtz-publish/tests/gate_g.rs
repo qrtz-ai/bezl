@@ -435,12 +435,21 @@ async fn freshness_code_never_installs_without_a_fresh_list() {
 
 #[tokio::test]
 async fn freshness_model_laya_read_in_ctrls_process_needs_a_fresh_list() {
-    let w = World::new();
+    // ADR 0212: a model is code-like because a published extension declares it reads it in its own process (ctrl's
+    // extension.reads in the signed index), not because a constant names it: no fresh list, no install, even before
+    // ctrl itself is installed.
+    let mut w = World::new();
+    w.catalogue();
+    let l = w.model("model.laya", "decision", &[3u8; 3000]);
+    let c = w.ext("ctrl", json!({"model.laya": "^1.0.0"}), &["model.laya"]);
+    w.publish(vec![l, c], vec![], w.now);
     let i = w.installer("c");
-    // ctrl reads model.laya in its own process (extension.reads), so it is treated like code: no list, no install.
-    let (src, t) = pinned(&w, "model.laya", "decision", "1.0.0", b"laya");
+    i.refresh(&w.hosts(), &RefreshConsent::user_asked(), w.now)
+        .await
+        .unwrap();
+    let (src, t) = pinned(&w, "model.laya", "decision", "1.1.0", b"laya");
     assert_eq!(
-        apply_pinned(&i, &t, &src, w.now).await.unwrap_err(),
+        apply_pinned(&i, &t, &src, w.now + 8 * DAY_MS).await.unwrap_err(),
         InstallError::Refused(Refusal::RevocationListExpired)
     );
     assert!(i.lock().unwrap().packages.is_empty());

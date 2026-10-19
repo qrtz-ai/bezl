@@ -8,7 +8,8 @@
 //! `<data>/models/<set>/` (0700) holds store links of the files, and a set is usable once its `.qrtz-verified` marker
 //! is written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches anything itself.
 //!
-//! A model an extension reads in its own process (ctrl's `model.laya`, ADR 0157 §9) gets no view: it is loaded
+//! A model an installed extension declares it reads in its own process (`extension.reads`: ctrl's `model.laya`,
+//! nano's Nemotron, diarizer and LocalVQE; ADR 0212) gets no view: it is loaded
 //! read-only straight from its store-linked package dir ([`LocalModels::read_dir`]), and, like code, it installs
 //! only under a fresh signed revocation list (§6), so its download refreshes the index first.
 use crate::module_hosting::{AppleCodeChecks, Hosts, HttpTransport, InstallError, Op};
@@ -80,14 +81,6 @@ pub struct LocalModels {
     index: Option<(Option<String>, Vec<String>)>,
 }
 
-/// The extension whose own process reads `package` ([`qrtz_modules::qrtz_json::EXTENSION_READS`]).
-fn reader_of(package: &str) -> Option<&'static str> {
-    qrtz_modules::qrtz_json::EXTENSION_READS
-        .iter()
-        .find(|(_, m)| *m == package)
-        .map(|(e, _)| *e)
-}
-
 /// The model set dirs extension `ext` needs: its bundled manifest's `model:<dir>` data dependencies (echo:
 /// Parakeet; nano: Nemotron, the diarizer and LocalVQE). Unknown extensions need none (audit P0-3).
 pub fn sets_needed_by(ext: &str) -> Vec<String> {
@@ -144,7 +137,6 @@ pub fn pinned_users(package: &str) -> Vec<String> {
         })
         .map(|m| m.id.clone())
         .collect();
-    out.extend(reader_of(package).map(str::to_owned));
     out.sort();
     out.dedup();
     out
@@ -231,9 +223,37 @@ impl LocalModels {
         self
     }
 
-    /// Every set is read by an extension's own process: no view dir, loaded from the package (ADR 0157 §9).
+    /// The installed extension whose own process declares it reads `package` (`extension.reads` in `qrtz.lock`, ADR
+    /// 0212): its set gets no view dir and is loaded read-only from the store-linked package.
+    /// Before that extension is installed, this build's manifest of a downloadable module that declares it
+    /// ([`qrtz_modules::bundled::declared_reads`]; a module bundled in qrtz.app keeps its view for now).
+    fn reader_of(&self, package: &str) -> Option<String> {
+        let installed = self.installer().lock().ok().and_then(|lock| {
+            lock.workspace
+                .resolved
+                .keys()
+                .find(|e| {
+                    qrtz_modules::resolve::grants_in_lock(&lock, e)
+                        .is_ok_and(|g| g.iter().any(|g| g.own_process && g.model == package))
+                })
+                .cloned()
+        });
+        installed.or_else(|| {
+            qrtz_modules::bundled::declared_reads()
+                .into_iter()
+                .find(|(_, r)| r.iter().any(|m| m == package))
+                .map(|(e, _)| e)
+        })
+    }
+
+    /// Every set is read by an extension's own process: no view dir, loaded from the package (ADR 0212).
     fn extension_read(&self) -> bool {
-        !self.manifest.sets.is_empty() && self.manifest.sets.iter().all(|s| reader_of(&s.package).is_some())
+        !self.manifest.sets.is_empty()
+            && self
+                .manifest
+                .sets
+                .iter()
+                .all(|s| self.reader_of(&s.package).is_some())
     }
 
     /// ADR 0157 §9: the store-linked package dir an extension loads `set` from, read-only, never a writable copy.
@@ -241,10 +261,10 @@ impl LocalModels {
     /// modes and sizes.
     pub fn read_dir(&self, set: &str, verify_sha256: bool) -> Option<PathBuf> {
         let s = self.manifest.sets.iter().find(|s| s.id == set)?;
-        let ext = reader_of(&s.package)?;
+        let ext = self.reader_of(&s.package)?;
         let dir = self
             .installer()
-            .extension_read_path(ext, &s.package, verify_sha256)
+            .extension_read_path(&ext, &s.package, verify_sha256)
             .ok()?;
         let want = self.source(s).version;
         (dir == self.installer().package_path(&s.package, &want)).then_some(dir)
@@ -320,7 +340,7 @@ impl LocalModels {
     }
 
     fn set_ok(&self, s: &ModelSet) -> bool {
-        if reader_of(&s.package).is_some() {
+        if self.reader_of(&s.package).is_some() {
             return self.read_dir(&s.id, false).is_some();
         }
         let dir = self.root.join(&s.dir);
@@ -384,7 +404,12 @@ impl LocalModels {
             return Ok(());
         }
         let t = self.transport(ctl);
-        if self.manifest.sets.iter().any(|s| reader_of(&s.package).is_some()) {
+        if self
+            .manifest
+            .sets
+            .iter()
+            .any(|s| self.reader_of(&s.package).is_some())
+        {
             // ADR 0157 §6: a model an extension reads needs a fresh signed list, like code. The user's yes to this
             // download is the consent to refresh; if it can't (no pinned root yet, offline), apply refuses below.
             if let Err(e) = installer
@@ -415,10 +440,10 @@ impl LocalModels {
             .await
             .map_err(|e| pm_error(e, ctl))?;
         for s in &self.manifest.sets {
-            if reader_of(&s.package).is_none() && self.set_ok(s) {
+            if self.reader_of(&s.package).is_none() && self.set_ok(s) {
                 continue;
             }
-            if reader_of(&s.package).is_some() {
+            if self.reader_of(&s.package).is_some() {
                 // An older build's writable view of it goes; ctrl never loads from there.
                 match qrtz_modules::fsutil::remove_tree(&self.root.join(&s.dir)) {
                     Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
@@ -507,7 +532,14 @@ impl LocalModels {
             }
         }
         for s in &self.manifest.sets {
-            if reader_of(&s.package).is_some() {
+            if self.reader_of(&s.package).is_some() {
+                // ADR 0212: its reader loads it from the store; a view made before that extension declared it goes.
+                match qrtz_modules::fsutil::remove_tree(&self.root.join(&s.dir)) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                        problems.push(format!("{}: {e}", s.dir))
+                    }
+                    _ => {}
+                }
                 continue;
             }
             let version = self.source(s).version;

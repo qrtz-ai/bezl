@@ -1271,111 +1271,95 @@ fn the_app_tcc_entitlements_are_the_adr_allowlist() {
     );
 }
 
-/// ADR 0157 §9: a model is read only by the sandboxed services that declare it (`service.models`), handed over at
-/// connect. `extension.reads` is the exception, a model mapped into an extension's own process, which carries
-/// qrtz's TCC grants (ADR 0154). At most one exists: ctrl reading `model.laya` (its Laya scorer runs in ctrl's
-/// helper today), on the conditions in ADR 0157 (read-only from the store path, the sha256 re-checked at load or
-/// the store entry immutable, this one model only). Its planned exit is a sandboxed `inference.laya` XPC service
-/// that declares `model.laya` in `service.models`; then this list becomes empty. A second exception changes this
-/// test and its ADR, on purpose.
-const EXTENSION_READS: &[(&str, &str)] = &[("ctrl", "model.laya")];
+/// ADR 0212 (superseding ADR 0157 §9's one-exception allowlist): grants are derived from declarations only. Every
+/// runnable unit declares its reads (`extension.reads`, `service.models`) and `qrtz_modules::resolve::extension_grants`
+/// turns them into grants; no grant logic may name a package or a model. This fails on any package name (a module,
+/// one of its dependencies, a pinned model) written as a string literal in the code of the grant logic, and on any
+/// allowlist constant coming back.
+const GRANT_LOGIC: &[(&str, Option<&str>)] = &[
+    ("crates/qrtz-modules/src/resolve.rs", None),
+    ("crates/qrtz-modules/src/install.rs", None),
+    ("crates/qrtz-modules/src/qrtz_json.rs", None),
+    ("crates/qrtz-modules/src/index.rs", None),
+    ("crates/qrtz-app/src/local_models.rs", None),
+    (
+        "crates/qrtz-app/src/installed.rs",
+        Some("pub fn read_models_env("),
+    ),
+];
 
-/// `(package, model)` for every `extension.reads` entry in one manifest document (a `qrtz.json`, or anything that
-/// embeds one: publish specs, fixtures).
-fn extension_reads(v: &Value, out: &mut BTreeSet<(String, String)>) {
-    match v {
-        Value::Object(o) => {
-            if let Some(reads) = o.get("extension").and_then(|e| e.get("reads")) {
-                let name = o.get("name").and_then(Value::as_str).unwrap_or("?").to_owned();
-                for r in reads.as_array().into_iter().flatten() {
-                    out.insert((name.clone(), r.as_str().unwrap_or("?").to_owned()));
-                }
-            }
-            for x in o.values() {
-                extension_reads(x, out);
-            }
+/// The code of `src` a grant rule looks at: before its `#[cfg(test)]`, comments dropped, or only the item starting
+/// at `item` (to its closing brace at column 0).
+fn grant_code(src: &str, item: Option<&str>) -> String {
+    let body = match item {
+        Some(i) => {
+            let from = src.find(i).unwrap_or_else(|| panic!("{i} is gone"));
+            let rest = &src[from..];
+            &rest[..rest.find("\n}\n").map_or(rest.len(), |e| e + 3)]
         }
-        Value::Array(a) => a.iter().for_each(|x| extension_reads(x, out)),
-        _ => {}
-    }
+        None => &src[..src.find("#[cfg(test)]").unwrap_or(src.len())],
+    };
+    body.lines()
+        .map(|l| l.split_once("//").map_or(l, |(code, _)| code))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
-fn check_extension_reads(found: &BTreeSet<(String, String)>) -> Result<(), String> {
-    let allowed: BTreeSet<(String, String)> = EXTENSION_READS
+/// Package names in `code` written as string literals.
+fn named_packages(code: &str, names: &BTreeSet<String>) -> Vec<String> {
+    names
         .iter()
-        .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
-        .collect();
-    if allowed.len() > 1 {
-        return Err(format!(
-            "ADR 0157 §9: at most one extension.reads exception, not {allowed:?}"
-        ));
-    }
-    let extra: Vec<_> = found.difference(&allowed).collect();
-    if !extra.is_empty() {
-        return Err(format!(
-            "extension.reads beyond ADR 0157 §9's one exception (ctrl → model.laya): {extra:?}; a model belongs \
-             in a sandboxed service's service.models"
-        ));
-    }
-    Ok(())
+        .filter(|n| code.contains(&format!("\"{n}\"")))
+        .cloned()
+        .collect()
 }
 
 #[test]
-fn at_most_one_extension_reads_a_model_in_its_own_process() {
-    fn walk(d: &Path, out: &mut Vec<PathBuf>) {
-        for e in std::fs::read_dir(d).unwrap().flatten() {
-            let p = e.path();
-            let n = e.file_name().to_string_lossy().into_owned();
-            if p.is_dir() {
-                if !["node_modules", "target", ".build", ".git", "dist"].contains(&n.as_str()) {
-                    walk(&p, out)
-                }
-            } else if p.extension().is_some_and(|x| x == "json") {
-                out.push(p);
-            }
-        }
-    }
+fn grant_logic_names_no_package_or_model() {
     let r = root();
-    let mut files = vec![];
-    walk(&r, &mut files);
-    let mut found = BTreeSet::new();
-    let mut manifests = 0;
-    for f in &files {
-        let Ok(v) = serde_json::from_str::<Value>(&std::fs::read_to_string(f).unwrap_or_default()) else {
+    let mut names = BTreeSet::new();
+    for e in std::fs::read_dir(r.join("modules")).unwrap().flatten() {
+        let Ok(t) = std::fs::read_to_string(e.path().join("qrtz.json")) else {
             continue;
         };
-        if f.file_name()
-            .is_some_and(|n| n == "qrtz.json" || n == "module.json")
-        {
-            manifests += 1;
+        let v: Value = serde_json::from_str(&t).unwrap();
+        names.insert(v["name"].as_str().unwrap().to_owned());
+        for d in v["dependencies"].as_object().into_iter().flatten() {
+            names.insert(d.0.clone());
         }
-        extension_reads(&v, &mut found);
     }
-    assert!(manifests >= 3, "found only {manifests} package manifests");
-    if let Err(e) = check_extension_reads(&found) {
-        panic!("{e}");
+    let pinned: Value = serde_json::from_str(
+        &std::fs::read_to_string(r.join("crates/qrtz-app/src/local_models.json")).unwrap(),
+    )
+    .unwrap();
+    for s in pinned["sets"].as_array().unwrap() {
+        names.insert(s["package"].as_str().unwrap().to_owned());
     }
-    // The checker itself: today's one exception passes, a second one (or another reader of laya) fails.
-    let pair = |a: &str, b: &str| (a.to_owned(), b.to_owned());
-    let mut v = BTreeSet::new();
-    extension_reads(
-        &serde_json::json!({"name": "ctrl", "kind": "extension", "extension": {"reads": ["model.laya"]}}),
-        &mut v,
+    assert!(
+        names.contains("model.laya") && names.contains("model.localvqe") && names.contains("nano"),
+        "{names:?}"
     );
-    assert_eq!(v, BTreeSet::from([pair("ctrl", "model.laya")]));
-    assert!(check_extension_reads(&v).is_ok());
-    for (a, b) in [
-        ("echo", "model.parakeet-tdt-v2-en"),
-        ("ctrl", "model.nemotron"),
-        ("nano", "model.laya"),
-    ] {
-        let mut two = v.clone();
-        extension_reads(
-            &serde_json::json!({"packages": [{"name": a, "extension": {"reads": [b]}}]}),
-            &mut two,
-        );
-        assert!(check_extension_reads(&two).is_err(), "{a} → {b}");
+    let mut bad = vec![];
+    for (f, item) in GRANT_LOGIC {
+        let code = grant_code(&std::fs::read_to_string(r.join(f)).unwrap(), *item);
+        for n in named_packages(&code, &names) {
+            bad.push(format!("{f}: \"{n}\""));
+        }
+        if code.contains("EXTENSION_READS") {
+            bad.push(format!("{f}: an EXTENSION_READS allowlist"));
+        }
     }
+    assert!(
+        bad.is_empty(),
+        "grant logic names packages (declare reads in qrtz.json instead): {bad:?}"
+    );
+    // The checker itself.
+    let fake = "fn grants() { if ext == \"nano\" && m == \"model.laya\" { ok() } }\n#[cfg(test)]\nmod t { \"ctrl\" }";
+    assert_eq!(
+        named_packages(&grant_code(fake, None), &names),
+        ["model.laya", "nano"]
+    );
+    assert!(named_packages(&grant_code("// \"nano\" in a comment\nfn f() {}", None), &names).is_empty());
 }
 
 /// ADR 0162, ADR 0169: every executable Tauri bundles into Contents/MacOS (tauri.macos.conf.json externalBin) is in

@@ -23,6 +23,7 @@
       "module.settings"
     ],
     "permissions": ["microphone", "accessibility"],
-    "settings": { "namespace": "echo", "legacySections": ["talk"] }
+    "settings": { "namespace": "echo", "legacySections": ["talk"] },
+    "reads": ["model.parakeet-tdt-v2-en"]
   }
 }

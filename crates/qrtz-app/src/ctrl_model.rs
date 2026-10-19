@@ -2,9 +2,9 @@
 //! ctrl's settings, through the same pinned-manifest, resumable, size- and sha256-checked path as the
 //! speech models (ADR 0079, `local_models`), as the `model.laya` package.
 //!
-//! ADR 0157 §9 (Bozniak's ruling): ctrl reading `model.laya` in its own process is a time-boxed exception, the
-//! only `extension.reads` there is ([`qrtz_modules::qrtz_json::EXTENSION_READS`]); its exit is moving Laya into a
-//! sandboxed `inference.laya` XPC service. Until then the model is loaded read-only straight from its store-linked
+//! ADR 0212 (superseding ADR 0157 §9's allowlist): ctrl declares `model.laya` in its `extension.reads`, and the
+//! resolver grants its process that model and nothing else; the planned exit is still a sandboxed `inference.laya`
+//! XPC service. Until then the model is loaded read-only straight from its store-linked
 //! package dir (`<data>/packages/model.laya/<version>/`, files 0444/0400, every sha256 re-checked right after
 //! linking, modes and sizes checked at every load), never from a writable copy; and it installs only under a fresh
 //! signed revocation list, like code (§6), so the download refreshes the index first and is refused

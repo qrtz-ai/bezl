@@ -9,9 +9,12 @@
 //! - **Engines**: a workspace override swaps one model dependency of one extension for another model of the same
 //!   task (`echo: model.parakeet-tdt-v2-en → model.nemotron@^1.0.0`). Switching an engine is a dependency change,
 //!   resolved like any other.
-//! - **Readers**: every model an extension depends on must be readable by one of its services (`models` in the
-//!   service's `qrtz.json`) or by the extension itself (`extension.reads`); otherwise nothing could use it, and the
-//!   resolution is refused.
+//! - **Reads** (ADR 0212): every runnable unit (the extension's own process, and each service it depends on)
+//!   declares the models it reads (`extension.reads`, `service.models`). [`extension_grants`] is the one place that
+//!   turns those declarations into grants and checks them: every model dependency is read by at least one declared
+//!   unit (no orphan), and every read names one of the extension's model dependencies (no undeclared read). It runs
+//!   at publish (`qrtz-publish build`), at install ([`check_readers`]), at launch ([`grants_in_lock`]) and over every
+//!   `modules/*/qrtz.json` in the repo. No package or model is named in this logic: grants come from data only.
 use crate::index::{Index, PackageEntry, PackageKind};
 use crate::qrtz_lock::{parse_override, QrtzLock, Workspace};
 use semver::{Version, VersionReq};
@@ -29,10 +32,19 @@ pub enum ResolveError {
         from: String,
         to: String,
     },
-    #[error("{extension}@{version}: nothing it runs can read {model} (no service of it lists it, and it doesn't read it itself)")]
+    #[error("{extension}@{version}: nothing it runs can read {model} (no service of it lists it, and it doesn't read it itself; declare it in extension.reads or a service's service.models)")]
     NoReader {
         extension: String,
         version: String,
+        model: String,
+    },
+    #[error(
+        "{extension}@{version}: {unit} reads {model}, which isn't one of {extension}'s model dependencies"
+    )]
+    ReadNotDependency {
+        extension: String,
+        version: String,
+        unit: String,
         model: String,
     },
     #[error("resolution didn't settle")]
@@ -306,29 +318,152 @@ fn finish(index: &Index, ws: &Workspace, p: Pass) -> Result<Resolution, ResolveE
     })
 }
 
-/// ADR 0157 §7: a model is reachable only through a service that declares it (or an extension that reads it).
-pub fn check_readers(packages: &BTreeMap<String, ResolvedPackage>) -> Result<(), ResolveError> {
+/// One read-only grant (ADR 0212): `unit` (the extension's own process when `own_process`, else a service it
+/// depends on) may be given `model`, one of the extension's dependencies. Versions are whatever the caller's
+/// dependency map holds: exact versions after resolution or in a lock, ranges in a manifest.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Grant {
+    pub extension: String,
+    pub unit: String,
+    pub unit_version: String,
+    pub own_process: bool,
+    pub model: String,
+    pub model_version: String,
+}
+
+/// The single source of truth for reads (ADR 0212): the grants of extension `extension@version`, derived only from
+/// what its units declare. `deps` is its dependency map, `own_reads` its `extension.reads`, and `service(name,
+/// version)` the `(version, service.models)` of a service dependency (`None` when it isn't known: it reads nothing).
+/// Refused: a read by the extension's own process of a model that isn't one of its model dependencies, and a model
+/// dependency no unit reads. A service (shared between extensions) is granted only the models it declares that this
+/// extension depends on; nothing it declares beyond those is ever granted for this extension.
+pub fn extension_grants(
+    extension: &str,
+    version: &str,
+    deps: &BTreeMap<String, String>,
+    own_reads: &[String],
+    service: &dyn Fn(&str, &str) -> Option<(String, Vec<String>)>,
+) -> Result<Vec<Grant>, ResolveError> {
+    let kind = |n: &str| crate::qrtz_json::kind_of(n).ok();
+    let mut units: Vec<(String, String, bool, Vec<String>)> =
+        vec![(extension.to_owned(), version.to_owned(), true, own_reads.to_vec())];
+    for (s, sv) in deps {
+        if kind(s) == Some(PackageKind::Service) {
+            if let Some((v, reads)) = service(s, sv) {
+                units.push((s.clone(), v, false, reads));
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    for (unit, uv, own, reads) in &units {
+        for m in reads {
+            let dep = deps.get(m).filter(|_| kind(m) == Some(PackageKind::Model));
+            // A service can serve several extensions: of what it declares, it is granted only the models this
+            // extension depends on. The extension's own process has no such slack: each read is a dependency.
+            let Some(mv) = dep else {
+                if !own {
+                    continue;
+                }
+                return Err(ResolveError::ReadNotDependency {
+                    extension: extension.into(),
+                    version: version.into(),
+                    unit: unit.clone(),
+                    model: m.clone(),
+                });
+            };
+            out.insert(Grant {
+                extension: extension.into(),
+                unit: unit.clone(),
+                unit_version: uv.clone(),
+                own_process: *own,
+                model: m.clone(),
+                model_version: mv.clone(),
+            });
+        }
+    }
+    for d in deps.keys().filter(|d| kind(d) == Some(PackageKind::Model)) {
+        if !out.iter().any(|g| &g.model == d) {
+            return Err(ResolveError::NoReader {
+                extension: extension.into(),
+                version: version.into(),
+                model: d.clone(),
+            });
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
+/// Every grant of a resolved set ([`extension_grants`] for each extension in it).
+pub fn derive_grants(packages: &BTreeMap<String, ResolvedPackage>) -> Result<Vec<Grant>, ResolveError> {
+    let mut out = vec![];
     for p in packages
         .values()
         .filter(|p| p.entry.kind == PackageKind::Extension)
     {
-        for (d, dv) in &p.dependencies {
-            if crate::qrtz_json::kind_of(d).ok() != Some(PackageKind::Model) {
-                continue;
-            }
-            let by_service = p.dependencies.iter().any(|(s, sv)| {
+        let service = |s: &str, sv: &str| {
+            packages
+                .get(&crate::qrtz_lock::key(s, sv))
+                .filter(|sp| sp.entry.kind == PackageKind::Service)
+                .map(|sp| (sv.to_owned(), sp.entry.models.clone()))
+        };
+        out.extend(extension_grants(
+            &p.name,
+            &p.version,
+            &p.dependencies,
+            &p.entry.models,
+            &service,
+        )?);
+    }
+    Ok(out)
+}
+
+/// ADR 0157 §7, ADR 0212: every model is read by a unit that declares it, and nothing reads an undeclared model.
+pub fn check_readers(packages: &BTreeMap<String, ResolvedPackage>) -> Result<(), ResolveError> {
+    derive_grants(packages).map(|_| ())
+}
+
+/// The grants of the installed extension `extension` as `qrtz.lock` records it (its resolved version, its exact
+/// dependency versions, each unit's declared reads): what a launch hands out (ADR 0212).
+pub fn grants_in_lock(
+    lock: &crate::qrtz_lock::QrtzLock,
+    extension: &str,
+) -> Result<Vec<Grant>, ResolveError> {
+    let v = lock
+        .workspace
+        .resolved
+        .get(extension)
+        .ok_or_else(|| ResolveError::Invalid(format!("{extension}: not installed")))?;
+    let e = lock
+        .get(extension, v)
+        .filter(|l| l.kind == PackageKind::Extension)
+        .ok_or_else(|| ResolveError::Invalid(format!("{extension}@{v}: not in the lock")))?;
+    let service = |s: &str, sv: &str| {
+        lock.get(s, sv)
+            .filter(|l| l.kind == PackageKind::Service)
+            .map(|l| (sv.to_owned(), l.models.clone()))
+    };
+    extension_grants(extension, v, &e.dependencies, &e.models, &service)
+}
+
+/// Every extension version in a set of index entries (`packages[name][version]`, what `qrtz-publish build` is about
+/// to sign) passes [`extension_grants`]; a service range is read as its highest published version.
+pub fn check_index_reads(
+    packages: &BTreeMap<String, BTreeMap<String, PackageEntry>>,
+) -> Result<(), ResolveError> {
+    for (name, vs) in packages {
+        for (v, e) in vs.iter().filter(|(_, e)| e.kind == PackageKind::Extension) {
+            let service = |s: &str, range: &str| {
+                let req = VersionReq::parse(range).ok()?;
                 packages
-                    .get(&crate::qrtz_lock::key(s, sv))
-                    .is_some_and(|sp| sp.entry.kind == PackageKind::Service && sp.entry.models.contains(d))
-            });
-            if !by_service && !p.entry.models.contains(d) {
-                let _ = dv;
-                return Err(ResolveError::NoReader {
-                    extension: p.name.clone(),
-                    version: p.version.clone(),
-                    model: d.clone(),
-                });
-            }
+                    .get(s)?
+                    .iter()
+                    .filter(|(_, se)| se.kind == PackageKind::Service)
+                    .filter_map(|(sv, se)| Version::parse(sv).ok().map(|x| (x, se)))
+                    .filter(|(x, _)| req.matches(x))
+                    .max_by(|a, b| a.0.cmp(&b.0))
+                    .map(|(x, se)| (x.to_string(), se.models.clone()))
+            };
+            extension_grants(name, v, &e.dependencies, &e.models, &service)?;
         }
     }
     Ok(())

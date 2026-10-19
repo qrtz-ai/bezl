@@ -644,6 +644,9 @@ pub fn build_against(
             }
         }
     }
+    // ADR 0212: every model an extension depends on is read by a unit that declares it, and every declared read is
+    // one of its model dependencies; an index that would grant anything else is never signed.
+    qrtz_modules::resolve::check_index_reads(&packages).map_err(|e| e.to_string())?;
     let index = Index {
         kind: "index".into(),
         version: prev.as_ref().map_or(1, |(_, i)| i.version + 1),

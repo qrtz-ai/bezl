@@ -63,12 +63,48 @@ fn lock(data: &Path) -> QrtzLock {
     QrtzLock::load(&data.join("qrtz.lock")).unwrap()
 }
 
+/// A signed, empty index on its own loopback server and its root pin: nano declares it reads its three models in
+/// its own process (ADR 0212), so like code they install only under a fresh signed list (ADR 0157 §6).
+async fn index() -> (tempfile::TempDir, Server, String) {
+    let out = tempfile::tempdir().unwrap();
+    let keys = qrtz_publish::keys::Keys::ephemeral();
+    let now = qrtz_publish::now_ms();
+    let (_, pin) = qrtz_publish::write_root(out.path(), &keys, None, 1, now).unwrap();
+    let spec = qrtz_publish::Spec {
+        team_id: qrtz_publish::dry_run::TEAM.into(),
+        packages: vec![],
+        pinned_models: vec![],
+        models: vec![],
+        revoked: vec![],
+    };
+    qrtz_publish::build(out.path(), &spec, &keys, now).unwrap();
+    let srv = Server::start().await;
+    fn put(dir: &Path, base: &Path, srv: &Server) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                put(&p, base, srv);
+            } else {
+                srv.put(
+                    &p.strip_prefix(base).unwrap().to_string_lossy(),
+                    std::fs::read(&p).unwrap(),
+                );
+            }
+        }
+    }
+    put(out.path(), out.path(), &srv);
+    (out, srv, pin)
+}
+
 async fn adopted(srv: &Server, data: &Path) -> LocalModels {
-    let models = LocalModels::with_manifest(data.join("models"), serve(srv), Some(srv.base.clone()));
+    let (out, ix, pin) = index().await;
+    let models = LocalModels::with_manifest(data.join("models"), serve(srv), Some(srv.base.clone()))
+        .with_index(Some(pin), vec![ix.base.clone()]);
     models
         .download(false, &DownloadControl::default(), &|_| {})
         .await
         .unwrap();
+    drop((out, ix));
     let l = lock(data);
     for (_, package, _) in SETS {
         assert!(l.workspace.dependencies.contains_key(package), "{package}");
