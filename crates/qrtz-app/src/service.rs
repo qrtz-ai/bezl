@@ -895,6 +895,18 @@ impl AppService {
         if src.serves_echo() {
             self.talk.helper_status(s);
         }
+        // PROPOSAL (echo updates on its own): once echo runs, say whether it is the bundled fallback (B5).
+        if src == crate::module_helpers::HelperSource::Echo
+            && s.state == qrtz_helper_bridge::HelperState::Running
+        {
+            if let Some(patch) = crate::echo_updates::last_fallback()
+                .and_then(|f| crate::echo_updates::bundled_fallback_patch(&self.config.get(), f))
+            {
+                if let Err(e) = self.set_config(&patch) {
+                    tracing::warn!(error = %e, "echo bundledFallback not saved");
+                }
+            }
+        }
         let shown = match (src, self.module_helpers.get()) {
             (crate::module_helpers::HelperSource::Monolith, _) | (_, None) => s.clone(),
             (_, Some(h)) => h.status(),

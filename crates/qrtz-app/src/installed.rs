@@ -325,11 +325,48 @@ impl InstalledSpawn {
             return Ok(p.clone());
         }
         let e = match &self.bundled {
-            Some(p) => bundled_entry(&self.module, p)?,
+            Some(p) => {
+                let seed = bundled_entry(&self.module, p)?;
+                self.pick_bundled(seed)?
+            }
             None => entry(&self.root, &self.module)?,
         };
         check_launch(&e, self.check)?;
         Ok(e.program)
+    }
+}
+
+impl InstalledSpawn {
+    /// PROPOSAL (`proposal/echo-independent-updates`): a bundled extension (echo) runs its own downloaded, signed
+    /// copy when [`crate::echo_updates::select`] picks one (release builds only), else the seed in qrtz.app. Either
+    /// way [`check_launch`] runs on the file and the spawn checks the running code by pid.
+    fn pick_bundled(&self, seed: ModuleEntry) -> Result<ModuleEntry, String> {
+        use crate::echo_updates as eu;
+        if self.module != "echo" || self.check != LaunchCheck::Release {
+            return Ok(seed);
+        }
+        let want = launch_requirement(&self.module)
+            .ok_or_else(|| format!("{}: no signing identity for this name", self.module))?;
+        match eu::select(
+            &eu::echo_root(&self.root),
+            &seed.version,
+            &want,
+            &eu::MacBundleCheck,
+        ) {
+            eu::Pick::Installed {
+                bundle,
+                program,
+                version,
+            } => Ok(ModuleEntry {
+                name: self.module.clone(),
+                version,
+                dir: bundle.join("Contents/MacOS"),
+                program,
+                identifier: Some(eu::ECHO_IDENTIFIER.to_owned()),
+                requirement: Some(want),
+            }),
+            eu::Pick::Bundled { .. } => Ok(seed),
+        }
     }
 }
 

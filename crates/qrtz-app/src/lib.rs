@@ -12,6 +12,7 @@ pub mod ctrl_helper;
 pub mod ctrl_model;
 pub mod diagnostics;
 pub mod dirs;
+pub mod echo_updates;
 pub mod installed;
 #[cfg(feature = "runtime")]
 pub mod local_models;

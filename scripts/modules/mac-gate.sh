@@ -257,6 +257,26 @@ else
   info "" "echo (bundled in $qrtz_app), team $release_team; entitlements: $(codesign -d --entitlements - --xml "$echo_bin" 2>/dev/null | tr -d '\n' | grep -oE '<key>[^<]+</key><true/>' | sed -E 's/<key>([^<]+).*/\1/' | tr '\n' ' ')"
 fi
 
+# ---- (e6) PROPOSAL (echo updates on its own, R6): every copy of echo carries the microphone entitlement only ----
+# The bundled one and each downloaded copy under <data>/apps/echo/versions/*/qrtz-echo.app.
+echo_entitlements() { # $1 = executable or bundle; prints the entitlements set true, one per line, sorted
+  codesign -d --entitlements - --xml "$1" 2>/dev/null | tr -d '\n\t ' | grep -oE '<key>[^<]+</key><true/>' |
+    sed -E 's/<key>([^<]+).*/\1/' | sort
+}
+echo_copies=("$echo_bin")
+for b in "${QRTZ_USER_DATA:-$HOME/Library/Application Support/qrtz}"/apps/echo/versions/*/qrtz-echo.app; do
+  [[ -d "$b" ]] && echo_copies+=("$b")
+done
+for c in "${echo_copies[@]}"; do
+  [[ -e "$c" ]] || continue
+  got="$(echo_entitlements "$c" | tr '\n' ' ')"
+  if [[ "$got" == "com.apple.security.device.audio-input " ]]; then
+    pass "(e6)" "$c: entitlements are the microphone only"
+  else
+    fail "(e6)" "$c: entitlements must be the microphone only, not: ${got:-none}"
+  fi
+done
+
 # ---- (h) an extension helper spawned by the host is attributed to qrtz -------------------------------------------
 # ADR 0154: qrtz spawns an extension's helper (no LaunchServices), so TCC charges the helper's requests to qrtz: it
 # inherits qrtz's grant and gets no Privacy entry of its own. The helper has its own signing identifier and has never
