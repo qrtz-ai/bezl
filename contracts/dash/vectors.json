@@ -505,6 +505,71 @@
       "in": "tok xghp_Lu9U8hnEIsrTbwiaUIsCP9rJuefyPqoCflz6 y",
       "out": "tok [redacted] y",
       "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3​bF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3⁠bF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k ﻿Xk9mQ2pL7vR4tZ8wN3bF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3аbF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3bF6hJ1aB3dE5ЖgH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k éXk9mQ2pL7vR4tZ8wN3bF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3bF6hJ1aB3dE5gH7jK9é y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3ébF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k Xk9mQ2pL7vR4tZ8wN3ﬀbF6hJ1aB3dE5gH7jK9 y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k eyJhbGciOiJIUzI1NiJ9.eyJzdWIiO​iIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "k éeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U y",
+      "out": "k [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "ENROLL_V6_48_FAILS_PER_MIN",
+      "out": "ENROLL_V6_48_FAILS_PER_MIN",
+      "hit": false
+    },
+    {
+      "in": "limit ENROLL_V6_48_FAILS_PER_MIN=50",
+      "out": "limit ENROLL_V6_48_FAILS_PER_MIN=50",
+      "hit": false
     }
   ],
   "https_url": [

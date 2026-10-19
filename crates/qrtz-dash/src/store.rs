@@ -323,6 +323,18 @@ fn is_wordy(w: &str) -> bool {
     count > 0 && total as f64 / count as f64 >= 4.0
 }
 
+/// An identifier: wordy as a whole, or every `_` / `-` segment wordy or under 8 characters, so
+/// `ENROLL_V6_48_FAILS_PER_MIN` stays (Bozniak L, review of 8fb9e555).
+fn is_identifier(w: &str) -> bool {
+    is_wordy(w) || (w.contains(['_', '-']) && w.split(['_', '-']).all(|p| is_wordy(p) || p.len() < 8))
+}
+
+/// The entropy and JWT checks on one candidate, trimmed like a word.
+fn is_dense(s: &str) -> bool {
+    let c = s.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '`' | '*'));
+    is_high_entropy(c) || is_jwt(c)
+}
+
 /// The high-entropy rule (Bozniak H2, his prototype `rule`): 24+ base64 / base64url characters mixing 2+ of
 /// lowercase, uppercase and digits, not all hex (the hex rule decides those), not an identifier, not a path of
 /// identifiers or short segments, and at least 0.8·log2(min(len, 64)) bits per character.
@@ -350,7 +362,7 @@ fn is_high_entropy(core: &str) -> bool {
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))
                 && (is_wordy(p) || p.len() < 8)
         });
-    if path_ok || is_wordy(w) {
+    if path_ok || is_identifier(w) {
         return false;
     }
     entropy(w) >= 0.8 * (w.len().min(64) as f64).log2()
@@ -373,7 +385,21 @@ fn is_secret_word(w: &str, sha_ctx: bool) -> bool {
         && core.len() != 40
         && !(core.len() == 64 && sha_ctx)
         && core.bytes().all(|c| c.is_ascii_hexdigit());
-    keyish || ssn || long_hex || is_high_entropy(core) || is_jwt(core)
+    // One non-ASCII character can't hide a secret (Bozniak M, review of 8fb9e555): the entropy and JWT checks also
+    // run on the NFKC form without zero-width characters, that form with non-ASCII removed, and every ASCII run
+    // of 24+ characters in the word or its NFKC form.
+    let dense = || {
+        let norm: String = w.chars().filter(|c| !is_zero_width(*c)).nfkc().collect();
+        let ascii: String = norm.chars().filter(char::is_ascii).collect();
+        is_dense(core)
+            || is_dense(&norm)
+            || is_dense(&ascii)
+            || [w, norm.as_str()]
+                .iter()
+                .flat_map(|x| x.split(|c: char| !c.is_ascii()))
+                .any(|r| r.len() >= 24 && is_dense(r))
+    };
+    keyish || ssn || long_hex || dense()
 }
 
 /// PEM blocks (`-----BEGIN … -----` through the matching `-----END … -----`, or to the end) are redacted whole.

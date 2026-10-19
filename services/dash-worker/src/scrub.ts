@@ -132,6 +132,17 @@ const isWordy = (w: string) => {
   return t.length > 0 && t.join('').length / t.length >= 4;
 };
 
+/** Wordy as a whole, or every _ / - segment wordy or under 8 characters (Bozniak L). Rust `is_identifier`. */
+const isIdentifier = (w: string) =>
+  isWordy(w) ||
+  (/[_-]/.test(w) && w.split(/[_-]/).every((p) => isWordy(p) || p.length < 8));
+
+/** The entropy and JWT checks on one candidate, trimmed like a word. Rust `is_dense`. */
+const isDense = (s: string) => {
+  const c = trimSet(s, '.!?`*');
+  return isHighEntropy(c) || isJwt(c);
+};
+
 /** Bozniak's H2 rule (his prototype `rule`). Rust `is_high_entropy`. */
 const isHighEntropy = (core: string) => {
   const w = core.replace(/=+$/, '');
@@ -145,7 +156,7 @@ const isHighEntropy = (core: string) => {
       .every(
         (p) => /^[A-Za-z0-9_.-]{0,24}$/.test(p) && (isWordy(p) || p.length < 8),
       );
-  if (pathOk || isWordy(w)) return false;
+  if (pathOk || isIdentifier(w)) return false;
   return entropy(w) >= 0.8 * Math.log2(Math.min(w.length, 64));
 };
 
@@ -159,7 +170,12 @@ const isSecretWord = (w: string, shaCtx: boolean) => {
     core.length !== 40 &&
     !(core.length === 64 && shaCtx) &&
     /^[0-9A-Fa-f]+$/.test(core);
-  return keyish || ssn || longHex || isHighEntropy(core) || isJwt(core);
+  // One non-ASCII character can't hide a secret (Bozniak M): also check the NFKC form without zero-width characters,
+  // that form with non-ASCII removed, and every ASCII run of 24+ characters. Rust `is_secret_word`.
+  const norm = w.replace(ZERO_WIDTH, '').normalize('NFKC');
+  const ascii = norm.replace(/[^\x00-\x7f]/g, '');
+  const runs = [w, norm].flatMap((x) => x.match(/[\x00-\x7f]{24,}/g) ?? []);
+  return keyish || ssn || longHex || [core, norm, ascii, ...runs].some(isDense);
 };
 
 const scrubPem = (s: string): [string, boolean] => {
