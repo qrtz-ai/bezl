@@ -11,3 +11,22 @@
     text-transform: lowercase;
   }
 </style>
+<script>
+  // storybook retitles the tab per story ("button - basics ⋅ Storybook"): keep it lowercase and branded.
+  (() => {
+    const fix = () => {
+      const page = document.title
+        .replace(/\s*[⋅·-]\s*(storybook|qrtz ui)\s*$/i, '')
+        .replace(/^(storybook|qrtz ui)$/i, '')
+        .toLowerCase();
+      const next = page ? `${page} · qrtz ui` : 'qrtz ui';
+      if (document.title !== next) document.title = next;
+    };
+    fix();
+    new MutationObserver(fix).observe(document.head, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  })();
+</script>

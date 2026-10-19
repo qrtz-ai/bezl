@@ -12,7 +12,9 @@ for (const f of walk(out)) {
   if (/nunito-sans.*\.woff2$/.test(f)) fs.rmSync(f);
   else if (/\.(html|css)$/.test(f)) {
     const s = fs.readFileSync(f, 'utf8');
-    const t = s.replace(/@font-face\s*\{[^}]*Nunito Sans[^}]*\}/g, '');
+    let t = s.replace(/@font-face\s*\{[^}]*Nunito Sans[^}]*\}/g, '');
+    if (f.endsWith('index.html'))
+      t = t.replace(/<title>[^<]*<\/title>/, '<title>qrtz ui</title>');
     if (t !== s) fs.writeFileSync(f, t);
   }
 }
