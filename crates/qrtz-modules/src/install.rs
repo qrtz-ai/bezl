@@ -247,6 +247,55 @@ pub struct Installer {
     pinned_root_sha256: Option<String>,
     checks: Box<dyn CodeChecks>,
     store: Store,
+    tmp_keep: Option<TmpKeepFn>,
+}
+
+/// ADR 0218 / N193: what [`Installer::sweep`] must keep in `store/.tmp/` beyond the blobs locked trees name, as the
+/// app knows it: every file sha256 a `LocalModels` manifest set pins (a download of one can resume from its part),
+/// and whether a `download.json` marker is pending (then no part or marks file is touched: that download resumes
+/// from them on the next launch).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TmpKeep {
+    pub sha256: BTreeSet<String>,
+    pub pending: bool,
+}
+
+/// Asked on every sweep, so a marker written after the installer was built still counts.
+pub type TmpKeepFn = std::sync::Arc<dyn Fn() -> TmpKeep + Send + Sync>;
+
+/// N193: a `*.in-<pid>` or `*.sideload` leftover in `store/.tmp/` older than this is a dead process's; younger ones
+/// may belong to a running insert or sideload and are kept.
+pub const TMP_LEFTOVER_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Bytes a file holds on disk: its allocated blocks, since a `.part` is preallocated sparse and holds only the
+/// ranges that landed.
+fn on_disk_bytes(m: &std::fs::Metadata) -> u64 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        m.blocks().saturating_mul(512)
+    }
+    #[cfg(not(unix))]
+    {
+        m.len()
+    }
+}
+
+/// `<sha256>.part` / `<sha256>.done` -> the sha256.
+fn fetch_tmp_sha(name: &str) -> Option<&str> {
+    let sha = name
+        .strip_suffix(".part")
+        .or_else(|| name.strip_suffix(".done"))?;
+    (sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit())).then_some(sha)
+}
+
+/// `<sha256>.in-<pid>` (`Store::insert_bytes`) or `<sha256>.sideload` (a sideload's copy).
+fn is_tmp_leftover(name: &str) -> bool {
+    if name.ends_with(".sideload") {
+        return true;
+    }
+    name.rsplit_once(".in-")
+        .is_some_and(|(_, pid)| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
 }
 
 const CACHE: &str = "index-cache";
@@ -334,7 +383,15 @@ impl Installer {
             root,
             pinned_root_sha256,
             checks,
+            tmp_keep: None,
         }
+    }
+
+    /// N193: what the app wants kept in `store/.tmp/` ([`TmpKeep`]). Without it, only parts of blobs the locked
+    /// trees name are kept.
+    pub fn with_tmp_keep(mut self, f: TmpKeepFn) -> Self {
+        self.tmp_keep = Some(f);
+        self
     }
 
     /// The pinned `1.root.json` sha256 (none until the offline root exists: no index can be refreshed).
@@ -1433,7 +1490,56 @@ impl Installer {
                 out.bytes += size;
             }
         }
+        self.sweep_tmp(&refs, delete, &mut out)?;
         Ok(out)
+    }
+
+    /// N193: `store/.tmp/`. A `.part` / `.done` whose sha256 no locked tree and no [`TmpKeep`] names goes (none
+    /// while a download is pending); a `*.in-<pid>` / `*.sideload` older than [`TMP_LEFTOVER_AGE`] goes. Each
+    /// counts as one blob, with its allocated bytes, so "clean up" and the prune agree. Anything else is left.
+    fn sweep_tmp(
+        &self,
+        refs: &BTreeMap<String, usize>,
+        delete: bool,
+        out: &mut Pruned,
+    ) -> Result<(), InstallError> {
+        let Ok(entries) = std::fs::read_dir(self.store.tmp()) else {
+            return Ok(());
+        };
+        let keep = self.tmp_keep.as_ref().map(|f| f()).unwrap_or_default();
+        let now = std::time::SystemTime::now();
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let Ok(m) = std::fs::symlink_metadata(e.path()) else {
+                continue;
+            };
+            if !m.is_file() {
+                continue;
+            }
+            let gone = if let Some(sha) = fetch_tmp_sha(&name) {
+                !keep.pending && !refs.contains_key(sha) && !keep.sha256.contains(sha)
+            } else if is_tmp_leftover(&name) {
+                m.modified()
+                    .ok()
+                    .and_then(|t| now.duration_since(t).ok())
+                    .is_some_and(|age| age > TMP_LEFTOVER_AGE)
+            } else {
+                false
+            };
+            if !gone {
+                continue;
+            }
+            if delete {
+                match std::fs::remove_file(e.path()) {
+                    Ok(()) => {}
+                    Err(x) if x.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(x) => return Err(x.into()),
+                }
+            }
+            out.blobs += 1;
+            out.bytes += on_disk_bytes(&m);
+        }
+        Ok(())
     }
 
     /// Every locked package, for `qrtz ls` and the extensions screen; a workspace request's users are unknown here

@@ -326,7 +326,11 @@ impl LocalModels {
             Some((pin, _)) => pin.clone(),
             None => Hosts::pinned().root1_sha256,
         };
-        Installer::new(&self.packages_root, pin, Box::new(AppleCodeChecks))
+        let (root, manifest) = (self.root.clone(), self.manifest.clone());
+        Installer::new(&self.packages_root, pin, Box::new(AppleCodeChecks)).with_tmp_keep(tmp_keep_fn(
+            &self.packages_root,
+            Some((manifest, root.join("download.json"))),
+        ))
     }
 
     fn transport(&self, ctl: &DownloadControl) -> HttpTransport {
@@ -641,6 +645,34 @@ fn remove_requests(installer: &Installer, names: Vec<String>) -> Result<(), Inst
 /// `model.*` request whose resolved package came from the binary's pins (`source: pinned`, never a user's index
 /// install), that [`pinned_users`] says is for some module, when none of those modules is an installed extension
 /// and no installed extension depends on it through the lock either (an engine swap, ADR 0157 §5).
+/// N193 (ADR 0218): what a sweep of `<data>/store/.tmp/` keeps for the local models: every file the pinned
+/// manifests (and `extra`'s, with its own marker) name, and every part while a `download.json` is pending.
+pub fn tmp_keep_fn(data: &Path, extra: Option<(Manifest, PathBuf)>) -> qrtz_modules::install::TmpKeepFn {
+    let data = data.to_path_buf();
+    std::sync::Arc::new(move || {
+        let mut keep = qrtz_modules::install::TmpKeep::default();
+        let mut manifests = vec![
+            Manifest::pinned(),
+            crate::ctrl_model::CtrlManifest::pinned().manifest,
+        ];
+        let mut markers = vec![
+            data.join("models").join("download.json"),
+            data.join("models").join("ctrl").join("download.json"),
+        ];
+        if let Some((m, marker)) = &extra {
+            manifests.push(m.clone());
+            markers.push(marker.clone());
+        }
+        for m in &manifests {
+            for s in &m.sets {
+                keep.sha256.extend(s.files.iter().map(|f| f.sha256.clone()));
+            }
+        }
+        keep.pending = markers.iter().any(|p| p.is_file());
+        keep
+    })
+}
+
 pub fn orphaned_app_requests(lock: &qrtz_modules::qrtz_lock::QrtzLock) -> Vec<String> {
     use qrtz_modules::index::PackageKind;
     let installed = crate::installed::installed_extensions(lock);

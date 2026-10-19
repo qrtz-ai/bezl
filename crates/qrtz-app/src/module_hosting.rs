@@ -437,12 +437,14 @@ impl Packages {
         if let Some((dir, pin)) = dev_index() {
             tracing::warn!(dir = %dir.display(), "dev build: modules install from a local dev index");
             return Some(Self {
-                installer: Installer::new(root, Some(pin), Box::new(DevCodeChecks)),
+                installer: Installer::new(&root, Some(pin), Box::new(DevCodeChecks))
+                    .with_tmp_keep(crate::local_models::tmp_keep_fn(&root, None)),
                 transport: HttpTransport::local_dir(dir),
             });
         }
         Some(Self {
-            installer: Installer::new(root, Hosts::pinned().root1_sha256, Box::new(AppleCodeChecks)),
+            installer: Installer::new(&root, Hosts::pinned().root1_sha256, Box::new(AppleCodeChecks))
+                .with_tmp_keep(crate::local_models::tmp_keep_fn(&root, None)),
             transport: HttpTransport::pinned(),
         })
     }
