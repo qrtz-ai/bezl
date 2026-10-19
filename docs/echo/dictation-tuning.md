@@ -813,3 +813,11 @@ runs from its installed package; installing it still gives a warm first press, b
 `qrtz-echo` starts. Updating Echo from the marketplace, though, doesn't reach dictation until qrtz is relaunched: the
 old process keeps running (from a package dir the cleanup already removed). Proposed to Bobs: relaunch echo after an
 update, but only once no dictation is in progress (ADR 0172). The ranked plan above is unchanged.
+
+## 25. Cycle 52: echo is bundled; the first-launch download (ADR 0175, N179)
+
+No dictation speed or accuracy change, and no numbers from the Mac yet. With echo inside qrtz.app (`44622b3`), the
+first press after Parakeet's download is still warm: the model is linked before the "installed" hook, which warms
+`qrtz-echo`. But a fresh qrtz has echo already on, so the one-time "download and turn on" question never appears;
+the only route to Parakeet is the settings link. Proposed to Bobs: offer the download right on echo's page (ADR 0175).
+The ranked plan above is unchanged.
