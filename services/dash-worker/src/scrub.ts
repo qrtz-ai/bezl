@@ -132,10 +132,17 @@ const isWordy = (w: string) => {
   return t.length > 0 && t.join('').length / t.length >= 4;
 };
 
-/** Wordy as a whole, or every _ / - segment wordy or under 8 characters (Bozniak L). Rust `is_identifier`. */
+/** One _ / - segment of an identifier: wordy, 3 characters or fewer, all digits, or one case class of at most 7
+ * characters (Bozniak H, review of ded56dd5). Rust `is_ident_segment`. */
+const isIdentSegment = (p: string) =>
+  isWordy(p) ||
+  p.length <= 3 ||
+  /^[0-9]+$/.test(p) ||
+  /^(?:[A-Z0-9]{1,7}|[a-z]{1,7})$/.test(p);
+
+/** Wordy as a whole, or every _ / - segment an identifier segment (Bozniak L). Rust `is_identifier`. */
 const isIdentifier = (w: string) =>
-  isWordy(w) ||
-  (/[_-]/.test(w) && w.split(/[_-]/).every((p) => isWordy(p) || p.length < 8));
+  isWordy(w) || (/[_-]/.test(w) && w.split(/[_-]/).every(isIdentSegment));
 
 /** The entropy and JWT checks on one candidate, trimmed like a word. Rust `is_dense`. */
 const isDense = (s: string) => {

@@ -570,6 +570,16 @@
       "in": "limit ENROLL_V6_48_FAILS_PER_MIN=50",
       "out": "limit ENROLL_V6_48_FAILS_PER_MIN=50",
       "hit": false
+    },
+    {
+      "in": "aB3xY9z_Qw2eR5t_Lm8nK1p_Zx7cV4b_Hj6gF2d",
+      "out": "[redacted]",
+      "hit": true
+    },
+    {
+      "in": "key aB3xY9z_Qw2eR5t_Lm8nK1p_Zx7cV4b_Hj6gF2d end",
+      "out": "key [redacted] end",
+      "hit": true
     }
   ],
   "https_url": [

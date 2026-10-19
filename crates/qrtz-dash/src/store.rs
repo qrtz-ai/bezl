@@ -323,10 +323,23 @@ fn is_wordy(w: &str) -> bool {
     count > 0 && total as f64 / count as f64 >= 4.0
 }
 
-/// An identifier: wordy as a whole, or every `_` / `-` segment wordy or under 8 characters, so
+/// An identifier: wordy as a whole, or split on `_` / `-` with every segment an identifier segment, so
 /// `ENROLL_V6_48_FAILS_PER_MIN` stays (Bozniak L, review of 8fb9e555).
 fn is_identifier(w: &str) -> bool {
-    is_wordy(w) || (w.contains(['_', '-']) && w.split(['_', '-']).all(|p| is_wordy(p) || p.len() < 8))
+    is_wordy(w) || (w.contains(['_', '-']) && w.split(['_', '-']).all(is_ident_segment))
+}
+
+/// One `_` / `-` segment of an identifier: wordy, 3 characters or fewer, all digits, or one case class of at
+/// most 7 characters (`[A-Z0-9]{1,7}` or `[a-z]{1,7}`), so random keys of short mixed-case segments are not
+/// identifiers (Bozniak H, review of ded56dd5).
+fn is_ident_segment(p: &str) -> bool {
+    let b = p.as_bytes();
+    is_wordy(p)
+        || b.len() <= 3
+        || b.iter().all(u8::is_ascii_digit)
+        || (b.len() <= 7
+            && (b.iter().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+                || b.iter().all(u8::is_ascii_lowercase)))
 }
 
 /// The entropy and JWT checks on one candidate, trimmed like a word.
