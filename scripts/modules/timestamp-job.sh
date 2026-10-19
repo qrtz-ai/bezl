@@ -5,6 +5,10 @@
 # offline or travelling; a failure posts a macOS notification and is logged to ~/Library/Logs/qrtz-timestamp.log.
 #
 #   scripts/modules/timestamp-job.sh install     write and load ~/Library/LaunchAgents/ai.qrtz.timestamp.plist
+#   scripts/modules/timestamp-job.sh install --out-only   the same job, but it only re-signs the timestamp into
+#                                                 ~/qrtz-publish-out (publish.sh --timestamp --out-only): no R2 key,
+#                                                 no upload; something else uploads the pair listed `new` in
+#                                                 ~/qrtz-publish-out.upload.tsv (.sig first, then timestamp.json)
 #   scripts/modules/timestamp-job.sh run         what the job runs (credentials from the login keychain)
 #   scripts/modules/timestamp-job.sh status | uninstall
 #
@@ -26,9 +30,11 @@ account_of() { # <service>: the account (access key id) of a keychain item
 
 case "${1:-}" in
   install)
+    out_only="${2:-}"
+    [[ -z "$out_only" || "$out_only" == --out-only ]] || { echo "install [--out-only]" >&2; exit 2; }
     bin="${CARGO_TARGET_DIR:-$repo/target}/release/qrtz-publish"
     (cd "$repo" && cargo build --release -p qrtz-publish)
-    [[ -f "$keys/r2-account-id" ]] || {
+    [[ -n "$out_only" || -f "$keys/r2-account-id" ]] || {
       echo "write your Cloudflare account id to $keys/r2-account-id first" >&2
       exit 1
     }
@@ -42,6 +48,7 @@ case "${1:-}" in
   <key>EnvironmentVariables</key><dict>
     <key>QRTZ_PUBLISH_BIN</key><string>$bin</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>QRTZ_TIMESTAMP_OUT_ONLY</key><string>${out_only:+1}</string>
   </dict>
   <key>StartCalendarInterval</key><dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
   <key>RunAtLoad</key><true/>
@@ -51,10 +58,17 @@ case "${1:-}" in
 PLIST
     launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$plist"
-    echo "installed $plist (daily 09:00, and at load); log: $log"
+    echo "installed $plist (daily 09:00, and at load${out_only:+; out-only, no upload}); log: $log"
     ;;
   run)
     echo "== $(date -u +%FT%TZ)"
+    if [[ -n "${QRTZ_TIMESTAMP_OUT_ONLY:-}" ]]; then
+      if ! "$repo/scripts/modules/publish.sh" --timestamp --out-only; then
+        osascript -e 'display notification "The timestamp re-sign failed; see ~/Library/Logs/qrtz-timestamp.log." with title "qrtz package index"' || true
+        exit 1
+      fi
+      exit 0
+    fi
     export R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
     R2_ACCOUNT_ID="$(tr -d '[:space:]' <"$keys/r2-account-id")"
     R2_ACCESS_KEY_ID="$(account_of qrtz-r2)"
