@@ -281,11 +281,16 @@ fn m2_scheme_less_hosts_tel_passcodes_and_full_width_marks() {
         "meet.google.com/abc-defg-hij"
     );
     assert_eq!(clean_title("www.zoom.us/j/1?pwd=x"), "www.zoom.us/j/1");
-    // A word that isn't a meeting host keeps its ?.
+    // Any host-like word is cut (Bozniak M); a word that isn't host-like keeps its ?.
     assert_eq!(
         clean_title("ready? example.com/a?b ok?"),
-        "ready? example.com/a?b ok?"
+        "ready? example.com/a ok?"
     );
+    assert_eq!(
+        clean_title("docs.example.org?token=1 v1.2?"),
+        "docs.example.org v1.2?"
+    );
+    assert_eq!(clean_title("e.g.? what?"), "e.g.? what?");
     // tel: dial strings keep only the number.
     assert_eq!(
         clean_title("dial tel:+15551234567,,98765432# now"),

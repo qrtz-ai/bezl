@@ -51,9 +51,10 @@ pub struct CalendarEvent {
 /// ADR 0217 M2: where a word's query / fragment starts. Full-width `？` / `＃` count like `?` / `#`.
 const QUERY_MARKS: [char; 4] = ['?', '#', '\u{FF1F}', '\u{FF03}'];
 
-/// ADR 0217 M2: a word holding `://`, or a scheme-less word naming a meeting host (`zoom.us/j/1?pwd=…`), is cut
-/// before its first `?` or `#` (or `？` / `＃`): host + path stay. A `tel:` dial string keeps only the number
-/// (`tel:+15551234,,98765#` → `tel:+15551234`): pauses, `;` params and the passcode after them go.
+/// ADR 0217 M2: a word holding `://`, or a scheme-less host-like word (a dot and a 2+ letter TLD right before
+/// `/`, `?`, `#` or the end: `zoom.us/j/1?pwd=…`, `example.com/a?b`), is cut before its first `?` or `#` (or
+/// `？` / `＃`): host + path stay. Any host, not only meeting hosts ([`MEETING_HOSTS`] is for the stored
+/// `meeting_url`). A `tel:` dial string keeps only the number (`tel:+15551234,,98765#` → `tel:+15551234`).
 pub fn strip_url_query(word: &str) -> &str {
     if word.len() >= 4 && word[..4].eq_ignore_ascii_case("tel:") {
         let end = word[4..]
@@ -67,11 +68,14 @@ pub fn strip_url_query(word: &str) -> &str {
             .split(|c: char| c == '/' || QUERY_MARKS.contains(&c))
             .next()
             .unwrap_or("");
-        let host = authority.split(':').next().unwrap_or("").to_ascii_lowercase();
-        let host = host.trim_start_matches("www.");
-        MEETING_HOSTS
-            .iter()
-            .any(|h| host == *h || host.ends_with(&format!(".{h}")))
+        let host = authority.split(':').next().unwrap_or("");
+        let tld = host.rsplit('.').next().unwrap_or("");
+        host.contains('.')
+            && tld.chars().count() >= 2
+            && tld.chars().all(|c| c.is_ascii_alphabetic())
+            && host
+                .split('.')
+                .all(|l| !l.is_empty() && l.chars().all(|c| c.is_alphanumeric() || c == '-'))
     };
     if !word.contains("://") && !hosty {
         return word;
