@@ -73,3 +73,30 @@ async fn without_ctrl_the_words_are_still_not_typed() {
         .iter()
         .any(|f| f.starts_with("error:ctrl isn't available")));
 }
+
+/// Review H-C: a ctrl+fn press whose final times out runs nothing (it may be half the command), says so, and the
+/// final that comes later is not delivered anywhere: no command, no paste, no clipboard, no history.
+#[tokio::test(start_paused = true)]
+async fn a_ctrl_press_whose_final_times_out_runs_nothing() {
+    let r = rig(RigOpts::default());
+    r.helper.set_opts(|o| {
+        o.stopped_delay_ms = 20_000;
+        o.final_tail_words = 3;
+    });
+    press(&r, true).await;
+    sleep(25_000).await;
+    assert!(r.commands.lock().unwrap().is_empty(), "nothing ran");
+    assert!(r.helper.sent_of("insert.text").is_empty());
+    assert!(
+        r.clip.0.lock().unwrap().is_empty(),
+        "the late final is not on the clipboard"
+    );
+    assert!(r.svc.history().is_empty());
+    assert!(
+        flashes(&r)
+            .iter()
+            .any(|f| f.starts_with("error:didn't catch it all")),
+        "{:?}",
+        flashes(&r)
+    );
+}

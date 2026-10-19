@@ -367,6 +367,11 @@ impl AppService {
         rt.spawn(async move {
             if let Err(e) = self.ctrl_channel("ctrl:do", json!({ "text": text })).await {
                 tracing::warn!(code = ?e.code, "ctrl+fn: ctrl:do refused");
+                // `true` above only means it was handed over; the pill said "ctrl: …", so correct it.
+                self.talk.pill_flash(
+                    "error",
+                    "ctrl didn't take it, so nothing ran. open ctrl to see why",
+                );
             }
         });
         true

@@ -390,6 +390,9 @@ struct Attempt {
     partial: String,
     /// ADR 0216: started by a ctrl+fn press: the transcript is a ctrl do command, never inserted.
     to_ctrl: bool,
+    /// Review H-C: a ctrl+fn press whose final never came in time. Its command is not run (half a command is
+    /// not a command) and no late final is delivered for it.
+    cut_short: bool,
 }
 
 impl Attempt {
@@ -1211,6 +1214,7 @@ impl TalkService {
                 finals: Vec::new(),
                 partial: String::new(),
                 to_ctrl: from_key && g.press_ctrl,
+                cut_short: false,
             });
             Self::waiter(&mut g, format!("started:{id}"))
         };
@@ -1308,7 +1312,20 @@ impl TalkService {
                 }
                 g.asr = Some(a);
             }
-            if timed_out && g.dictation_helper == helper && g.hellos <= helper && g.late.len() < MAX_LATE {
+            let ctrl = g.attempt.as_mut().filter(|a| a.id == id && a.to_ctrl);
+            let ctrl_cut = timed_out && ctrl.is_some();
+            if let Some(a) = ctrl.filter(|_| timed_out) {
+                // Review H-C: a ctrl command never gets a late final (it would land on the clipboard or in
+                // history); `finish` runs nothing and says so.
+                a.cut_short = true;
+                g.late.remove(&id);
+            }
+            if !ctrl_cut
+                && timed_out
+                && g.dictation_helper == helper
+                && g.hellos <= helper
+                && g.late.len() < MAX_LATE
+            {
                 // Timed out (a lost helper releases the waiter with nothing instead, and sends no final) and the
                 // helper is still the one that ran it, so its final may still come: keep it when it does.
                 tracing::warn!(
@@ -1513,9 +1530,10 @@ impl TalkService {
                 g.level.summary(),
                 g.asr.clone(),
             );
-            (text, times, a.to_ctrl)
+            (text, times, (a.to_ctrl, a.cut_short))
         };
-        let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs), to_ctrl) = text;
+        let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs), (to_ctrl, cut_short)) =
+            text;
         if text.trim().is_empty() {
             // Oct 18 (Jared: "holding fn does nothing"): a dictation that heard no words used to end with no line
             // and no sign at all. Now it logs the mic level (content-free, like `talk latency`) and says on the
@@ -1553,7 +1571,8 @@ impl TalkService {
         if to_ctrl {
             // ADR 0216: ctrl+fn. The words are a command for ctrl do: never inserted, never on the clipboard,
             // not in the dictation history (ctrl keeps its own runs). The pill says where they went.
-            let took = (self.deps().command)(cleaned.text.clone());
+            // Review H-C: a final that timed out may be half the command: run nothing.
+            let took = !cut_short && (self.deps().command)(cleaned.text.clone());
             tracing::info!(
                 audio_ms = duration_ms.max(0.0).round(),
                 chars = cleaned.text.chars().count(),
@@ -1567,7 +1586,9 @@ impl TalkService {
             }
             self.emit_view(&g);
             drop(g);
-            if took {
+            if cut_short {
+                self.pill_flash("error", "didn't catch it all, so ctrl didn't run it. try again");
+            } else if took {
                 self.pill_flash("info", &format!("ctrl: {}", cleaned.text));
             } else {
                 self.pill_flash("error", "ctrl isn't available, so the command didn't run");
