@@ -11,7 +11,7 @@ src="$here/../Sources/QrtzGateProbe"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 for f in "$src/GateProbe.swift" "$src/mac/MacGateProbeBackend.swift"; do
-  sed -E -e 's/^#if os\(macOS\)/#if QRTZ_PROBE_MAC/' -e '/^import (ApplicationServices|AVFoundation|CoreServices)$/d' \
+  sed -E -e 's/^#if os\(macOS\)/#if QRTZ_PROBE_MAC/' -e '/^import (ApplicationServices|AVFoundation|CoreAudio|CoreGraphics|CoreServices)$/d' \
     "$f" >"$tmp/$(basename "$f")"
 done
 swiftc -typecheck -swift-version 5 -D QRTZ_PROBE_MAC "$repo/scripts/modules/probe-stubs.swift" "$tmp"/*.swift
