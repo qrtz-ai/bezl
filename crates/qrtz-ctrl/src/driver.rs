@@ -196,9 +196,37 @@ impl Driver<'_> {
                 .and_then(|m| m.iter().find(|x| &x.id == handle))
                 .map(|x| x.risk.clone())
                 .unwrap_or_default(),
+            // Review M3: a key combo that is a menu item's shortcut inherits that item's label rules.
+            (Action::KeyCombo { combo, .. }, _) => {
+                let c = crate::act::normalize_combo(combo);
+                st.shortcuts
+                    .get(&app)
+                    .into_iter()
+                    .flatten()
+                    .filter(|x| crate::act::normalize_combo(&x.combo) == c)
+                    .flat_map(|x| x.risk.iter().cloned())
+                    .collect()
+            }
             _ => Vec::new(),
         };
-        let rules = rules_for(a, node, &app, &menu_risk);
+        // Review H2: the target of a submit is the field typed into, or the focused element for a bare Return.
+        let target = node.or_else(|| {
+            st.tree
+                .as_ref()
+                .and_then(|t| t.focused.as_deref().and_then(|f| find(&t.root, f)))
+        });
+        let last = st
+            .actions
+            .iter()
+            .rev()
+            .find(|x| x.status == crate::log::ActionStatus::Done)
+            .map(|x| &x.action);
+        let exempt = crate::gate::submit_exempt(target, last);
+        let mut extra = menu_risk;
+        if let (Some(h), Some(t)) = (a.handle(), st.tree.as_ref()) {
+            extra.extend(crate::gate::context_rules(&t.root, h));
+        }
+        let rules = rules_for(a, node, &app, &extra, exempt);
         if !rules.is_empty() {
             let binding = Self::binding(st, a);
             match &st.confirm {

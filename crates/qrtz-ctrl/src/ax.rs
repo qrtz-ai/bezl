@@ -196,6 +196,22 @@ struct Pruner {
     kept: usize,
 }
 
+/// Sheets, dialogs and alerts: any press inside one confirms (review H1).
+pub fn is_dialog(role: &str, subrole: Option<&str>) -> bool {
+    matches!(role, "AXSheet" | "AXDialog" | "AXAlert")
+        || subrole.is_some_and(|s| matches!(s, "AXDialog" | "AXSystemDialog" | "AXAlert"))
+}
+
+/// Pressable roles that confirm when they carry no label at all (review H1).
+const UNLABELED_GATED: &[&str] = &[
+    "AXButton",
+    "AXMenuItem",
+    "AXLink",
+    "AXMenuButton",
+    "AXPopUpButton",
+    "AXCheckBox",
+];
+
 impl Pruner {
     /// Prune one wire node; `None` = dropped. Collapsed wrappers return their children through `out`.
     fn node(&mut self, n: &AxNodeWire, out: &mut Vec<AxNode>) {
@@ -226,11 +242,17 @@ impl Pruner {
             .filter(|a| KNOWN_AX_ACTIONS.contains(&a.as_str()))
             .cloned()
             .collect();
+        let mut risk = label_risk(&n.title);
         let mut children = Vec::new();
         for c in &n.children {
             self.node(c, &mut children);
         }
         let label = format!("{} {}", n.title, n.placeholder);
+        if label.trim().is_empty() && UNLABELED_GATED.contains(&n.role.as_str()) {
+            risk.push("label:unlabeled".into());
+        }
+        risk.sort();
+        risk.dedup();
         let unlabelled = label.trim().is_empty();
         if WRAPPER_ROLES.contains(&n.role.as_str()) && unlabelled && actions.is_empty() && n.more == 0 {
             self.dropped.collapsed += 1;
@@ -255,7 +277,7 @@ impl Pruner {
             actions: if n.enabled { actions } else { Vec::new() },
             text_input: text_input && n.enabled,
             focused: n.focused,
-            risk: label_risk(&n.title),
+            risk,
             children,
             more: n.more,
             sig: n.sig.clone(),

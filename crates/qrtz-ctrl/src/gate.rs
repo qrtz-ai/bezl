@@ -60,6 +60,16 @@ pub const LABEL_RULES: &[&str] = &[
     "deploy",
     "merge",
     "dont",
+    // ADR 0214 review H1.
+    "archive",
+    "leave",
+    "end",
+    "deactivate",
+    "sell",
+    "withdraw",
+    "book",
+    "empty",
+    "cancelsubscription",
 ];
 /// Two-word phrases folded to one rule (the rule id is the joined word).
 const LABEL_PHRASES: &[(&str, &str, &str)] = &[
@@ -67,6 +77,7 @@ const LABEL_PHRASES: &[(&str, &str, &str)] = &[
     ("sign", "out", "signout"),
     ("shut", "down", "shutdown"),
     ("don", "t", "dont"),
+    ("cancel", "subscription", "cancelsubscription"),
 ];
 
 /// Words that make a text input a password or payment field: excluded from the tree entirely.
@@ -275,7 +286,17 @@ pub fn sensitive_field(label: &str) -> bool {
 
 /// The host's rules for one action: the element's label rules, the app rules and the combo rules. `extra` is what
 /// a model adds (it can only add). Sorted, deduped; empty = no confirm.
-pub fn rules_for(action: &Action, node: Option<&AxNode>, app: &str, extra: &[String]) -> Vec<String> {
+///
+/// ADR 0214 review: every submit (Return, or a set-value that submits) confirms unless `submit_exempt` (the
+/// address bar right after cmd-L, or a search field: [`submit_exempt`]); a set-value into a field that already
+/// holds text confirms (M4).
+pub fn rules_for(
+    action: &Action,
+    node: Option<&AxNode>,
+    app: &str,
+    extra: &[String],
+    submit_exempt: bool,
+) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if action.handle().is_some() {
         if let Some(n) = node {
@@ -294,6 +315,14 @@ pub fn rules_for(action: &Action, node: Option<&AxNode>, app: &str, extra: &[Str
         Action::KeyCombo { combo, .. } => normalize_combo(combo) == "return",
         _ => false,
     };
+    if submits && !submit_exempt {
+        out.push("submit".into());
+    }
+    if let (Action::SetValue { .. }, Some(n)) = (action, node) {
+        if !n.value_tokens.is_empty() {
+            out.push("field:not_empty".into());
+        }
+    }
     if submits && MESSAGING_APPS.contains(&app) {
         out.push("app:messaging_submit".into());
     }
@@ -313,6 +342,56 @@ pub fn rules_for(action: &Action, node: Option<&AxNode>, app: &str, extra: &[Str
     out.sort();
     out.dedup();
     out
+}
+
+/// ADR 0214 review H1: the rules an element inherits from where it sits. Every ancestor's label rules (window and
+/// page titles aside) and, inside a sheet, dialog or alert (the root window included), `context:dialog` plus every
+/// rule anywhere in that dialog's text, so "ok" under "delete 3 items?" confirms. Works on the merged tree, so a
+/// scoped read inside a dialog keeps its context.
+pub fn context_rules(root: &AxNode, handle: &str) -> Vec<String> {
+    fn path<'a>(n: &'a AxNode, h: &str, out: &mut Vec<&'a AxNode>) -> bool {
+        if n.id == h {
+            return true;
+        }
+        out.push(n);
+        if n.children.iter().any(|c| path(c, h, out)) {
+            return true;
+        }
+        out.pop();
+        false
+    }
+    fn all(n: &AxNode, out: &mut Vec<String>) {
+        out.extend(n.risk.iter().cloned());
+        n.children.iter().for_each(|c| all(c, out));
+    }
+    let mut anc = Vec::new();
+    if !path(root, handle, &mut anc) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for a in anc {
+        if crate::ax::is_dialog(&a.role, a.subrole.as_deref()) {
+            out.push("context:dialog".into());
+            all(a, &mut out);
+        } else if !matches!(a.role.as_str(), "AXWindow" | "AXWebArea" | "AXApplication") {
+            out.extend(a.risk.iter().cloned());
+        }
+    }
+    out.retain(|r| r != "label:unlabeled");
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// A submit that needs no confirm: into a search field, or into the focused field right after cmd-L (the address
+/// bar). `target` is the field typed into (set-value) or the focused element (a bare Return); `last` the action
+/// that ran just before.
+pub fn submit_exempt(target: Option<&AxNode>, last: Option<&Action>) -> bool {
+    let Some(t) = target else { return false };
+    if t.role == "AXSearchField" || t.subrole.as_deref() == Some("AXSearchField") {
+        return true;
+    }
+    t.focused && matches!(last, Some(Action::KeyCombo { combo, .. }) if normalize_combo(combo) == "cmd+l")
 }
 
 /// What an approval covers: exactly this action on this element in this tree.
