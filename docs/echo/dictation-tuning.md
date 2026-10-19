@@ -821,3 +821,11 @@ first press after Parakeet's download is still warm: the model is linked before 
 `qrtz-echo`. But a fresh qrtz has echo already on, so the one-time "download and turn on" question never appears;
 the only route to Parakeet is the settings link. Proposed to Bobs: offer the download right on echo's page (ADR 0175).
 The ranked plan above is unchanged.
+
+## 26. Cycle 53: a press before Parakeet is downloaded (ADR 0177, N182)
+
+No dictation speed or accuracy change, and no numbers from the Mac yet. On a fresh qrtz, holding fn before Parakeet
+is downloaded (on a Mac without the OS dictation assets) said "speech recognition isn't ready yet; try again in a
+moment", which never helps. It now says "echo's speech model isn't downloaded yet; open echo to download it (about
+464 MB)" (`4672ea4`, `79cfd70`); a recogniser that is only loading or busy still says "try again". The ranked plan
+above is unchanged.
