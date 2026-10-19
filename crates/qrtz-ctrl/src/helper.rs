@@ -59,6 +59,10 @@ pub enum Check {
     /// ADR 0158: 1 if a Focus is on, 0 if off (`null`: can't tell; the Mac helper doesn't read it, since
     /// `INFocusStatusCenter` would be another prompt, so a focus run is verified by the shortcut's reply only).
     FocusOn,
+    /// ADR 0166: 1 if a Finder window shows this folder (`null`: can't tell; the Mac helper reads the Finder's window
+    /// titles through AX only when it's trusted, and answers `null` rather than 0 when none matches, since a title can
+    /// differ from the folder's display name).
+    FolderOpen { folder: crate::ladder::UserFolder },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -568,6 +572,8 @@ pub struct FakeWorld {
     pub shortcuts_denied: bool,
     /// ADR 0158: the Focus the shortcut last set (`Off`: none).
     pub focus: crate::ladder::FocusMode,
+    /// ADR 0166: the folders a Finder window shows, in the order they were opened.
+    pub open_folders: Vec<crate::ladder::UserFolder>,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -627,6 +633,7 @@ impl FakeWorld {
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
             volume: 50,
+            open_folders: Vec::new(),
         }
     }
 
@@ -788,6 +795,20 @@ impl FakeWorld {
                 self.focus = *mode;
                 Ok(())
             }
+            // ADR 0166: only through a running Finder (the Mac helper refuses a cold start the same way); a folder
+            // already shown is brought up in its own window, not opened twice.
+            Route::Workspace(WorkspaceOp::OpenFolder { folder }) => {
+                let finder = self
+                    .apps
+                    .iter_mut()
+                    .find(|a| a.bundle_id == crate::ladder::FINDER && a.running)
+                    .ok_or("app.not_running")?;
+                if !self.open_folders.contains(folder) {
+                    finder.windows += 1;
+                    self.open_folders.push(*folder);
+                }
+                Ok(())
+            }
             Route::Workspace(WorkspaceOp::UnmuteOutput) => match self.muted {
                 Some(_) => {
                     self.muted = Some(false);
@@ -914,6 +935,11 @@ impl FakeWorld {
                     Check::OutputMuted => self.muted.map(i64::from),
                     Check::DarkMode => Some(i64::from(self.dark)),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
+                    Check::FolderOpen { folder } => self
+                        .apps
+                        .iter()
+                        .any(|a| a.bundle_id == crate::ladder::FINDER && a.running)
+                        .then(|| i64::from(self.open_folders.contains(folder))),
                     Check::OutputVolume => match self.muted {
                         Some(false) => Some(self.volume),
                         _ => None,

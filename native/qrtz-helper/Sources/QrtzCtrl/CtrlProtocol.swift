@@ -28,6 +28,9 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0158: run the one "qrtz Set Focus" shortcut through Shortcuts Events with `mode` as its input. A mode off
     /// the enum is a bad request (never reaches the backend). Reversible, no gate.
     case setFocus(mode: CtrlFocusMode)
+    /// ADR 0166: show one of the user's folders (a closed set, resolved here from the system's own location) in the
+    /// running Finder with `activates = false`. No path ever comes over the wire. Reversible, no gate.
+    case openFolder(folder: CtrlFolder)
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -71,6 +74,8 @@ public enum CtrlRoute: Equatable, Sendable {
                 return .setVolume(level: l)
             // ADR 0158 amendment 3: the strict enum, checked before any event is built.
             case "set_focus": return s("mode").flatMap(CtrlFocus.mode).map { .setFocus(mode: $0) }
+            // ADR 0166: the strict enum; a path, another spelling or a missing folder is a bad request.
+            case "open_folder": return s("folder").flatMap(CtrlFolders.folder).map { .openFolder(folder: $0) }
             default: return nil
             }
             return nil
@@ -131,6 +136,11 @@ public enum CtrlRequest: Equatable, Sendable {
             return .act(id: id, actionId: a, route: r, content: c)
         case "ctrl.measure":
             // ADR 0135 / 0137 / 0140: `output_muted`, `dark_mode` and `output_volume` have no app.
+            // ADR 0166: `folder_open` names a folder of the closed set instead; its app is always the Finder.
+            if let c = o["check"] as? [String: Any], c["check"] as? String == "folder_open" {
+                guard let f = (c["folder"] as? String).flatMap(CtrlFolders.folder) else { return nil }
+                return .measure(id: id, check: CtrlFolders.measurePrefix + f.rawValue, app: CtrlFolders.finder)
+            }
             guard let c = o["check"] as? [String: Any], let k = c["check"] as? String,
                   let a = (c["app"] as? String) ?? (CtrlRoute.applessChecks.contains(k) ? "" : nil) else { return nil }
             return .measure(id: id, check: k, app: a)
@@ -241,7 +251,7 @@ public final class CtrlServer {
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus: break
+             .setFocus, .openFolder: break
         }
     }
 
@@ -249,6 +259,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
+        case .openFolder: return CtrlFolders.finder
         case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus:
             return nil
         }

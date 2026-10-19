@@ -102,6 +102,7 @@ const INTENTS = {
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
   hide_app: opt('intent.hide_app', 'hide an app', 0.07),
   show_app: opt('intent.show_app', 'show a hidden app', 0.07),
+  open_folder: opt('intent.open_folder', 'open a folder', 0.07),
   focus_mode: opt(
     'intent.focus_mode',
     'turn focus or do not disturb on or off',
@@ -135,6 +136,7 @@ type Intent =
   | 'hide_others'
   | 'hide_app'
   | 'show_app'
+  | 'open_folder'
   | 'focus_mode'
   | 'focus_off'
   | 'mute'
@@ -225,6 +227,17 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.workspace.show_app',
         "show its windows, the app you're in stays in front",
+        0.95,
+      ),
+    ]),
+  ],
+  // ADR 0166: one of your folders in a finder window (activates = false); reversible, no card. The folder is decided
+  // from the task in finishChain (a closed set, never a path).
+  open_folder: [
+    act('choose_move', [
+      opt(
+        'route.workspace.open_folder',
+        'show it in a finder window, nothing comes forward',
         0.95,
       ),
     ]),
@@ -443,6 +456,21 @@ const directionOf = (text: string): 'volume_up' | 'volume_down' | null => {
 };
 
 /** ADR 0143: the step of a relative change: "by N" / "up N" / "down N", "a bit" is 5, else 10. */
+// ADR 0166: the folder "open my …" shows, from the closed set.
+const folderOf = (text: string): 'downloads' | 'desktop' | 'documents' =>
+  /\b(documents|docs)\b/i.test(text)
+    ? 'documents'
+    : /\bdesktop\b/i.test(text)
+      ? 'desktop'
+      : 'downloads';
+const opensFolder = (text: string): boolean =>
+  (/\b(open|browse|view)\b/i.test(text) ||
+    (/\b(show|go)\b/i.test(text) && /\b(my|folder)\b/i.test(text))) &&
+  /\b(downloads?|desktop|documents|docs)\b/i.test(text) &&
+  !/\b(clean|tidy|organi[sz]e|sort|declutter|clear|delete|trash|remove|move)\b/i.test(
+    text,
+  );
+
 const stepOf = (text: string): number => {
   const m = /\b(?:by|up|down)\s+(\d{1,3})\b/i.exec(text);
   const n = m ? Number(m[1]) : NaN;
@@ -490,31 +518,33 @@ const intentOf = (text: string): Intent | null =>
                   ? 'hide_others'
                   : /\bhide\b/i.test(text)
                     ? 'hide_app'
-                    : /\bunhide\b/i.test(text) ||
-                        (/\bshow\b/i.test(text) && !/\b(me|my)\b/i.test(text))
-                      ? 'show_app'
-                      : /\b(quit|close)\b/i.test(text) &&
-                          /\bapps?\b/i.test(text) &&
-                          /\b(unused|used|using|idle)\b/i.test(text)
-                        ? 'quit_unused'
-                        : /\bquit\b/i.test(text)
-                          ? 'quit_app'
-                          : /\bcalendar\b/i.test(text)
-                            ? 'open_calendar'
-                            : /\bempty\b/i.test(text) &&
-                                /\b(trash|bin)\b/i.test(text)
-                              ? 'empty_trash'
-                              : /\btabs?\b/i.test(text)
-                                ? 'close_tabs'
-                                : /\bdocuments\b/i.test(text)
-                                  ? 'tidy_documents'
-                                  : /\b(desktop|screenshots?)\b/i.test(text)
-                                    ? 'tidy_desktop'
-                                    : /download|folder/i.test(text)
-                                      ? /\b(delete|trash|old)\b/i.test(text)
-                                        ? 'trash_old'
-                                        : 'clean_folder'
-                                      : null;
+                    : opensFolder(text)
+                      ? 'open_folder'
+                      : /\bunhide\b/i.test(text) ||
+                          (/\bshow\b/i.test(text) && !/\b(me|my)\b/i.test(text))
+                        ? 'show_app'
+                        : /\b(quit|close)\b/i.test(text) &&
+                            /\bapps?\b/i.test(text) &&
+                            /\b(unused|used|using|idle)\b/i.test(text)
+                          ? 'quit_unused'
+                          : /\bquit\b/i.test(text)
+                            ? 'quit_app'
+                            : /\bcalendar\b/i.test(text)
+                              ? 'open_calendar'
+                              : /\bempty\b/i.test(text) &&
+                                  /\b(trash|bin)\b/i.test(text)
+                                ? 'empty_trash'
+                                : /\btabs?\b/i.test(text)
+                                  ? 'close_tabs'
+                                  : /\bdocuments\b/i.test(text)
+                                    ? 'tidy_documents'
+                                    : /\b(desktop|screenshots?)\b/i.test(text)
+                                      ? 'tidy_desktop'
+                                      : /download|folder/i.test(text)
+                                        ? /\b(delete|trash|old)\b/i.test(text)
+                                          ? 'trash_old'
+                                          : 'clean_folder'
+                                        : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -723,6 +753,10 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         r,
         act('choose_target', [opt(`level.${level}`, `${level}%`, 0.96)]),
       );
+    if (intent === 'open_folder') {
+      const f = folderOf(text);
+      decide(r, act('choose_target', [opt(`folder.${f}`, f, 0.97)]));
+    }
     if (intent === 'volume_up' || intent === 'volume_down') {
       const n = stepOf(text);
       decide(r, act('choose_target', [opt(`step.${n}`, `by ${n}`, 0.96)]));

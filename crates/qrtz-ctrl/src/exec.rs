@@ -35,7 +35,7 @@ use crate::gate::{
 use crate::guard::{Field, UiSnapshot};
 use crate::helper::PreviewWhat;
 use crate::helper::{Check, Expect, HelperClient};
-use crate::ladder::{AxOp, ContentRef, Env, FocusMode, Route, ScriptVerb, WorkspaceOp};
+use crate::ladder::{AxOp, ContentRef, Env, FocusMode, Route, ScriptVerb, UserFolder, WorkspaceOp};
 use crate::layers::{branch_element, chosen_app, find_snapshot, label};
 use crate::log::{CtrlState, Event, EventLog, TaskStatus};
 use crate::runner::{Clock, Executor, RunOutcome, Runner, UiProbe};
@@ -100,6 +100,18 @@ pub const FOCUS_HOLD_MOVE: &str = "route.system.focus_hold";
 /// ADR 0158: `route.system.focus.<mode>` (a [`FocusMode`] spelling) runs the focus shortcut.
 pub const FOCUS_MOVE_PREFIX: &str = "route.system.focus.";
 
+/// ADR 0166: "open my downloads" shows one of the user's folders in a Finder window.
+pub const OPEN_FOLDER_MOVE: &str = "route.workspace.open_folder";
+
+/// ADR 0166: the folder a plan chose (`folder.<name>` of the closed [`UserFolder`] set), else `None`. The task's own
+/// words never get here: only an option id the layers made.
+pub fn chosen_user_folder(s: &CtrlState) -> Option<UserFolder> {
+    s.chosen()
+        .get(&Node::ChooseTarget)
+        .and_then(|o| o.strip_prefix("folder."))
+        .and_then(UserFolder::parse)
+}
+
 /// The step a plan's move maps to. Pure.
 pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     s.plan.as_ref()?;
@@ -125,6 +137,21 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
                 } else {
                     Expect::One
                 },
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0166: the folder from the closed set (a plan without one, or with screenshots, holds before the helper is
+    // asked); the helper resolves it to the system's own location and opens it in the running Finder.
+    if mv == OPEN_FOLDER_MOVE {
+        let Some(folder) = chosen_user_folder(s) else {
+            return Some(Step::Hold(HoldReason::NoRoute));
+        };
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::OpenFolder { folder })],
+            verify: Verify {
+                check: Check::FolderOpen { folder },
+                expect: Expect::One,
             },
             content: BTreeMap::new(),
         });
@@ -720,6 +747,15 @@ impl Driver<'_> {
                         },
                     )?;
                     return sink.push(log, finish(TaskStatus::AskedOut));
+                }
+            }
+            // ADR 0166: a folder a Finder window shows already is done with nothing acted (opening it again would
+            // only bring that window up). A helper that can't tell (`null`) gets the open; the verify decides.
+            if fplan.is_none() && mv == OPEN_FOLDER_MOVE {
+                if let Some(folder) = chosen_user_folder(&s) {
+                    if self.helper.measure(&Check::FolderOpen { folder }) == Some(1) {
+                        return sink.push(log, finish(TaskStatus::Done));
+                    }
                 }
             }
             // ADR 0130: "quit unused apps" is planned from the helper's last-used report each round, so the gate's

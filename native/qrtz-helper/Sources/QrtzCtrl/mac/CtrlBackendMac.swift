@@ -355,6 +355,14 @@ public final class MacCtrlBackend: CtrlBackend {
             // system's own prompt, the first time a task needs it). A missing shortcut or a denial stops here.
             guard let src = CtrlFocus.source(shortcut: CtrlFocus.shortcutName, mode: mode) else { throw CtrlFailure("policy.refused") }
             try Self.runFocus(src)
+        case let .openFolder(folder):
+            // ADR 0166: the folder from the system's own location (never a path from the host), opened in the Finder
+            // only while it runs (a cold start comes forward) through LaunchServices with `activates = false`: a new
+            // Finder window behind the app the user is in, no key event, nothing read from the folder. A folder a
+            // window shows already just gets that window (the Finder doesn't open it twice).
+            guard let finder = runningApp(CtrlFolders.finder), let appURL = finder.bundleURL else { throw CtrlFailure("app.not_running") }
+            guard let url = CtrlFolders.url(folder) else { throw CtrlFailure("folder.unknown") }
+            try Self.wait(5) { done in CtrlActions.open([url], withApp: appURL) { _, e in done(e) } }
         case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
             try closeTabs(app: app, verb: verb)
         case let .scripting(app, verb):
@@ -404,8 +412,21 @@ public final class MacCtrlBackend: CtrlBackend {
             guard let pid = pid(of: app) else { return nil }
             if let n = try? script("count_windows", app: app) { return Int(n.int32Value) }
             return CtrlProbe.axTrusted ? CtrlActions.windows(pid).count : nil
-        default: return nil // ax_scope is verified by a re-snapshot and obs.diff on the host
+        default:
+            // ADR 0166: `folder_open.<folder>`, from the Finder's AX windows, only when AX is trusted already (never
+            // prompts); nil otherwise. ax_scope is verified by a re-snapshot and obs.diff on the host.
+            if let f = CtrlFolders.measured(check) { return folderShown(f) }
+            return nil
         }
+    }
+
+    /// ADR 0166: whether a Finder window shows `folder`, read from window documents and titles (compared here, never
+    /// sent anywhere). No AX trust, no Finder, or no location: nil.
+    func folderShown(_ folder: CtrlFolder) -> Int? {
+        guard CtrlProbe.axTrusted, let pid = pid(of: CtrlFolders.finder), let url = CtrlFolders.url(folder) else { return nil }
+        let windows = CtrlActions.windows(pid)
+        return CtrlFolders.shown(windows: windows.count, documents: windows.compactMap { Self.string($0, kAXDocumentAttribute) },
+                                 titles: windows.compactMap { Self.string($0, kAXTitleAttribute) }, path: url.path)
     }
 
     public func restore(frontmostPid: Int32?) -> Bool {

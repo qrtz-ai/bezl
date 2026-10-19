@@ -35,7 +35,7 @@ public let kAXRoleAttribute = "AXRole", kAXSubroleAttribute = "AXSubrole", kAXTi
     kAXDescriptionAttribute = "AXDescription", kAXChildrenAttribute = "AXChildren", kAXWindowsAttribute = "AXWindows",
     kAXFocusedWindowAttribute = "AXFocusedWindow", kAXMainWindowAttribute = "AXMainWindow",
     kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement",
-    kAXRoleDescriptionAttribute = "AXRoleDescription"
+    kAXRoleDescriptionAttribute = "AXRoleDescription", kAXDocumentAttribute = "AXDocument"
 // LaunchServices / AE
 public struct LSRolesMask: OptionSet { public let rawValue: UInt32; public init(rawValue: UInt32) { self.rawValue = rawValue }; public static let all = LSRolesMask(rawValue: 0xFFFFFFFF) }
 public final class CFError {}

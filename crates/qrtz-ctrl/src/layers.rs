@@ -419,6 +419,9 @@ enum Slot {
     Level,
     /// ADR 0143: a relative volume step, 1–100 (`step.N`), "by N" in the task or the default.
     Step,
+    /// ADR 0166: one of the user's own folders to show (`folder.downloads` / `folder.desktop` / `folder.documents`,
+    /// [`crate::ladder::UserFolder`]); never a path.
+    UserFolder,
 }
 
 struct IntentDef {
@@ -501,6 +504,14 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0166: show one of the user's own folders in a Finder window (nothing comes forward); reversible, no gate.
+    // No app question: the app is always the Finder, set by the route, so nothing observes the Finder's AX tree.
+    IntentDef {
+        id: "open_folder",
+        app: AppMode::None,
+        slot: Slot::UserFolder,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -570,6 +581,9 @@ pub const MAIL_APP: &str = "com.apple.mail";
 fn mail_words(toks: &[Tok]) -> bool {
     has(toks, &["email", "emails", "inbox", "e-mail", "mail"])
 }
+
+/// ADR 0166: the words that name a folder "open my …" can show (a closed set, [`crate::ladder::UserFolder`]).
+const USER_FOLDER_WORDS: &[&str] = &["downloads", "download", "desktop", "documents", "docs"];
 
 const FOLDER_WORDS: &[&str] = &[
     "downloads",
@@ -763,6 +777,36 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 );
             if (dnd || focus) && !named_app && !site {
                 p += 9500;
+            }
+        }
+        "open_folder" => {
+            // ADR 0166: "open my downloads", "open the documents folder", "show my desktop folder": an open word plus
+            // one of the user's folders, no tidy word (that's clean_folder), no site and no app other than the
+            // Finder. "show" counts only with "my" / "folder": "show the desktop" is macOS's Show Desktop (windows
+            // aside), not a Finder window. Before this, "open my downloads" scored as clean_folder and asked.
+            p -= 3000;
+            let folder = has(toks, USER_FOLDER_WORDS);
+            let opens = has(toks, &["open", "browse", "view"])
+                || (has(toks, &["show", "go"]) && has(toks, &["my", "folder"]));
+            let tidy = has(
+                toks,
+                &[
+                    "clean",
+                    "tidy",
+                    "organize",
+                    "organise",
+                    "sort",
+                    "declutter",
+                    "clear",
+                    "delete",
+                    "trash",
+                    "remove",
+                    "move",
+                ],
+            );
+            let other_app = named.iter().any(|(a, _)| a.id != crate::ladder::FINDER);
+            if folder && opens && !tidy && !other_app && !site {
+                p += 9000;
             }
         }
         "mute" => {
@@ -973,6 +1017,26 @@ fn folder_question(toks: &[Tok]) -> Question {
                 5000 * named
             };
             choice(opt(format!("folder.{id}"), OptionKind::Folder), p)
+        })
+        .collect();
+    finish(Node::ChooseTarget, cs)
+}
+
+/// ADR 0166: which of the user's own folders to show. Only the closed set (no screenshots: that's a place on the
+/// Desktop, not a folder of its own here); nothing named, nothing preferred, so the chain asks.
+fn user_folder_question(toks: &[Tok]) -> Question {
+    let folders: [(crate::ladder::UserFolder, &[&str]); 3] = [
+        (crate::ladder::UserFolder::Downloads, &["downloads", "download"]),
+        (crate::ladder::UserFolder::Desktop, &["desktop"]),
+        (crate::ladder::UserFolder::Documents, &["documents", "docs"]),
+    ];
+    let cs = folders
+        .iter()
+        .map(|(f, words)| {
+            choice(
+                opt(format!("folder.{}", f.as_str()), OptionKind::Folder),
+                5000 * count(toks, words).min(1),
+            )
         })
         .collect();
     finish(Node::ChooseTarget, cs)
@@ -1238,6 +1302,9 @@ fn move_question(
         "hide_app" => vec![route("workspace.hide_app", 4500)],
         // ADR 0152: `NSRunningApplication.unhide()` of the one named app; no activation, no key event.
         "show_app" => vec![route("workspace.show_app", 4500)],
+        // ADR 0166: the folder in a Finder window through LaunchServices (`activates = false`); no key event, no
+        // AX action, so nothing to backtrack into.
+        "open_folder" => vec![route("workspace.open_folder", 4500)],
         // ADR 0155: no background route to set a Focus (no public API; the Shortcuts CLI needs a shortcut the user
         // makes and a process ctrl doesn't spawn yet), so the one move is a hold: asked out, nothing touched.
         // ADR 0158: the approved route, the user's one "qrtz Set Focus" shortcut through Shortcuts Events, with the
@@ -1408,13 +1475,16 @@ pub fn next_question_obs(
     }
     let slot_node = match def.slot {
         Slot::None => None,
-        Slot::Folder | Slot::TabScope | Slot::Level | Slot::Step => Some(Node::ChooseTarget),
+        Slot::Folder | Slot::TabScope | Slot::Level | Slot::Step | Slot::UserFolder => {
+            Some(Node::ChooseTarget)
+        }
         Slot::Url | Slot::SearchText => Some(Node::ChooseText),
     };
     if let Some(n) = slot_node {
         if !chosen.contains_key(&n) {
             return Next::Ask(match def.slot {
                 Slot::Folder => folder_question(&toks),
+                Slot::UserFolder => user_folder_question(&toks),
                 Slot::TabScope => scope_question(&toks),
                 Slot::Url => url_question(goal, &toks),
                 Slot::SearchText => search_question(goal, &toks),
@@ -1485,6 +1555,7 @@ fn intent_label(id: &str) -> &'static str {
         "hide_others" => "hide your other apps",
         "hide_app" => "hide an app",
         "show_app" => "show a hidden app",
+        "open_folder" => "open a folder",
         "focus_mode" => "turn focus or do not disturb on or off",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
@@ -1511,6 +1582,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.hide_others" => "hide them, the app you're in stays",
         "workspace.hide_app" => "hide it, nothing comes forward",
         "workspace.show_app" => "show its windows, the app you're in stays in front",
+        "workspace.open_folder" => "show it in a finder window, nothing comes forward",
         "system.focus_hold" => "leave focus as it is, not supported yet",
         "system.focus.off" => "turn focus off",
         "system.focus.do_not_disturb" => "turn on do not disturb",

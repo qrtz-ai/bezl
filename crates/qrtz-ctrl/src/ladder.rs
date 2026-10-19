@@ -97,6 +97,40 @@ pub enum WorkspaceOp {
     /// once; without it the helper answers `focus.no_shortcut`, without Automation `automation.denied`, and stops.
     /// Reversible, no gate.
     SetFocus { mode: FocusMode },
+    /// ADR 0166: show one of the user's own folders (Downloads, Desktop, Documents) in a Finder window, opened by
+    /// LaunchServices with `activates = false` (no activation, no key event, nothing read from the folder). The folder
+    /// is a closed set resolved by the helper from the system's own location, never a path from the task. Reversible
+    /// (close the window), no gate. Its app is always the Finder ([`FINDER`]).
+    OpenFolder { folder: UserFolder },
+}
+
+/// ADR 0166: the Finder, the app that shows a folder.
+pub const FINDER: &str = "com.apple.finder";
+
+/// ADR 0166: the folders "open my downloads" can show. A closed set: the helper resolves each from the system's own
+/// location (`FileManager.urls(for:in:)`), so no path from a task, a model or the log ever reaches LaunchServices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UserFolder {
+    Downloads,
+    Desktop,
+    Documents,
+}
+
+impl UserFolder {
+    pub const ALL: [UserFolder; 3] = [UserFolder::Downloads, UserFolder::Desktop, UserFolder::Documents];
+    /// The wire spelling (`downloads`, `desktop`, `documents`), also the layers' `folder.<name>` option.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UserFolder::Downloads => "downloads",
+            UserFolder::Desktop => "desktop",
+            UserFolder::Documents => "documents",
+        }
+    }
+    /// Exactly one of the spellings above, nothing else.
+    pub fn parse(s: &str) -> Option<UserFolder> {
+        UserFolder::ALL.into_iter().find(|f| f.as_str() == s)
+    }
 }
 
 /// ADR 0158 (Bozniak's amendment 2): the only shortcut ctrl runs. A compile-time constant, never from settings, the
@@ -251,6 +285,7 @@ impl Route {
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
             }
+            Route::Workspace(WorkspaceOp::OpenFolder { .. }) => Some(FINDER),
             Route::Scripting { app, .. }
             | Route::Ax { app, .. }
             | Route::PidKey { app, .. }
@@ -411,8 +446,13 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
     match route {
         Route::Files(_) => consent(env.files, Grant::Files).unwrap_or(Verdict::Allowed),
         Route::Workspace(op) => {
+            let finder = FINDER.to_string();
             let app = match op {
                 WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app } => app,
+                // ADR 0166: like an address opened in the background, but the app is the Finder: it must be running
+                // (a cold start comes forward) and the user mustn't be busy in it right now (its new window would
+                // land under their hands).
+                WorkspaceOp::OpenFolder { .. } => &finder,
                 WorkspaceOp::QuitApps { apps } | WorkspaceOp::HideApps { apps } => {
                     // The app the user is in is never quit or hidden under them.
                     if apps.iter().any(|a| env.user_in(a)) {
