@@ -76,7 +76,7 @@ public struct CompiledModelStamp {
     public init(set: String, dir: URL) { self.set = set; self.dir = dir }
     /// `<data>/models/compiled/<set>.json`: next to the views, never inside a read-only store package (ADR 0212).
     public var file: URL {
-        let models = ProcessInfo.processInfo.environment["QRTZ_MODELS_DIR"].filter { !$0.isEmpty }
+        let models = ProcessInfo.processInfo.environment["QRTZ_MODELS_DIR"].flatMap { $0.isEmpty ? nil : $0 }
             .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? dir.deletingLastPathComponent()
         return models.appendingPathComponent("compiled", isDirectory: true).appendingPathComponent(set + ".json")
     }
