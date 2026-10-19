@@ -103,12 +103,13 @@ pub fn clean_meeting_url(url: Option<&str>) -> Option<String> {
     Some(u.split('#').next().unwrap_or(u).to_string())
 }
 
-/// The platform a link's host belongs to, in `MeetingPlatform` names (`zoom`, `meet`, `teams`).
-fn link_platform(url: &str) -> Option<&'static str> {
+/// The platform a link's host belongs to, in `MeetingPlatform` names (`zoom`, `google-meet`, `teams`, `webex`).
+pub fn link_platform(url: &str) -> Option<&'static str> {
     match meeting_host(url)? {
         "zoom.us" => Some("zoom"),
-        "meet.google.com" => Some("meet"),
+        "meet.google.com" => Some("google-meet"),
         "teams.microsoft.com" | "teams.live.com" => Some("teams"),
+        "webex.com" => Some("webex"),
         _ => None,
     }
 }

@@ -56,6 +56,16 @@ export const ConfigSchema = z.object({
       defaultTemplate: z
         .enum(['general', 'one-on-one', 'standup', 'sales', 'interview'])
         .default('general'),
+      /**
+       * ADR 0217: Apple Calendar on this Mac (read-only, offline). Off until the user turns it on in nano's settings
+       * or presses 'connect calendar' (that asks macOS for access). `calendars`: the chosen calendar ids, null = all.
+       */
+      calendar: z
+        .object({
+          enabled: z.boolean().default(false),
+          calendars: z.array(z.string().min(1).max(512)).max(200).nullable().default(null),
+        })
+        .prefault({}),
     })
     .prefault({}),
   talk: z

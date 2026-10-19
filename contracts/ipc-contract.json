@@ -10391,6 +10391,283 @@
         ],
         "additionalProperties": false
       }
+    },
+    "calendar:status": {
+      "version": 1,
+      "capability": "note.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "not-determined",
+              "granted",
+              "denied",
+              "restricted",
+              "write-only",
+              "unsupported"
+            ]
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSyncAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "access",
+          "calendars",
+          "chosen",
+          "lastSyncAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "calendar:connect": {
+      "version": 1,
+      "capability": "os.permissions",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "not-determined",
+              "granted",
+              "denied",
+              "restricted",
+              "write-only",
+              "unsupported"
+            ]
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSyncAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "access",
+          "calendars",
+          "chosen",
+          "lastSyncAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "calendar:refresh": {
+      "version": 1,
+      "capability": "note.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "not-determined",
+              "granted",
+              "denied",
+              "restricted",
+              "write-only",
+              "unsupported"
+            ]
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSyncAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "access",
+          "calendars",
+          "chosen",
+          "lastSyncAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "calendar:upcoming": {
+      "version": 1,
+      "capability": "note.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "calendarId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "number"
+                },
+                "endAt": {
+                  "type": "number"
+                },
+                "allDay": {
+                  "type": "boolean"
+                },
+                "attendeeCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "meetingUrl": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "calendarId",
+                "title",
+                "startAt",
+                "endAt",
+                "allDay",
+                "attendeeCount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {
@@ -10421,6 +10698,74 @@
         "required": [
           "state",
           "restarts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "calendar:changed": {
+      "capability": "note.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "not-determined",
+              "granted",
+              "denied",
+              "restricted",
+              "write-only",
+              "unsupported"
+            ]
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSyncAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "access",
+          "calendars",
+          "chosen",
+          "lastSyncAt"
         ],
         "additionalProperties": false
       }
@@ -12180,7 +12525,11 @@
         "autoSummarize": true,
         "floatingHud": true,
         "retainAudioDays": 0,
-        "defaultTemplate": "general"
+        "defaultTemplate": "general",
+        "calendar": {
+          "enabled": false,
+          "calendars": null
+        }
       },
       "talk": {
         "enabled": true,
@@ -12321,6 +12670,37 @@
                 "sales",
                 "interview"
               ]
+            },
+            "calendar": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "calendars": {
+                  "default": null,
+                  "anyOf": [
+                    {
+                      "maxItems": 200,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "enabled",
+                "calendars"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -12331,7 +12711,8 @@
             "autoSummarize",
             "floatingHud",
             "retainAudioDays",
-            "defaultTemplate"
+            "defaultTemplate",
+            "calendar"
           ],
           "additionalProperties": false
         },

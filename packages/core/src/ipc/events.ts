@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { SnapStatus } from '../snap/contract';
 import type { Capability } from '../capabilities';
-import { HelperStatus } from './contract';
+import { CalendarStatus, HelperStatus } from './contract';
 import { PermissionsStatus, SessionView } from '../note/contract';
 import { LiveTranscriptDelta, PipelineView } from '../note/lifecycle';
 import { TalkView } from '../talk/contract';
@@ -25,6 +25,11 @@ export const eventContract = {
   'helper:status': defineEvent({
     capability: 'helper.status',
     payload: HelperStatus,
+  }),
+  /** ADR 0217: nano's calendar status changed (a read, access, on/off). */
+  'calendar:changed': defineEvent({
+    capability: 'note.read',
+    payload: CalendarStatus,
   }),
   'config:changed': defineEvent({
     capability: 'config.read',

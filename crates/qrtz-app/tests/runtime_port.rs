@@ -63,6 +63,7 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
         fault_step: None,
         default_title: Arc::new(utc_recording_title),
         pending_delete: None,
+        calendar: None,
     });
     let svc = AppService::new(AppDeps {
         info: AppInfo {

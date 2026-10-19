@@ -58,6 +58,9 @@ pub struct RuntimeDeps {
     /// has run; [`NoteRuntime::schedule_delete`] writes them. `None`: no deferred deletes in this shell (a
     /// scheduled delete then runs at once).
     pub pending_delete: Option<Arc<PendingDeletes>>,
+    /// ADR 0217: names a recording after the calendar event it overlaps (an explicit title still wins). `None`:
+    /// no calendar in this shell.
+    pub calendar: Option<Arc<dyn CalendarLookup>>,
 }
 
 /// Refusal for deleting the meeting that is still recording or flushing (TS `DELETE_WHILE_RECORDING`).
@@ -1706,8 +1709,14 @@ impl Shared {
             .to_string_lossy()
             .into_owned();
         let now = self.now();
+        let title = title.filter(|t| !t.is_empty());
+        // ADR 0217: no explicit title: the overlapping calendar event names it (before the AX window title).
+        let event = match (&title, &self.d.calendar) {
+            (None, Some(c)) => c.event_at(now, s.detected.as_ref().map(|d| d.platform.as_str())),
+            _ => None,
+        };
         let title = title
-            .filter(|t| !t.is_empty())
+            .or_else(|| event.as_ref().map(|(_, t)| t.clone()).filter(|t| !t.is_empty()))
             .or_else(|| {
                 s.detected
                     .as_ref()
@@ -1733,6 +1742,9 @@ impl Shared {
                 duration_ms: None,
             })
             .await?;
+        if let (Some((ev, _)), Some(c)) = (&event, &self.d.calendar) {
+            c.link(&id, ev);
+        }
         self.send(LifecycleEvent::StartRequested {
             meeting_id: id.clone(),
             at: now,

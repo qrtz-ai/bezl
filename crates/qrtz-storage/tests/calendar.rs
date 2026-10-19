@@ -144,7 +144,7 @@ fn pick_event_prefers_platform_then_nearest_start() {
     meet.meeting_url = Some("https://meet.google.com/abc".into());
     let evs = vec![zoom, meet, ev("soon", "h", NOW + EARLY_MS - 1, NOW + H)];
     assert_eq!(pick_event(&evs, NOW, Some("zoom"), None).unwrap().id, "z");
-    assert_eq!(pick_event(&evs, NOW, Some("meet"), None).unwrap().id, "m");
+    assert_eq!(pick_event(&evs, NOW, Some("google-meet"), None).unwrap().id, "m");
     // No platform hint: the nearest start.
     assert_eq!(pick_event(&evs, NOW, None, None).unwrap().id, "m");
     // Only the chosen calendars count.

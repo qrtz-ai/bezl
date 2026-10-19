@@ -467,6 +467,16 @@ pub struct AddNoteRequest {
     pub at_ms: Option<Ms>,
 }
 
+/// ADR 0217: nano's Apple Calendar, as the runtime sees it when a recording starts. The shell keeps the cache
+/// (qrtz-storage `calendar_events`) and a snapshot for this sync call.
+pub trait CalendarLookup: Send + Sync {
+    /// The event a recording starting at `now` belongs to (`platform`: the detected meeting's, if any), as
+    /// `(event id, title)`; `None` when the calendar is off or nothing overlaps.
+    fn event_at(&self, now: EpochMs, platform: Option<&str>) -> Option<(String, String)>;
+    /// The recording `meeting_id` was titled from `event_id`: link them (`meetings.calendar_event_id`).
+    fn link(&self, meeting_id: &str, event_id: &str);
+}
+
 /// Persistence the runtime needs; one method per worker call it made in TS (names in [`STORE_METHODS`]).
 #[async_trait]
 pub trait LifecycleStore: Send + Sync {

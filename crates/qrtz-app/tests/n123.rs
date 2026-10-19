@@ -203,6 +203,7 @@ async fn through_note_delete(defer_ms: u64) {
         clock: None,
         summarizer: Some(m.clone()),
         knobs: DevKnobs::default(),
+        calendar: None,
     })
     .unwrap();
     let engine = booted.summaries.clone().expect("the app's engine");

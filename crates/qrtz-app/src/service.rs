@@ -105,6 +105,8 @@ pub struct AppService {
     relaunch: Relaunch,
     /// ADR 0159: qrtz-snap (its own process in either layout), set once before `start_helper`.
     snap: std::sync::OnceLock<Arc<crate::snap::SnapHost>>,
+    #[cfg(feature = "runtime")]
+    calendar: std::sync::OnceLock<Arc<crate::calendar::NanoCalendar>>,
     /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
     echo_hello: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
@@ -175,6 +177,8 @@ impl AppService {
             module_sync: std::sync::OnceLock::new(),
             relaunch: Relaunch::default(),
             snap: std::sync::OnceLock::new(),
+            #[cfg(feature = "runtime")]
+            calendar: std::sync::OnceLock::new(),
             echo_hello: std::sync::OnceLock::new(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
@@ -487,6 +491,48 @@ impl AppService {
     }
 
     /// ADR 0159: run qrtz-snap (set once, before `start_helper`).
+    /// ADR 0217: nano's Apple Calendar (set once by `build_app`); its start-of-meeting prompt reaches the runtime
+    /// as a `meeting.detected`, under the same nano-off rule as the helper's.
+    #[cfg(feature = "runtime")]
+    pub fn set_calendar(self: &Arc<Self>, c: Arc<crate::calendar::NanoCalendar>) {
+        let me = Arc::downgrade(self);
+        c.set_prompt(Arc::new(move |msg: Value| {
+            if let Some(svc) = me.upgrade() {
+                if !crate::modules::drops_helper_event(&svc.config.get(), "meeting.detected") {
+                    svc.runtime.helper_line(&msg);
+                }
+            }
+        }));
+        let _ = self.calendar.set(c);
+    }
+
+    #[cfg(feature = "runtime")]
+    async fn calendar_channel(&self, channel: &str) -> Result<Value, AppError> {
+        let Some(c) = self.calendar.get() else {
+            return Ok(match channel {
+                "calendar:upcoming" => json!({"events": []}),
+                _ => {
+                    json!({"enabled": false, "access": "unsupported", "calendars": [], "chosen": null, "lastSyncAt": null})
+                }
+            });
+        };
+        match channel {
+            "calendar:status" => Ok(c.check().await),
+            "calendar:connect" => Ok(c.connect().await),
+            "calendar:upcoming" => Ok(c.upcoming(crate::calendar::UPCOMING_MAX)),
+            "calendar:refresh" => {
+                c.refresh().await;
+                Ok(c.status())
+            }
+            _ => Err(no_handler(channel)),
+        }
+    }
+
+    #[cfg(not(feature = "runtime"))]
+    async fn calendar_channel(&self, channel: &str) -> Result<Value, AppError> {
+        Err(no_handler(channel))
+    }
+
     pub fn set_snap(&self, s: Arc<crate::snap::SnapHost>) {
         let _ = self.snap.set(s);
     }
@@ -842,6 +888,8 @@ impl AppService {
                     if echo {
                         self.talk.helper_line(&msg);
                     }
+                } else if ty.starts_with("calendar.") {
+                    // ADR 0217: nano's calendar answers; crate::calendar reads them off the helper's lines.
                 } else if ty != "heartbeat" {
                     // Talk also needs its own errors (dictation.busy / dictation.mic) and mic revocations; the
                     // runtime still sees them (it logs foreign codes and owns the capture side of a revocation).
@@ -926,6 +974,12 @@ impl AppService {
         self.events.emit("config:changed", next.clone());
         self.talk.config_changed();
         self.apply_module_switches(&next);
+        #[cfg(feature = "runtime")]
+        if patch["note"].get("calendar").is_some() {
+            if let Some(c) = self.calendar.get() {
+                c.kick();
+            }
+        }
         Ok(next)
     }
 
@@ -1097,6 +1151,8 @@ impl AppService {
             Some("packages")
         } else if channel.starts_with(APP_UPDATE_PREFIX) {
             Some("app-update")
+        } else if channel.starts_with(crate::ports::CALENDAR_PREFIX) {
+            Some("calendar")
         } else {
             None
         }
@@ -1122,6 +1178,7 @@ impl Handler for AppService {
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,
             Some("ctrl") => self.ctrl_channel(channel, payload).await,
             Some("app-update") => self.app_update_channel(channel).await,
+            Some("calendar") => self.calendar_channel(channel).await,
             Some("snap") => {
                 if channel == "snap:request-access" {
                     // The banner's button: qrtz-app asks (macOS adds qrtz to the list and prompts) and opens the

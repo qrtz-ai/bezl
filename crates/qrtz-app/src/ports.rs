@@ -86,6 +86,9 @@ pub const SETUP_CHANNELS: &[&str] = &[
 /// ADR 0181: qrtz's own update (settings → qrtz, the sidebar dot): `crate::self_update`.
 pub const APP_UPDATE_PREFIX: &str = "app-update:";
 
+/// ADR 0217: nano's Apple Calendar (`calendar:*`): `crate::calendar`.
+pub const CALENDAR_PREFIX: &str = "calendar:";
+
 /// The package manager (ADR 0157; the Extensions screen): `crate::packages_ipc`.
 pub const PACKAGES_PREFIX: &str = "packages:";
 

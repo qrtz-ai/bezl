@@ -279,6 +279,42 @@ const snapSamples = {
   },
 } satisfies { [C in Extract<IpcChannel, `snap:${string}`>]: ChannelSample<C> };
 
+/** ADR 0217: nano's Apple Calendar. */
+const calendarStatus = {
+  enabled: true,
+  access: 'granted' as const,
+  calendars: [
+    { id: 'cal-work', title: 'Work' },
+    { id: 'cal-home', title: 'Home' },
+  ],
+  chosen: null,
+  lastSyncAt: 1_790_000_000_000,
+};
+const calendarSamples = {
+  'calendar:status': { request: undefined, response: calendarStatus },
+  'calendar:connect': { request: undefined, response: calendarStatus },
+  'calendar:refresh': { request: undefined, response: calendarStatus },
+  'calendar:upcoming': {
+    request: undefined,
+    response: {
+      events: [
+        {
+          id: 'ev-1@1790000000000',
+          calendarId: 'cal-work',
+          title: 'weekly sync',
+          startAt: 1_790_000_000_000,
+          endAt: 1_790_001_800_000,
+          allDay: false,
+          attendeeCount: 4,
+          meetingUrl: 'https://meet.google.com/abc-defg-hij',
+        },
+      ],
+    },
+  },
+} satisfies {
+  [C in Extract<IpcChannel, `calendar:${string}`>]: ChannelSample<C>;
+};
+
 const packagesState = {
   packages: [
     {
@@ -664,12 +700,14 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   'speech:delete': { request: undefined, response: speechNone },
   ...ctrlSamples,
   ...snapSamples,
+  ...calendarSamples,
 };
 
 export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'helper:status': { state: 'running', restarts: 0 },
   'config:changed': { theme: 'dark' },
   'snap:changed': snapSamples['snap:status'].response,
+  'calendar:changed': calendarStatus,
   'note:session': recordingSession,
   'note:pipeline': pipeline,
   'note:transcript': {

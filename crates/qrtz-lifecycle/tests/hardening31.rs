@@ -64,6 +64,7 @@ fn rig() -> Rig {
         fault_step: None,
         default_title: Arc::new(utc_recording_title),
         pending_delete: None,
+        calendar: None,
     });
     Rig {
         rt,

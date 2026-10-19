@@ -90,6 +90,34 @@ const SpeechScope = z
   .optional();
 
 /** The single source of truth for request/response IPC. */
+/** ADR 0217: one cached Apple Calendar event (only these fields are kept). */
+export const CalendarEvent = z.object({
+  id: z.string(),
+  calendarId: z.string(),
+  title: z.string(),
+  startAt: z.number(),
+  endAt: z.number(),
+  allDay: z.boolean(),
+  attendeeCount: z.number().int().min(0),
+  meetingUrl: z.string().optional(),
+});
+export type CalendarEvent = z.infer<typeof CalendarEvent>;
+export const CalendarStatus = z.object({
+  enabled: z.boolean(),
+  access: z.enum([
+    'not-determined',
+    'granted',
+    'denied',
+    'restricted',
+    'write-only',
+    'unsupported',
+  ]),
+  calendars: z.array(z.object({ id: z.string(), title: z.string() })),
+  chosen: z.array(z.string()).nullable(),
+  lastSyncAt: z.number().nullable(),
+});
+export type CalendarStatus = z.infer<typeof CalendarStatus>;
+
 export const ipcContract = {
   'app:get-info': defineChannel({
     version: 1,
@@ -718,6 +746,40 @@ export const ipcContract = {
     capability: 'snap.read',
     request: z.void(),
     response: z.object({ opened: z.boolean(), axTrusted: z.boolean() }),
+  }),
+  /**
+   * ADR 0217: nano's Apple Calendar (read-only, on this Mac): on/off, the access state (read without asking), the
+   * calendars to pick from, the chosen ones (null = all) and the last read.
+   */
+  'calendar:status': defineChannel({
+    version: 1,
+    capability: 'note.read',
+    request: z.void(),
+    response: CalendarStatus,
+  }),
+  /**
+   * ADR 0217: the only call that asks macOS for calendar access (nano's 'connect calendar', or the settings
+   * switch). On a grant the calendar is turned on and read.
+   */
+  'calendar:connect': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.void(),
+    response: CalendarStatus,
+  }),
+  /** ADR 0217: read the calendar again now. */
+  'calendar:refresh': defineChannel({
+    version: 1,
+    capability: 'note.read',
+    request: z.void(),
+    response: CalendarStatus,
+  }),
+  /** ADR 0217: the nano page's 'upcoming' block: the next timed events on the chosen calendars. */
+  'calendar:upcoming': defineChannel({
+    version: 1,
+    capability: 'note.read',
+    request: z.void(),
+    response: z.object({ events: z.array(CalendarEvent).max(20) }),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

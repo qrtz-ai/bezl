@@ -6,6 +6,8 @@ pub const THIRD_PARTY_NOTICES: &str = include_str!("../../../THIRD_PARTY_NOTICES
 #[cfg(feature = "runtime")]
 pub mod app_update;
 #[cfg(feature = "runtime")]
+pub mod calendar;
+#[cfg(feature = "runtime")]
 pub mod config;
 pub mod ctrl_helper;
 #[cfg(feature = "runtime")]

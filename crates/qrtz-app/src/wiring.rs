@@ -250,6 +250,8 @@ pub struct BootOptions {
     /// summary attempt fails as unavailable (never a cloud call).
     pub summarizer: Option<Arc<dyn crate::summary::OnDeviceModel>>,
     pub knobs: DevKnobs,
+    /// ADR 0217: names recordings after the overlapping calendar event (`None`: no calendar).
+    pub calendar: Option<Arc<dyn qrtz_lifecycle::runtime::CalendarLookup>>,
 }
 
 /// Startup order (N25/N26): owner-only dirs first, then the DB (0600 files), then the runtime. The caller runs
@@ -301,6 +303,7 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         fault_step: o.knobs.fault_step,
         default_title: Arc::new(utc_recording_title),
         pending_delete: o.pending_delete,
+        calendar: o.calendar,
     });
     Ok(Booted {
         dirs,
@@ -454,6 +457,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
     // ADR 0078: qrtz keeps no keys; delete any an older build saved (Keychain items, secrets.json).
     crate::secrets::drop_saved_keys(&dirs.data, crate::secrets::platform_keychain().as_ref());
+    let late_calendar = Arc::new(crate::calendar::LateCalendar::default());
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
@@ -465,7 +469,16 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         clock: None,
         summarizer: Some(Arc::new(crate::summary::HelperModel::new(supervisor.clone()))),
         knobs: b.knobs.clone(),
+        calendar: Some(late_calendar.clone()),
     })?;
+    // ADR 0217: nano's Apple Calendar cache and sync, over nano's helper (EventKit there; nothing is fetched).
+    let calendar = crate::calendar::NanoCalendar::new(
+        booted.db.clone(),
+        supervisor.clone(),
+        config.clone(),
+        events.clone(),
+    );
+    let _ = late_calendar.0.set(calendar.clone());
     if let Some(ns) = &note_speech {
         ns.set_runtime(booted.runtime.clone());
     }
@@ -680,6 +693,10 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     }
     service.set_ctrl(Arc::new(ctrl));
     let _ = voice_ctrl.set(Arc::downgrade(&service));
+    service.set_calendar(calendar.clone());
+    if tokio::runtime::Handle::try_current().is_ok() {
+        calendar.spawn();
+    }
     // ADR 0116: the model's consent and verified download, on every OS (only a macOS `laya` build runs it).
     service.set_ctrl_model(Arc::new(crate::ctrl_model::CtrlModelSlot::new(
         crate::ctrl_model::CtrlLayaModel::new(

@@ -1588,6 +1588,80 @@
         "opened": true,
         "axTrusted": false
       }
+    },
+    "calendar:status": {
+      "request": null,
+      "response": {
+        "enabled": true,
+        "access": "granted",
+        "calendars": [
+          {
+            "id": "cal-work",
+            "title": "Work"
+          },
+          {
+            "id": "cal-home",
+            "title": "Home"
+          }
+        ],
+        "chosen": null,
+        "lastSyncAt": 1790000000000
+      }
+    },
+    "calendar:connect": {
+      "request": null,
+      "response": {
+        "enabled": true,
+        "access": "granted",
+        "calendars": [
+          {
+            "id": "cal-work",
+            "title": "Work"
+          },
+          {
+            "id": "cal-home",
+            "title": "Home"
+          }
+        ],
+        "chosen": null,
+        "lastSyncAt": 1790000000000
+      }
+    },
+    "calendar:refresh": {
+      "request": null,
+      "response": {
+        "enabled": true,
+        "access": "granted",
+        "calendars": [
+          {
+            "id": "cal-work",
+            "title": "Work"
+          },
+          {
+            "id": "cal-home",
+            "title": "Home"
+          }
+        ],
+        "chosen": null,
+        "lastSyncAt": 1790000000000
+      }
+    },
+    "calendar:upcoming": {
+      "request": null,
+      "response": {
+        "events": [
+          {
+            "id": "ev-1@1790000000000",
+            "calendarId": "cal-work",
+            "title": "weekly sync",
+            "startAt": 1790000000000,
+            "endAt": 1790001800000,
+            "allDay": false,
+            "attendeeCount": 4,
+            "meetingUrl": "https://meet.google.com/abc-defg-hij"
+          }
+        ]
+      }
     }
   },
   "events": {
@@ -1608,6 +1682,22 @@
       "refused": {
         "undo": "another app uses these keys"
       }
+    },
+    "calendar:changed": {
+      "enabled": true,
+      "access": "granted",
+      "calendars": [
+        {
+          "id": "cal-work",
+          "title": "Work"
+        },
+        {
+          "id": "cal-home",
+          "title": "Home"
+        }
+      ],
+      "chosen": null,
+      "lastSyncAt": 1790000000000
     },
     "note:session": {
       "phase": "recording",

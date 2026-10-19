@@ -715,6 +715,7 @@ impl Run {
             fault_step: self.sc["faultStep"].as_str().and_then(StepId::parse),
             default_title: Arc::new(utc_recording_title),
             pending_delete: Some(Arc::new(PendingDeletes::new(&self.sh.dir))),
+            calendar: None,
         };
         let rt = NoteRuntime::new(deps);
         let r2 = rt.clone();
