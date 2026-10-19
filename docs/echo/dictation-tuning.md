@@ -890,3 +890,176 @@ or a failed index refresh never blocks dictation with an installed model; P4 mic
 permission revoked, sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks
 (secure fields, Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety
 (pill reset, echo restart with backoff).
+
+## 30. Cycle 57: a list of short lines, a final spoken mark, and what FluidAudio already does (ADRs 0188-0190, `3d9b8b7`)
+
+| Run               | Exact   | Edit distance       | Regressions | False-positive hits |
+| ----------------- | ------- | ------------------- | ----------- | ------------------- |
+| fc370d3, 46 cases | 29 / 46 | 133 chars (9.35 %)  | -           | 0 / 59              |
+| 3d9b8b7, same 46  | 32 / 46 | 98 chars (6.89 %)   | 0           | -                   |
+| fc370d3, 56 cases | 29 / 56 | 236 chars (14.33 %) | -           | -                   |
+| 3d9b8b7, 56 cases | 41 / 56 | 100 chars (6.07 %)  | 0           | 0 / 94              |
+
+Regressions are counted against fc370d3's own output for every case (`polish-baseline.json` refreshed; cycle 56 had
+left its six "Scratch that" entries at the older text).
+
+- ADR 0188: a list of three or more short lines (1-3 words each, no blank line, no sentence mark but on the last)
+  ends without a ".": "Groceries new line eggs new line milk" → "Groceries⏎Eggs⏎Milk" (was "…⏎Milk."). Addresses
+  and sign-offs too. Two lines, a 4-word line, a paragraph break, "3 p.m.", "etc." and "?" are left as they were.
+  5 positives, 9 new keep vectors.
+- ADR 0189: a dictation-final lowercase "question mark" / "exclamation point" / "exclamation mark" becomes the mark
+  when the word before is a plain word that can't introduce the noun, there is no article in the last 3 words, and
+  (for "?") the sentence starts like a question: "Is the meeting still on question mark" → "Is the meeting still
+  on?", "Great work everyone exclamation point" → "Great work everyone!". "Put a question mark", "Which key is
+  question mark", "Does the title need question mark", "Shift 1 exclamation point", "The band was called Question
+  Mark" stay. 8 positives, 26 new keep vectors.
+- Cost (release, box CPU): final-mark step 0.0001 ms without a mark, 0.0006 ms when it fires on 490 words; the list
+  check ≤ 0.004 ms. `cleanup_budget.rs` (508 words, now ending in a spoken mark) 1.50 ms median against the 2 ms
+  budget (old code 1.61-2.20 ms in the same interleaved runs: box load). Nothing in capture, segmenting, the decode
+  schedule or Parakeet's settings moved.
+- ADR 0190 (research, no code): FluidAudio v0.17.7 gives Echo punctuation and capitals from the model already; TDT
+  decoding is greedy only; the TDT settings are model-defined or long-audio-only; ITN and vocabulary boosting are
+  separate opt-ins. Measured NeMo ITN (text-processing-rs v0.3.1) on the 224 texts: 5 polish cases better, 5 worse,
+  **33 / 94 keep-set hits**; rejected. Boosting needs a second 97.5 MB encoder pass per segment; rejected. Proposal
+  below (Jared sends it).
+
+Next polish candidates, ranked: (1) money and percent spans only ("twenty five dollars" → "$25", "fifteen percent"
+→ "15%", p17/p18), talk-side, found by talk's own patterns and converted with a closed number-word parser (or the
+Apache-2.0 text-processing-rs single-expression `normalize` on that span alone), with keep vectors for "a couple of
+dollars", "one percent of the time", names; (2) spoken "comma" / "period" only between two clauses where the noun is
+impossible (p15), measured against k27/k28; (3) wh-questions ending in a listed verb ("What did you say question
+mark"), if a closed exemption can be made unambiguous; (4) warming dictionary patterns off the press path. Backlog
+P1-P8 above is still open.
+
+### Proposal to Beve Bobs (cycle 57; Jared sends it)
+
+From: Jared (echo cycle 57, Oct 18-19, 2026). Read against the pinned FluidAudio **v0.17.7**
+(`503b4bd1bbf7220882de39fe8ae6716aae4132da`, `native/qrtz-helper/Package.swift:12-15` and `Package.resolved`),
+cloned and checked out at that tag. Every claim below cites file:line in that tag. Nothing here asks for a code change
+in your areas; the one optional item is a dev-only check.
+
+#### TL;DR
+
+- **Keep `AsrManager(config: .default, models: v2)` exactly as it is** (`QrtzEchoMac/Parakeet.swift:27-28`). There is
+  no FluidAudio setting for Parakeet TDT v2 that improves the text without changing the decode or adding time.
+- **Do not wire FluidAudio's ITN (`TextNormalizer`) into dictation.** I ran its engine over all 224 polish/keep/cleanup
+  texts: it fixes 5 polish cases but breaks 5 others and hits **33 of the 94** false-positive vectors.
+- **Do not add vocabulary boosting for v1.** For the 0.6B v2 model it needs a second, separate CTC encoder pass per
+  segment (the last one on the release path) and a 97.5 MB extra model.
+- Talk-side polish stays the place for this (cycle 57 landed two rules there, ADRs 0188/0189, `3d9b8b7`).
+
+#### What Parakeet / FluidAudio does natively (v0.17.7)
+
+1. **Punctuation and capitals come from the model itself.** `AsrManager.convertTokensToText` just joins the
+   SentencePiece pieces and turns `▁` into spaces (`Sources/FluidAudio/ASR/Parakeet/SlidingWindow/TDT/AsrManager.swift:531-538`);
+   `processTranscriptionResult` adds token timings and confidence, nothing else (`AsrManager+Transcription.swift:562-591`).
+   There is no post-processing step and no switch for it. We already get it.
+2. **Digits / ITN are not applied by `transcribe`.** No reference to `TextNormalizer` anywhere under
+   `ASR/Parakeet/SlidingWindow/TDT/`. ITN is a separate, opt-in call: `TextNormalizer.normalizeSentence`
+   (`Sources/FluidAudio/ITN/TextNormalizer.swift:118-129`) / `normalize(result:)` (`:154-170`). The engine is
+   already linked into qrtz-helper by default: FluidAudio's target depends on the `NemoTextProcessing` binary target
+   on macOS (`Package.swift:30`, `:44-49`, text-processing-rs v0.3.1 xcframework; `Package@swift-6.2.swift:35-39`
+   makes it a default-on trait). qrtz-helper never calls it (no `TextNormalizer` in `native/qrtz-helper/Sources`).
+   The Swift wrapper masks only 9 ambiguous words with NLTagger: period, dash, colon, pipe, slash, dot, plus, hash,
+   percent (`TextNormalizer.swift:53-58`, used at `:120`). "comma", "question mark", "exclamation point" and number
+   words are not masked.
+3. **Decoder: greedy only.** `TdtHypothesis` is "Hypothesis for TDT greedy decoding"
+   (`SlidingWindow/TDT/Decoder/TdtHypothesis.swift:1`); the TDT decoder takes the joint's argmax / top-K per step
+   (`TdtDecoderV3.swift:25`, `:285-299`). Beam search exists only for the CTC path (`SlidingWindow/CTC/CtcDecoder.swift:100-122`,
+   `ctcBeamSearch`), not for TDT. There is no beam option to try.
+4. **TDT duration / decoder settings** (`TdtConfig.swift:1-35`): `durationBins [0,1,2,3,4]` are the model's trained
+   duration head (mapping only, `TdtDurationMapping.swift:17-22`), not a tuning knob; `blankId` is rewritten to 1024
+   for v2 (`TdtDecoderV2.swift:61-73`); `boundarySearchFrames` and `maxTokensPerChunk` serve the long-audio
+   `ChunkProcessor` path (`AsrManager.swift:258-259`, `AsrManager+TokenProcessing.swift:188-195`). Echo never takes
+   that path: segments are capped at 15 s (`QrtzEcho/Segmented.swift:54-56`, `:108` `capMs: 15_000`) and every
+   decode at or under `ASRConstants.maxModelSamples = 240_000` (`Shared/ASRConstants.swift:12`) is one window with
+   `isLastChunk: true` (`AsrManager+Transcription.swift:15-37`). The only settings that touch our decode are
+   `maxSymbolsPerStep = 10` (`TdtDecoderV3.swift:226`, `:460`) and `consecutiveBlankLimit = 5`, which bounds the
+   end-of-window flush that every Echo segment runs (`TdtDecoderV3.swift:473-486`). Changing either changes the
+   decode, and so the timing and the tail words. Not proposed (see "If you ever want to try a decoder setting").
+5. **Language filter, mel context, dual-decode arbitration, seam-gap repair**: v3-only or long-form-only.
+   `language:` is "silently ignored for v2" (`AsrManager.swift:371-373`); the others are chunk-path options
+   (`AsrTypes.swift:26-54`). Nothing to set. (Side note, harmless for us: `TdtDecoderV2.adaptConfigForV2` rebuilds
+   `ASRConfig` without passing `seamGapRepair` / `seamGapRepairMinGapSeconds`, `TdtDecoderV2.swift:75-84`, so they
+   fall back to defaults on v2; it matters only on the chunk path, which Echo never takes.)
+6. **Vocabulary / context biasing ("hotwords").** `AsrManager` has none. `configureVocabularyBoosting` exists only on
+   `SlidingWindowAsrManager` (`SlidingWindow/SlidingWindowAsrManager.swift:70-71`, `:100-110`) and the Unified
+   managers (`Unified/UnifiedAsrManager.swift:205-215`). The public `VocabularyBoostingSession`
+   (`CustomVocabulary/VocabularyBoostingSession.swift:11`, `rescore(text:tokenTimings:audioSamples:)` at `:98-102`)
+   could rescore a segment, but: the 0.6B v2/v3 models have no CTC head (`Documentation/ASR/CustomVocabulary.md:33-36`,
+   `:88-90`), so it "loads a separate 97.5MB Parakeet CTC 110M encoder" (`:135`) and runs at 25.98x RTFx instead of
+   70.29x (`:145`). That is a second encoder pass on every segment, the last one after release: about 190 ms for a
+   5 s final segment at their published speed (their hardware, not measured on Jared's Mac), plus ANE contention with
+   the TDT encoder, a second resident model and a new download. It also rewrites ordinary words on short-term
+   vocabularies unless extra floors are set (`CustomVocabulary.md:492-583`). This fails the zero-added-latency rule.
+   Talk's own dictionary (`apply_dictionary`, patterns cached once per launch since ADR 0182) stays the mechanism.
+7. **Models (information only).** FluidAudio's own table: v2 2.1 % WER vs v3 2.5 % on LibriSpeech test-clean,
+   "Use v2 if you only need English" (`Documentation/Benchmarks.md:44-67`); the v3-family `ultra` is 2.13 % /
+   3.81 % on an M5 Pro (`Benchmarks.md:69-80`, `Documentation/ASR/ParakeetUltra.md`). A model change is a new download
+   and new timing; not a v1 item.
+
+#### Evidence for "don't turn on ITN" (measured on the box, cycle 57)
+
+I built text-processing-rs **v0.3.1** (the engine inside the xcframework) and ran `normalize_sentence`, the function
+behind `nemo_normalize_sentence` (`src/ffi.rs:72-88`, `src/lib.rs:1020`), on every unique text in
+`spec/vectors/talk/polish.json` (56 polish + 94 keep) and `cleanup.json` (224 texts), then the talk cleanup on its
+output. NLTagger masking is Apple-only and not simulated, so the "period" hits (k27, part of k69) might not happen on
+the Mac; none of the others involve a masked word.
+
+| Pipeline                               | Polish exact | Edit distance | Polish worse | Keep-set hits |
+| -------------------------------------- | ------------ | ------------- | ------------ | ------------- |
+| talk cleanup (main at `3d9b8b7`)       | 41 / 56      | 100 chars     | -            | 0 / 94        |
+| ITN (`normalizeSentence`) then cleanup | 39 / 56      | 60 chars      | 5            | 33 / 94       |
+
+- Better (5): "comma ... period" → ", ... .", "three thirty p.m." → "03:30 p.m." (a leading zero, still not "3:30"),
+  "twenty five dollars" → "$25", "fifteen percent" → "15 %", "qrtz dot ai slash docs" → "Thedocsare@qrtz.ai/ docs".
+- Worse (5): "ten minutes" → "10 minutes" (style), "Email me at jared at gmail dot com" → "Emailme@Jared at gmail dot
+  com", "One call Sam / Two book the room" → "1 call Sam / 2 book the room", "at one?" → "at 1?", and newlines in
+  the input collapsed ("Hi Sam,⏎⏎The launch" lost its paragraph).
+- Keep-set hits (33), e.g. "One of the best demos" → "1 of the best demos", "A table for two" → "for 2", "Add a comma
+  after the name" → "Add a, after the name", "Put a question mark at the end" → "Put a? At the end", every noun
+  "question mark" / "exclamation point" → "?" / "!" ("Which key is?", "Add an!", "The band was called?").
+- Cost: median 0.06 ms per text, up to 1.2 ms median (1.56 ms p95) on the longest texts, box CPU, release build.
+  On the release path that is added time on the last segment.
+
+Verdict: rejected as a whole. A narrow, talk-side use of the same Apache-2.0 Rust crate (money and percent spans
+only, found by talk's own patterns, single-expression `normalize` on that span) is on my candidate list; it would be
+in qrtz-talk, not the helper.
+
+#### Asks for you
+
+1. **No change** to `ParakeetBatch` (`AsrManager(config: .default, …)`, v2, `TdtDecoderState.make` per segment).
+2. **Optional, dev-only:** if you want to confirm the ITN verdict with NLTagger on a Mac, a hidden
+   `qrtz-helper --itn-check <file>` that prints `TextNormalizer.shared.normalizeSentence(line)` for each line, not
+   linked into any dictation path. I would score the output with the polish set. Skip it if you agree with the Linux
+   result; it changes nothing in what ships.
+3. **Nothing to add for hotwords** until a CTC-head model (TDT-CTC-110M) is on the table, and then only behind a bench
+   that shows zero release-to-text delta.
+
+#### Measurement plan for Jared's Mac (proves cycle 57 adds no latency and no worse transcript)
+
+Cycle 57 changed only talk's cleanup (two string checks after release, measured 0.0006 ms and ≤ 0.004 ms on the
+box; chain 1.50 ms median on 508 words, 2 ms budget enforced by `crates/qrtz-talk/tests/cleanup_budget.rs`). The
+helper does not contain talk's cleanup, so `echo-bench.sh` timings (helper side) can't move from it; the steps prove
+that and score the text old vs new on the same raw recognitions:
+
+1. `cd ~/code/qrtz && git pull` (main at or after `3d9b8b7`).
+2. Cleanup cost on the Mac: `cargo test --release -p qrtz-talk --test cleanup_budget -- --nocapture` (prints the
+   median; fails over 2 ms). Expect well under the box's 1.50 ms.
+3. Recognitions: `bash native/qrtz-helper/scripts/echo-bench.sh --quick` and, with his own voice,
+   `bash native/qrtz-helper/scripts/echo-bench.sh --clips ~/qrtz-echo-bench/my-clips` (both build `origin/main`).
+   Run `--quick` twice: `releaseToStopped` p50/p90 and `firstPartial` must match the last recorded cycle-56 run
+   within the spread of those two runs (no helper change landed for Echo this cycle).
+4. Score the same raw reports with the old cleanup:
+   `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c56 fc370d3 && cd /tmp/qrtz-c56 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`
+   then `cp <run>-<stamp>.scored.json <run>-<stamp>.c56.scored.json` (the scorer overwrites `<report>.scored.json`),
+   and score again from `~/code/qrtz` with the new cleanup. Raw WER must be identical; formatted WER after `cleanup_dictation` must
+   be equal or lower on **every** clip (not just the mean). Then `git -C ~/code/qrtz worktree remove /tmp/qrtz-c56`.
+5. In real use: the timing log's cleanup stage stays well under 1 ms; `release→inserted` unchanged beyond noise.
+6. If any clip gets worse: revert `3d9b8b7` (talk-only commit).
+
+##### If you ever want to try a decoder setting (not proposed now)
+
+Same harness, one setting per run (for example `consecutiveBlankLimit` 5 → 8, or `maxSymbolsPerStep`), on the same
+build: `releaseToStopped` p95 delta must be ≤ 0 within the baseline spread, and per-clip raw WER and tail-word loss
+(`tailWordsLost`) no worse on any clip, including `--clips` with short last words. Anything else stays at default.
