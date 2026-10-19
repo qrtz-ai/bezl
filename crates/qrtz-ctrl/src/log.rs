@@ -361,6 +361,10 @@ pub struct DecisionState {
     pub model: ModelId,
     /// The phase it was asked in (a backtrack or an answer re-applies the move from here).
     pub phase_before: Phase,
+    /// Actions run (done or failed) when it was made. ADR 0214 review (b): once an action ran after a decision,
+    /// that decision is never backtracked: the run ends and hands back.
+    #[serde(default)]
+    pub actions_before: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -607,6 +611,7 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 backtracks: 0,
                 model: model.clone(),
                 phase_before: s.phase.clone(),
+                actions_before: s.executed(),
             });
             if *outcome == Outcome::Ask {
                 s.ask = Some(decision_id.clone());

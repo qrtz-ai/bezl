@@ -338,6 +338,12 @@ pub fn next_backtrack(s: &crate::log::CtrlState, reason: BacktrackReason) -> Opt
         .iter()
         .rev()
         .find(|d| !d.alternatives.is_empty() && d.backtracks < BACKTRACKS_PER_DECISION)?;
+    // ADR 0214 review (b): an action already ran since this decision (a step whose done-check failed, at any
+    // confidence, p >= 0.8 included): undoing the choice can't undo the action, so no backtrack; the run ends
+    // and hands control back.
+    if s.executed() > d.actions_before {
+        return None;
+    }
     Some(Event::Backtrack {
         decision_id: d.id.clone(),
         to: d.alternatives[0].clone(),

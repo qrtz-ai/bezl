@@ -285,41 +285,41 @@ fn notes_new_note_titled_types_the_title() {
     r.finish_checks();
 }
 
-#[test]
-fn notes_backtracks_when_the_first_move_changes_nothing() {
+/// ADR 0214 review (b): a move that ran but changed nothing is never backtracked (the action can't be undone by
+/// choosing again). The run ends as failed and hands back; the second move is never tried. Both a tentative and a
+/// confident (p >= 0.8) step.
+fn notes_dead_menu_item() -> FakeWorld {
     let mut w = world();
-    // The menu item does nothing in this world: verify sees no change and the chain tries the next move.
     let notes = w
         .apps
         .iter_mut()
         .find(|a| a.bundle_id == "com.apple.Notes")
         .unwrap();
     notes.transitions.retain(|t| t.on != "press:m:20:1");
-    let mut r = Run::new("create a new note titled groceries", w);
-    // A scorer a little less sure of the menu item: tentative (0.5 ≤ p < 0.8), so it can backtrack.
+    w
+}
+
+#[test]
+fn notes_hands_back_when_a_tentative_move_changes_nothing() {
+    let mut r = Run::new("create a new note titled groceries", notes_dead_menu_item());
     let unsure = Scripted([("menu.m:20:1".to_string(), -1800)].into_iter().collect());
-    let step = r.drive_with(&unsure);
-    let alts: Vec<_> = r
-        .log
-        .state()
-        .decisions
-        .iter()
-        .map(|d| (d.id.clone(), d.alternatives.clone(), d.chosen.clone()))
-        .collect();
-    assert_eq!(
-        step,
-        Step::Finished(TaskStatus::Done),
-        "{:#?} {alts:?} {:?}",
-        decisions(&r.log),
-        r.log.state().confirm
-    );
-    assert!(r.log.events().any(|e| matches!(e, Event::Backtrack { .. })));
+    assert_eq!(r.drive_with(&unsure), Step::Finished(TaskStatus::Failed));
+    assert!(!r.log.events().any(|e| matches!(e, Event::Backtrack { .. })));
+    assert!(!r.acts().contains(&"press:e:20:2".to_string()), "no second move");
+}
+
+#[test]
+fn notes_hands_back_when_a_confident_move_fails_its_check() {
+    let mut r = Run::new("create a new note titled groceries", notes_dead_menu_item());
+    let step = r.drive();
     assert!(
-        r.acts().contains(&"press:e:20:2".to_string()),
-        "the toolbar button, second"
+        r.log.state().decisions.iter().any(|d| d.p_chosen_bp >= 8000),
+        "{:#?}",
+        decisions(&r.log)
     );
-    assert_eq!(r.fake.world().acts.last().unwrap()["text"], "groceries");
-    r.finish_checks();
+    assert_eq!(step, Step::Finished(TaskStatus::Failed));
+    assert!(!r.log.events().any(|e| matches!(e, Event::Backtrack { .. })));
+    assert!(!r.acts().contains(&"press:e:20:2".to_string()), "never continues");
 }
 
 #[test]
