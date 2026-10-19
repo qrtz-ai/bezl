@@ -70,6 +70,55 @@ The speech module source (download URL and the two pinned Ed25519 keys, hex) is 
 (`SpeechSetup::from_vars`, ADR 0046 §9.4). Without them the build has no speech module; export the `QRTZ_SPEECH_*`
 variables before running the script if this release carries one.
 
+## Module releases in CI (ADR 0179)
+
+nano, ctrl and snap release from GitHub Actions on GitHub-hosted macOS runners, with the release secrets in the
+repo's GitHub secrets. The Mac path (`scripts/modules/publish.sh --release`) still works and is what CI runs.
+
+- **`.github/workflows/modules-release.yml`**: on a push to main touching `modules/**`, the helper's Swift sources /
+  `Package.swift` / `Package.resolved` / entitlements, `crates/qrtz-modules`, `tools/qrtz-publish`, the model pins or
+  the publish scripts, plus "Run workflow" (`gh workflow run modules-release.yml [-f force_bump=true]`). One publish at a
+  time (concurrency group `modules-publish`, shared with the timestamp job, never cancelled).
+  1. `plan` (Linux, cheap): `scripts/ci/release-plan.sh` reads `version.mjs plan`, the `<m>-v<x.y.z>` tags and the
+     live index. Nothing changed → no Mac starts. Some modules unchanged → all three are bumped (`--force-bump`),
+     because `publish.sh --release` republishes every package and a rebuilt binary never matches the live one. A
+     version that is live but untagged stops the run (tag it first). Missing secrets → a warning, nothing runs.
+  2. `release` (macos-latest = macOS 26, arm64): Rust, bun, SwiftPM and model-hash caches;
+     `scripts/ci/macos-signing.sh setup` imports the Developer ID identity into a temporary keychain, stores a
+     `qrtz-notary` notarytool profile in it (Apple ID + app-specific password by default, or the App Store Connect API
+     key) and writes `index.key` / `timestamp.key` 0600 into `$RUNNER_TEMP`; `scripts/ci/hydrate-out.sh` mirrors the
+     bucket's `v1/` into a fresh output dir (the build continues from the live index); `publish.sh --release` bumps,
+     commits and pushes `modules: release …`, builds, notarizes, signs, uploads through the R2 S3 credentials and
+     tags + pushes `<m>-v<version>`; `scripts/ci/verify-live.sh` fetches every signed object back from
+     modules.qrtz.ai, compares hashes and runs `qrtz-publish verify` on the fresh copy; an `always()` step deletes the
+     keychain and every key file.
+  - Loop guard: the bump commit is pushed with `GITHUB_TOKEN` (which never starts a workflow), and a head commit
+    starting `modules: release ` or containing `[skip ci]` is skipped anyway.
+- **`.github/workflows/modules-timestamp.yml`**: every day at 16:00 UTC (09:00 PDT / 08:00 PST) and on demand, on
+  Linux: only the timestamp key, hydrate, `publish.sh --timestamp`, verify-live. The Mac launchd job
+  (`timestamp-job.sh`) can stay as a backup; it now skips itself when the live timestamp isn't the one in its own
+  `~/qrtz-publish-out` (CI published since), so a stale Mac never rolls the store back. Retire it with
+  `scripts/modules/timestamp-job.sh uninstall` once CI has run green for a week.
+
+### Secrets
+
+Set once (and on rotation) with `scripts/ci/setup-secrets.sh` in Terminal on the release Mac. Each value goes from its
+source straight into `gh secret set` on stdin; nothing is printed or written to disk.
+
+| Secret                                                      | Source                                                                                                |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`                     | the login keychain's `Developer ID Application: … (MR26CCZ496)` only, repacked with a random password |
+| `AC_APPLE_ID`, `AC_APP_PASSWORD`, `AC_TEAM_ID`              | prompt (default): Apple ID + an app-specific password (account.apple.com)                             |
+| `AC_API_KEY`, `AC_KEY_ID`, `AC_ISSUER_ID`                   | prompt (alternative): App Store Connect API key `.p8`, key id, issuer id                              |
+| `QRTZ_INDEX_KEY`, `QRTZ_TIMESTAMP_KEY`                      | `~/.qrtz-keys/index.key`, `~/.qrtz-keys/timestamp.key` (the online keys)                              |
+| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID` | the keychain item `qrtz-r2` (account = access key id); account id `177665085902fbdae8b82993bb7a0b91`  |
+
+The offline root keys (`~/qrtz-root-a`, keychain `qrtz-root-b`) are never secrets; the script refuses them. The
+`qrtz-notary` profile itself can't be exported from the keychain, so its credentials are entered again. Rotation:
+ADR 0179.
+
+The workflows need a push from a token with the `workflow` scope (`gh auth refresh -s workflow`).
+
 ## Updates and diagnostics
 
 Package hosting is `modules.qrtz.ai` only (Cloudflare R2; ADR 0167 — no Backblaze B2 mirror). Publish with

@@ -128,6 +128,9 @@ pub fn check_notary_log(log: &str, n: &Notarization) -> Result<()> {
 /// code is never published from a machine that can't read its signature.
 pub struct SystemEvidence {
     pub notary_profile: Option<String>,
+    /// `QRTZ_NOTARY_KEYCHAIN`: the keychain holding the profile when it isn't the login keychain (CI keeps it in a
+    /// temporary keychain, ADR 0179); passed to notarytool as `--keychain`.
+    pub notary_keychain: Option<String>,
 }
 
 impl SystemEvidence {
@@ -135,6 +138,9 @@ impl SystemEvidence {
     pub fn from_env() -> Self {
         Self {
             notary_profile: std::env::var("QRTZ_NOTARY_PROFILE")
+                .ok()
+                .filter(|p| !p.trim().is_empty()),
+            notary_keychain: std::env::var("QRTZ_NOTARY_KEYCHAIN")
                 .ok()
                 .filter(|p| !p.trim().is_empty()),
         }
@@ -192,8 +198,12 @@ impl CodeEvidence for SystemEvidence {
         let Some(profile) = &self.notary_profile else {
             return Ok(None);
         };
+        let mut args = vec!["notarytool", "log", submission_id, "--keychain-profile", profile];
+        if let Some(kc) = &self.notary_keychain {
+            args.extend(["--keychain", kc.as_str()]);
+        }
         let o = std::process::Command::new("/usr/bin/xcrun")
-            .args(["notarytool", "log", submission_id, "--keychain-profile", profile])
+            .args(&args)
             .output()
             .map_err(|e| format!("notarytool: {e}"))?;
         if !o.status.success() {

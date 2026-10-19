@@ -16,6 +16,11 @@
 # the login keychain at run time (service qrtz-r2, account = the access key id), never from a file.
 # Needs, once: `security add-generic-password -s qrtz-r2 -a <R2 access key id> -w`;
 # R2_ACCOUNT_ID in ~/.qrtz-keys/r2-account-id (not secret). ADR 0167: R2 is the sole package host (no B2 key).
+#
+# ADR 0179: GitHub Actions (modules-timestamp.yml, modules-release.yml) also re-signs and publishes. Before an
+# upload the job compares the live v1/timestamp.json with the one in ~/qrtz-publish-out: if they differ, something
+# else published since this Mac did, so this Mac's output dir is behind (an older index, an older timestamp
+# version) and re-signing from it would roll the store back. Then it skips (logged, exit 0) and leaves it to CI.
 set -euo pipefail
 label=ai.qrtz.timestamp
 plist="$HOME/Library/LaunchAgents/$label.plist"
@@ -69,6 +74,17 @@ PLIST
       fi
       exit 0
     fi
+    out="${QRTZ_PUBLISH_OUT:-$HOME/qrtz-publish-out}"
+    primary="${QRTZ_PRIMARY_URL:-https://modules.qrtz.ai}"
+    live="$(mktemp)"
+    if curl -fsS --max-time 20 -H 'Cache-Control: no-cache' -o "$live" "$primary/v1/timestamp.json?nocache=$RANDOM" 2>/dev/null &&
+      [[ -f "$out/v1/timestamp.json" ]] && ! cmp -s "$live" "$out/v1/timestamp.json"; then
+      rm -f "$live"
+      echo "skipped: $primary serves a timestamp this Mac didn't sign (CI published since; ADR 0179). $out is behind;"
+      echo "  re-signing from it would roll the store back. Nothing uploaded."
+      exit 0
+    fi
+    rm -f "$live"
     export R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
     R2_ACCOUNT_ID="$(tr -d '[:space:]' <"$keys/r2-account-id")"
     R2_ACCESS_KEY_ID="$(account_of qrtz-r2)"

@@ -8,14 +8,19 @@
 # submission id and the `notarytool log` command that shows Apple's reasons, then exits 1.
 #
 # Usage: scripts/release/notarize.sh <file> <keychain-profile>
+#
+# QRTZ_NOTARY_KEYCHAIN (optional): the keychain that holds the profile, for a profile stored outside the login
+# keychain (CI stores one in its temporary keychain with `notarytool store-credentials --keychain`, ADR 0179).
 set -uo pipefail
 
 file="${1:?usage: notarize.sh <file> <keychain-profile>}"
 profile="${2:?usage: notarize.sh <file> <keychain-profile>}"
+kc=()
+[[ -n "${QRTZ_NOTARY_KEYCHAIN:-}" ]] && kc=(--keychain "$QRTZ_NOTARY_KEYCHAIN")
 err="$(mktemp)"
 trap 'rm -f "$err"' EXIT
 
-out="$(xcrun notarytool submit "$file" --keychain-profile "$profile" --wait --output-format json 2>"$err")"
+out="$(xcrun notarytool submit "$file" --keychain-profile "$profile" "${kc[@]+"${kc[@]}"}" --wait --output-format json 2>"$err")"
 rc=$?
 
 # The last value of a top-level string field ("id", "status") in notarytool's JSON. No jq or python needed.
@@ -33,7 +38,7 @@ fi
   [[ -n "$(field message)" ]] && echo "  apple: $(field message)"
   if [[ -n "$id" ]]; then
     echo "  submission id: $id"
-    echo "  why: xcrun notarytool log $id --keychain-profile $profile"
+    echo "  why: xcrun notarytool log $id --keychain-profile $profile${QRTZ_NOTARY_KEYCHAIN:+ --keychain $QRTZ_NOTARY_KEYCHAIN}"
   else
     echo "  no submission id in notarytool's output (was the upload refused before it started?)"
   fi

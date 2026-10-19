@@ -9,7 +9,7 @@ import path from 'node:path';
 const script = path.join(import.meta.dirname, 'notarize.sh');
 const ID = '2efe2717-52ef-43a5-96dc-0797e4ca1041';
 
-function run(stdout, code = 0, stderr = '') {
+function run(stdout, code = 0, stderr = '', extraEnv = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'notary-'));
   writeFileSync(path.join(dir, 'out'), stdout);
   writeFileSync(path.join(dir, 'err'), stderr);
@@ -20,7 +20,7 @@ function run(stdout, code = 0, stderr = '') {
   chmodSync(path.join(dir, 'xcrun'), 0o755);
   const r = spawnSync('bash', [script, '/tmp/qrtz.zip', 'qrtz-notary'], {
     encoding: 'utf8',
-    env: { PATH: `${dir}:${process.env.PATH}` },
+    env: { PATH: `${dir}:${process.env.PATH}`, ...extraEnv },
   });
   return { ...r, args: readFileSync(path.join(dir, 'args'), 'utf8').trim() };
 }
@@ -35,6 +35,16 @@ describe('notarize.sh', () => {
       'notarytool submit /tmp/qrtz.zip --keychain-profile qrtz-notary --wait --output-format json',
     );
     expect(r.stdout).toContain(ID);
+  });
+
+  it('passes --keychain when the profile lives in another keychain (CI, ADR 0179)', () => {
+    const r = run(json('Accepted'), 0, '', {
+      QRTZ_NOTARY_KEYCHAIN: '/tmp/ci.keychain-db',
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.args).toBe(
+      'notarytool submit /tmp/qrtz.zip --keychain-profile qrtz-notary --keychain /tmp/ci.keychain-db --wait --output-format json',
+    );
   });
 
   it('fails on Invalid even when notarytool exits 0, with the id and the log command', () => {
