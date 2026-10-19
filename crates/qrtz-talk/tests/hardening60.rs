@@ -53,6 +53,12 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // a dictated list's line commas go, and a question after a discourse opener ("So do you want ...") ends with "?"
     // where cycle 59 added "."; if that opener is "hey"/"okay"/"ok"/"alright" with no comma, the comma goes after it
     // ("Hey, are you free?"). Any other difference fails.
+    // ADR 0205 (cycle 65) may also drop the second pronoun of "we, we <modal>" / "they, they <modal>".
+    let old = if new != old && new == without_subject_repeats(&old) {
+        new.clone()
+    } else {
+        old
+    };
     if new != old {
         let list = old.contains(",\n") && new == old.replace(",\n", "\n");
         let opener = old.strip_suffix('.').is_some_and(|body| {
@@ -82,6 +88,22 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     );
 }
 
+/// ADR 0205's one allowed edit, as a superset (written independently of cleanup.rs): every "<P>, <p> <modal>" for
+/// P in we/they loses ", <p>". Whether the sentence start allows it is checked by hardening65.rs, not here.
+fn without_subject_repeats(old: &str) -> String {
+    let mut out = old.to_owned();
+    for p in ["we", "they"] {
+        for m in [
+            "can", "could", "will", "would", "should", "might", "must", "may", "shall",
+        ] {
+            for first in [p.to_owned(), format!("{}{}", p[..1].to_uppercase(), &p[1..])] {
+                out = out.replace(&format!("{first}, {p} {m}"), &format!("{first} {m}"));
+            }
+        }
+    }
+    out
+}
+
 /// ADR 0204's one allowed edit: a comma after the last sentence's first word when that word is one of
 /// QUESTION_COMMA_OPENERS (written independently of cleanup.rs: split at the last ". " / "? " / "! " or line).
 fn with_opener_comma(body: &str) -> String {
@@ -92,7 +114,7 @@ fn with_opener_comma(body: &str) -> String {
                 || (body[i..].starts_with(['.', '!', '?']) && body[i + 1..].starts_with(char::is_whitespace))
         })
         .map(|(i, c)| i + c.len_utf8())
-        .last()
+        .next_back()
         .unwrap_or(0);
     let s = &body[start..];
     let lead = s.len() - s.trim_start().len();

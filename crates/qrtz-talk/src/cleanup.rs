@@ -74,6 +74,55 @@ const STUTTERS: &[&str] = &[
 /// stutter; only these collapse there ("I, I think", "the, the plan").
 const COMMA_STUTTERS: &[&str] = &["i", "a", "an", "the"];
 
+/// ADR 0205: the subject pronouns whose repeat across a comma collapses only in the one unambiguous form, "<P>, <p>
+/// <modal>" where the first <P> opens the sentence, on its own or after one opener ("So we, we can ship it" → "So we
+/// can ship it"). Same lists in cleanup.ts.
+const COMMA_SUBJECTS: &[&str] = &["we", "they"];
+/// ADR 0205: the plain modals after the second pronoun (lowercase, whole word; no contractions, no "cannot").
+const SUBJECT_MODALS: &[&str] = &[
+    "can", "could", "will", "would", "should", "might", "must", "may", "shall",
+];
+/// ADR 0205: the one opener allowed before the first pronoun, itself at the start of a sentence (an optional comma
+/// after it): "So we, we can", "And they, they will". Not "You and we, we can" (a compound subject).
+const SUBJECT_OPENERS: &[&str] = &["so", "and", "but", "then", "because"];
+
+/// ADR 0205: does `pre` (the text before a word) end at the start of a sentence: nothing, a line break, or ". ", "!
+/// ", "? " before it (after the leading space rule_cleanup adds)?
+fn at_sentence_start(pre: &str) -> bool {
+    let blank = pre.trim_end_matches([' ', '\t']);
+    blank.trim().is_empty() || blank.ends_with(['\n', '.', '!', '?'])
+}
+
+/// ADR 0205: is `s[p..x]` (a repeat whose word ends at `word_end`) a subject stutter "we, we" / "they, they" that
+/// opens its sentence (alone or after one [`SUBJECT_OPENERS`] word) and is followed by a plain modal? The repeat is
+/// exactly one ", " and the second pronoun is lowercase.
+fn subject_stutter(s: &str, p: usize, word_end: usize, x: usize) -> bool {
+    let word = s[p..word_end].to_ascii_lowercase();
+    if !COMMA_SUBJECTS.contains(&word.as_str()) || s[word_end..x] != format!(", {word}") {
+        return false;
+    }
+    let Some(after) = s[x..].strip_prefix(' ') else {
+        return false;
+    };
+    let len = run_len(after, |c| c.is_ascii_lowercase());
+    if !SUBJECT_MODALS.contains(&&after[..len])
+        || after[len..].starts_with(|c: char| is_w_folded(c) || c == '\'' || !c.is_ascii())
+    {
+        return false;
+    }
+    let pre = s[..p].trim_end_matches([' ', '\t']);
+    if at_sentence_start(pre) {
+        return true;
+    }
+    let pre = pre.strip_suffix(',').unwrap_or(pre);
+    let opener_len = pre.chars().rev().take_while(char::is_ascii_alphabetic).count();
+    let (rest, opener) = pre.split_at(pre.len() - opener_len);
+    SUBJECT_OPENERS.contains(&opener.to_ascii_lowercase().as_str())
+        && !rest.ends_with(|c: char| is_w_folded(c) || c == '\'' || !c.is_ascii())
+        && rest.ends_with([' ', '\t', '\n'])
+        && at_sentence_start(rest)
+}
+
 /// ADR 0120: words whose "." is an abbreviation's, never a sentence end before a lowercase word ("Mr. and Mrs.",
 /// "etc. and so on", "vs. them"). Their dot is kept and the next word is not capitalized. Same list in cleanup.ts.
 pub const ABBREVIATIONS: &[&str] = &[
@@ -1011,7 +1060,8 @@ fn collapse_repeats(s: &str) -> String {
     if s.contains(['\u{17F}', '\u{212A}']) {
         return REPEATS
             .replace_all(s, |c: &fancy_regex::Captures| {
-                if collapses(&c[1], &c[0]) {
+                let (all, word) = (c.get(0).unwrap(), c.get(1).unwrap());
+                if collapses(&c[1], &c[0]) || subject_stutter(s, all.start(), word.end(), all.end()) {
                     c[1].to_owned()
                 } else {
                     c[0].to_owned()
@@ -1047,11 +1097,13 @@ fn collapse_repeats(s: &str) -> String {
         if x > word_end {
             let all = &s[p..x];
             out.push_str(&s[last..p]);
-            out.push_str(if collapses(&s[p..word_end], all) {
-                &s[p..word_end]
-            } else {
-                all
-            });
+            out.push_str(
+                if collapses(&s[p..word_end], all) || subject_stutter(s, p, word_end, x) {
+                    &s[p..word_end]
+                } else {
+                    all
+                },
+            );
             last = x;
             p = x;
         } else {

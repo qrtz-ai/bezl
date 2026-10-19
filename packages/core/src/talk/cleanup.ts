@@ -47,6 +47,59 @@ const STUTTERS = new Set([
 // Repeats across a comma ("I love you, you know", "take it, it is yours") are a clause boundary as often as a
 // stutter; only these collapse there ("I, I think", "the, the plan").
 const COMMA_STUTTERS = new Set(['i', 'a', 'an', 'the']);
+// ADR 0205: "we, we" / "they, they" collapses only before a plain modal, with the first pronoun opening its sentence
+// (alone or after one opener): "So we, we can ship it" -> "So we can ship it". Same lists as cleanup.rs.
+const COMMA_SUBJECTS = new Set(['we', 'they']);
+const SUBJECT_MODALS = new Set([
+  'can',
+  'could',
+  'will',
+  'would',
+  'should',
+  'might',
+  'must',
+  'may',
+  'shall',
+]);
+const SUBJECT_OPENERS = new Set(['so', 'and', 'but', 'then', 'because']);
+
+/** ADR 0205: does `pre` end at a sentence start (nothing, a line break, or ".", "!", "?" before the blanks)? */
+function atSentenceStart(pre: string): boolean {
+  const blank = pre.replace(/[ \t]+$/, '');
+  return blank.trim() === '' || /[\n.!?]$/.test(blank);
+}
+
+/** ADR 0205: is the repeat `all` (word `w`) at `at` in `src` a subject stutter before a plain modal? */
+function subjectStutter(
+  all: string,
+  w: string,
+  at: number,
+  src: string,
+): boolean {
+  const word = w.toLowerCase();
+  if (!COMMA_SUBJECTS.has(word) || all.slice(w.length) !== `, ${word}`)
+    return false;
+  const after = src.slice(at + all.length);
+  if (!after.startsWith(' ')) return false;
+  const modal = /^[a-z]*/.exec(after.slice(1))![0];
+  const next = after.slice(1 + modal.length);
+  if (
+    !SUBJECT_MODALS.has(modal) ||
+    /^[\w']/.test(next) ||
+    next.charCodeAt(0) > 0x7f
+  )
+    return false;
+  let pre = src.slice(0, at).replace(/[ \t]+$/, '');
+  if (atSentenceStart(pre)) return true;
+  if (pre.endsWith(',')) pre = pre.slice(0, -1);
+  const opener = /[A-Za-z]*$/.exec(pre)![0];
+  const rest = pre.slice(0, pre.length - opener.length);
+  return (
+    SUBJECT_OPENERS.has(opener.toLowerCase()) &&
+    /[ \t\n]$/.test(rest) &&
+    atSentenceStart(rest)
+  );
+}
 // An immediate repeat of a whole word; the apostrophe is part of a word on both sides ("you, you're" is no repeat).
 const REPEATS = /(?<![\w'])(\w+)(?:[\s,]+\1(?![\w']))+/gi;
 
@@ -1317,8 +1370,9 @@ export function ruleCleanup(
     },
   );
   // Immediate repeats of stutter-prone words ("I I think", "the the"); ADR 0101.
-  t = t.replace(REPEATS, (all: string, w: string) =>
-    (all.includes(',') ? COMMA_STUTTERS : STUTTERS).has(w.toLowerCase())
+  t = t.replace(REPEATS, (all: string, w: string, at: number, src: string) =>
+    (all.includes(',') ? COMMA_STUTTERS : STUTTERS).has(w.toLowerCase()) ||
+    subjectStutter(all, w, at, src)
       ? w
       : all,
   );

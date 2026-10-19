@@ -587,6 +587,24 @@
       "category": "question",
       "raw": "I'm outside. Hey are you home",
       "ideal": "I'm outside. Hey, are you home?"
+    },
+    {
+      "id": "p95",
+      "category": "repeat",
+      "raw": "But they, they will call you back tomorrow.",
+      "ideal": "But they will call you back tomorrow."
+    },
+    {
+      "id": "p96",
+      "category": "repeat",
+      "raw": "We, we should probably push the launch to next week.",
+      "ideal": "We should probably push the launch to next week."
+    },
+    {
+      "id": "p97",
+      "category": "repeat",
+      "raw": "I checked the numbers. So we, we can afford the second server.",
+      "ideal": "I checked the numbers. So we can afford the second server."
     }
   ],
   "keep": [
@@ -1981,6 +1999,84 @@
       "rule": "question-comma",
       "raw": "Hey, are you free",
       "expect": "Hey, are you free?"
+    },
+    {
+      "id": "k233",
+      "rule": "subject-repeat",
+      "raw": "Neither have we, we were busy all week.",
+      "expect": "Neither have we, we were busy all week."
+    },
+    {
+      "id": "k234",
+      "rule": "subject-repeat",
+      "raw": "So do we, we just never say it out loud.",
+      "expect": "So do we, we just never say it out loud."
+    },
+    {
+      "id": "k235",
+      "rule": "subject-repeat",
+      "raw": "They're faster than we, we can barely keep up.",
+      "expect": "They're faster than we, we can barely keep up."
+    },
+    {
+      "id": "k236",
+      "rule": "subject-repeat",
+      "raw": "You and we, we can split the cost of the venue.",
+      "expect": "You and we, we can split the cost of the venue."
+    },
+    {
+      "id": "k237",
+      "rule": "subject-repeat",
+      "raw": "Tell them we, we can do it by Friday.",
+      "expect": "Tell them we, we can do it by Friday."
+    },
+    {
+      "id": "k238",
+      "rule": "subject-repeat",
+      "raw": "And then we, we will see how it goes.",
+      "expect": "And then we, we will see how it goes."
+    },
+    {
+      "id": "k239",
+      "rule": "subject-repeat",
+      "raw": "Okay we, we can do that after lunch.",
+      "expect": "Okay we, we can do that after lunch."
+    },
+    {
+      "id": "k240",
+      "rule": "subject-repeat",
+      "raw": "So we, we went home early that night.",
+      "expect": "So we, we went home early that night."
+    },
+    {
+      "id": "k241",
+      "rule": "subject-repeat",
+      "raw": "So we, we can't make it to the dinner.",
+      "expect": "So we, we can't make it to the dinner."
+    },
+    {
+      "id": "k242",
+      "rule": "subject-repeat",
+      "raw": "So we, we're going to need a bigger room.",
+      "expect": "So we, we're going to need a bigger room."
+    },
+    {
+      "id": "k243",
+      "rule": "subject-repeat",
+      "raw": "Thank you, you can head home now.",
+      "expect": "Thank you, you can head home now."
+    },
+    {
+      "id": "k244",
+      "rule": "subject-repeat",
+      "raw": "Take it, it will help with the pain.",
+      "expect": "Take it, it will help with the pain."
+    },
+    {
+      "id": "k245",
+      "rule": "subject-repeat",
+      "raw": "So he, he can drive us to the airport.",
+      "expect": "So he, he can drive us to the airport."
     }
   ]
 }

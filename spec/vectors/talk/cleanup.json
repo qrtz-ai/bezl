@@ -679,7 +679,7 @@
     {
       "raw": "So we, we can ship it tomorrow.",
       "dict": false,
-      "expect": "So we, we can ship it tomorrow."
+      "expect": "So we can ship it tomorrow."
     },
     {
       "raw": "Dear team, new paragraph, the launch moved to Monday.",
@@ -2070,6 +2070,201 @@
       "raw": "Hey, are you free",
       "dict": false,
       "expect": "Hey, are you free?"
+    },
+    {
+      "raw": "We, we can try again tomorrow.",
+      "dict": false,
+      "expect": "We can try again tomorrow."
+    },
+    {
+      "raw": "They, they should be here by now.",
+      "dict": false,
+      "expect": "They should be here by now."
+    },
+    {
+      "raw": "But we, we could ask Sam first.",
+      "dict": false,
+      "expect": "But we could ask Sam first."
+    },
+    {
+      "raw": "And they, they will send the invoice.",
+      "dict": false,
+      "expect": "And they will send the invoice."
+    },
+    {
+      "raw": "Because they, they might not come.",
+      "dict": false,
+      "expect": "Because they might not come."
+    },
+    {
+      "raw": "Then we, we would need a new room.",
+      "dict": false,
+      "expect": "Then we would need a new room."
+    },
+    {
+      "raw": "So, we, we can ship it tomorrow.",
+      "dict": false,
+      "expect": "So, we can ship it tomorrow."
+    },
+    {
+      "raw": "I'm tired. So we, we should go home.",
+      "dict": false,
+      "expect": "I'm tired. So we should go home."
+    },
+    {
+      "raw": "Um, so we, we can ship it",
+      "dict": false,
+      "expect": "So we can ship it."
+    },
+    {
+      "raw": "so we, we can ship cue arts",
+      "dict": true,
+      "expect": "So we can ship qrtz."
+    },
+    {
+      "raw": "Notes new line we, we must finish today",
+      "dict": false,
+      "expect": "Notes\nWe must finish today."
+    },
+    {
+      "raw": "Is it done? They, they may need more time.",
+      "dict": false,
+      "expect": "Is it done? They may need more time."
+    },
+    {
+      "raw": "So we, we shall see.",
+      "dict": false,
+      "expect": "So we shall see."
+    },
+    {
+      "raw": "Neither have we, we were busy.",
+      "dict": false,
+      "expect": "Neither have we, we were busy."
+    },
+    {
+      "raw": "Neither can we, we can only wait.",
+      "dict": false,
+      "expect": "Neither can we, we can only wait."
+    },
+    {
+      "raw": "So do we, we just never say it.",
+      "dict": false,
+      "expect": "So do we, we just never say it."
+    },
+    {
+      "raw": "So can they, they can come too.",
+      "dict": false,
+      "expect": "So can they, they can come too."
+    },
+    {
+      "raw": "They're faster than we, we can keep up.",
+      "dict": false,
+      "expect": "They're faster than we, we can keep up."
+    },
+    {
+      "raw": "You and we, we can share the cost.",
+      "dict": false,
+      "expect": "You and we, we can share the cost."
+    },
+    {
+      "raw": "Tell them we, we can do it.",
+      "dict": false,
+      "expect": "Tell them we, we can do it."
+    },
+    {
+      "raw": "And then we, we will see.",
+      "dict": false,
+      "expect": "And then we, we will see."
+    },
+    {
+      "raw": "Okay we, we can do that.",
+      "dict": false,
+      "expect": "Okay we, we can do that."
+    },
+    {
+      "raw": "Where are they, they can't be far.",
+      "dict": false,
+      "expect": "Where are they, they can't be far."
+    },
+    {
+      "raw": "So we, we went home early.",
+      "dict": false,
+      "expect": "So we, we went home early."
+    },
+    {
+      "raw": "So we, we can't make it.",
+      "dict": false,
+      "expect": "So we, we can't make it."
+    },
+    {
+      "raw": "So we, we cannot make it.",
+      "dict": false,
+      "expect": "So we, we cannot make it."
+    },
+    {
+      "raw": "So we, we candidly told them.",
+      "dict": false,
+      "expect": "So we, we candidly told them."
+    },
+    {
+      "raw": "So they, they May be back.",
+      "dict": false,
+      "expect": "So they, they May be back."
+    },
+    {
+      "raw": "So we, we're going home.",
+      "dict": false,
+      "expect": "So we, we're going home."
+    },
+    {
+      "raw": "We, we.",
+      "dict": false,
+      "expect": "We, we"
+    },
+    {
+      "raw": "So we, we, we can ship it.",
+      "dict": false,
+      "expect": "So we, we, we can ship it."
+    },
+    {
+      "raw": "So we,  we can ship it.",
+      "dict": false,
+      "expect": "So we, we can ship it."
+    },
+    {
+      "raw": "Thank you, you can go now.",
+      "dict": false,
+      "expect": "Thank you, you can go now."
+    },
+    {
+      "raw": "I love you, you know.",
+      "dict": false,
+      "expect": "I love you, you know."
+    },
+    {
+      "raw": "Ask him, he can help.",
+      "dict": false,
+      "expect": "Ask him, he can help."
+    },
+    {
+      "raw": "Take it, it will help.",
+      "dict": false,
+      "expect": "Take it, it will help."
+    },
+    {
+      "raw": "So he, he can drive.",
+      "dict": false,
+      "expect": "So he, he can drive."
+    },
+    {
+      "raw": "We, WE can do it.",
+      "dict": false,
+      "expect": "We, WE can do it."
+    },
+    {
+      "raw": "Set they, they_can to true.",
+      "dict": false,
+      "expect": "Set they, they_can to true."
     }
   ],
   "dictionaryOnly": [
