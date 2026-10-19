@@ -888,7 +888,7 @@ Worked one per cycle when no polish item is ready. P1 the `local_models::speech_
 touch_only_its_models` timeout: **fixed `a8da381`** (cycle 69, ADR 0209; a lost resume, not a flake; section 41);
 P2 model download pause/resume/background/crash recovery with sha256: crash recovery **fixed `b88bae3`** (cycle 72, ADR 0218, N190-N192; section 44; N193 open, Bobs); P3 no network or a failed index refresh never
 blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42), and its follow-up N189 **fixed** (`b464db9` store side, Bobs; `7cf1272` speech side, cycle 71, ADR 0213; section 43); P4 mic edge cases (unplug, AirPods profile, permission revoked,
-sleep/wake): talk side **N194 fixed `88c97ae`** (cycle 73, ADR 0222; section 45), N195/N196 open (Bobs, helper), N197 open (talk, needs a Mac measurement); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
+sleep/wake): talk side **N194 fixed `88c97ae`** (cycle 73, ADR 0222; section 45), N195/N196 open (Bobs, helper), N197 open (talk, needs a Mac measurement); P5 key-up to text p50/p95 budget and a bench-compare script: bench-compare **done `2a0f708`** (cycle 74, ADR 0223; section 46), the Mac p50/p95 budget still needs Jared's numbers; P6 insertion fallbacks (secure fields,
 Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
 restart with backoff).
 
@@ -1916,3 +1916,65 @@ Proposal for Beve Bobs (N195, N196; helper, QrtzEcho / QrtzEchoMac):
 > from the `echo timing:` / `talk latency` lines must be within noise. (4) No worse transcripts:
 > `bash native/qrtz-helper/scripts/echo-bench.sh --quick` before and after; WER must be identical (the recogniser
 > path is untouched).
+
+## 46. Cycle 74: backlog P5, a before/after gate for the Mac's echo-bench results (ADR 0223, `2a0f708`)
+
+Polish re-check first: nothing new clears the bar. cleanup.rs, cleanup.ts and spec/vectors/talk are unchanged since
+`342e67b`; the 4 failing cases are the same (p15 waits on the Mac check in section 36 step 5; p19 / p20 spoken email
+and URL are ambiguous without a dictionary-known domain; p41 is ADR 0188's "don't retry"). Rejected candidates are in
+ADR 0223. So the cycle took the next talk-side backlog item: P5's bench-compare script.
+
+| Run                                                        | Result                                                                |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| `2a0f708`, scripts/echo-bench-compare.test.mjs             | 14 / 14 pass (the script is new: every case fails without it)         |
+| `2a0f708`, qrtz-talk `cargo test` (38 test binaries)       | 155 passed, 0 failed (incl. vectors.rs, polish_set, cleanup_accuracy) |
+| `2a0f708`, vitest TS twin + Note + timing report + compare | 315 passed (20 files)                                                 |
+
+- **What it does:** `node scripts/echo-bench-compare.mjs <before.json> <after.json>` (two `echo-bench.sh` result
+  files, `~/qrtz-echo-bench/results/sweep-<stamp>.json`). For every engine × variant it fails on more WER or
+  formatted-WER errors, more tail / head words lost, any one clip with more word errors (even when another clip got
+  better and the total held), a different clip count, a missing row, or a `releaseToStoppedMs` / `firstPartialMs` /
+  `finalDecodeMs` p50 or p90 slower than max(15 ms, 10 %) (`--tolerance-ms`, `--tolerance-pct`). Every changed
+  transcript is listed. Exit 0 pass, 1 regression, 2 bad input. Read-only, no network. The bench reports p90, not
+  p95; p95 of real dictations stays with `scripts/echo-timing-report.mjs`.
+- **Review of `8d23033` (echo 0.2.1, one trailing space on the pasted text; service.rs l.1662 / l.1766):** correct
+  for the cases asked about. Empty text: unchanged (`""`). Text already ending in a space or newline: unchanged
+  (`char::is_whitespace`), so a list or "new line" ending keeps its newline and gets no space; a list ending on a
+  word gets one space after the last line, which is right. Clipboard fallback: the clipboard gets the same `pasted`
+  text, consistent with what the insert would have typed; `restoreClipboard` unchanged. History (`TalkEntry.text`),
+  the pill text and `cleanup_ms` keep `cleaned.text`; the cleanup chain (the polish output) runs before and is
+  untouched, so polish scores can't move. ctrl+fn returns before the insert (l.1623) and gets no space. The helper
+  inserts the string as given (Talk.swift `axSetSelectedText` / `axInsertIntoValue`, no smart spacing), so a second
+  dictation gets no double space. Tests pin `""`, `"hi "`, `"hi\n"`, `"hi there."`. **N199 (new, open, low,
+  Jared's call):** ADR 0101 keeps a short (≤ 3 word) dictation bare for search boxes, PINs, domains and file names;
+  the trailing space now follows those too ("qrtz.ai " in a Save dialog's name field or a code field; a clipboard
+  paste into a secure field would carry it too). Options: skip the space when `is_short` holds and there is no
+  terminal mark, or leave it. Not changed here (service.rs is Bobs's in-flight file, and it's a product choice).
+  An insert mid-text before punctuation also gets "word ." (nothing looks at the character after the caret); that
+  needs the helper to read it (P6).
+- **Dictation path review since `158ac4d`:** `8d23033` is the only press-path change. `30481e5` (ctrl) touches
+  QrtzEcho Hotkey.swift only to read the same ctrl marker constant from QrtzShared (same value,
+  `0x7172747A6374726C`); `e405f7d` (storybook title) and `0a91c67` (nano notes vault) are off the press path. No
+  capture, VAD, model config, drain / final pass, cleanup, pill or timing-log change. Findings: N195 / N196 / N198
+  open (Bobs), N197 open (talk, needs the Mac's device-switch gap), N199 new (above).
+- **Scores at `2a0f708`:** polish set 105 / 109 exact, 42 chars (1.20 % of 3504), baseline 42, regressions 0; keep
+  set 292, 0 hits; release cleanup_budget medians 0.120 / 0.123 / 0.133 ms (495 words / 504 ending in a question /
+  504 ending in a vocative question; max 0.205 / 0.272 / 0.192 ms), ceiling 2 ms, the benchmark test passes.
+- **Latency:** none. A script run by hand; nothing on the press, release, cleanup or insert path.
+- **Nano quick check:** packages/features/note vitest green inside the 315 above.
+
+Next: P5's other half (a key-up → text p50 / p95 budget) needs Jared's Mac numbers from
+`node scripts/echo-timing-report.mjs`; then P7 (measure idle memory / CPU first) or P8 talk-side crash-safety
+tests. Polish candidate (1) stays p15 after the Mac check.
+
+### Test on Jared's Mac (cycle 74)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `2a0f708`).
+2. Compare a bench run against itself: `node scripts/echo-bench-compare.mjs
+   ~/qrtz-echo-bench/results/sweep-<stamp>.json ~/qrtz-echo-bench/results/sweep-<stamp>.json`. It prints PASS and
+   `echo $?` is 0. Then two different runs: any FAIL line names the row, the stat and the numbers.
+3. From now on, every helper or model-config proposal's before / after step is `bash
+   native/qrtz-helper/scripts/echo-bench.sh --quick` on the old commit and on the new one, then the compare on the
+   two `sweep-*.json` files. PASS means no worse transcript and no latency stat slower than noise.
+4. Optional (N199): dictate "report final" into a Finder rename or a Save dialog's name field and see whether the
+   trailing space bothers you.
