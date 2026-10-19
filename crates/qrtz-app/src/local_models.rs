@@ -466,11 +466,15 @@ impl LocalModels {
 
     /// Backlog P3 (ADR 0210): every set is installed and verified (its view marked, sizes right) and `qrtz.lock`
     /// already holds exactly what the pinned plan would write, so a download has nothing to do. Disk only. A set an
-    /// extension reads in its own process (ctrl's Laya) is never "up to date" here: its download keeps ADR 0157
-    /// §6's refresh first.
+    /// extension reads in its own process (ctrl's Laya, nano's models; ADR 0212) is never "up to date" here: its
+    /// download keeps ADR 0157 §6's refresh first.
     fn up_to_date(&self, installer: &Installer) -> bool {
         if self.manifest.sets.is_empty()
-            || self.manifest.sets.iter().any(|s| reader_of(&s.package).is_some())
+            || self
+                .manifest
+                .sets
+                .iter()
+                .any(|s| self.reader_of(&s.package).is_some())
             || !self.installed()
         {
             return false;
