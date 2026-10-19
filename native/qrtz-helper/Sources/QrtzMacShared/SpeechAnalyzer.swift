@@ -37,7 +37,7 @@ public final class SpeechAnalyzerTranscriber: StreamingTranscriber, @unchecked S
     public func prepare() async throws {
         let t = SpeechTranscriber(locale: Locale.current, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
         // ADR 0079: only when macOS already has this language's speech assets. qrtz never asks the OS to download
-        // them (no download outside onboarding/settings); without them this backup is simply not used.
+        // them (no download without the user's yes in settings); without them this backup is simply not used.
         guard await AssetInventory.status(forModules: [t]) == .installed else {
             throw NSError(domain: "qrtz.speechanalyzer", code: 1, userInfo: [NSLocalizedDescriptionKey: "speech assets for \(Locale.current.identifier) not installed"])
         }

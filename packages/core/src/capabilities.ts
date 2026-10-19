@@ -37,7 +37,7 @@ export const Capability = z.enum([
 ]);
 export type Capability = z.infer<typeof Capability>;
 
-/** macOS TCC permissions a sub app needs; drives onboarding. */
+/** macOS TCC permissions a sub app needs; the module manager shows them beside its switch (ADR 0163). */
 export const OsPermission = z.enum([
   'accessibility',
   'screen-recording',

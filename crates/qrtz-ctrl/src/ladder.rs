@@ -15,7 +15,7 @@
 //! [`Route::Activate`]) exist so a planner can name them, and the ladder always refuses them.
 //!
 //! Consent is never requested from a background run: a missing grant turns into [`Decision::Ask`] so the user can
-//! grant it in the foreground (onboarding / settings), because every TCC prompt is a modal that takes focus.
+//! grant it in the foreground (the module manager, ADR 0163), because every TCC prompt is a modal that takes focus.
 use crate::policy::{
     is_focus_intent, normalize_combo, FORBIDDEN_AX_ACTIONS, FORBIDDEN_AX_SET_ATTRIBUTES, MENU_OPENING_ROLES,
     SECURE_ROLES, USER_ACTIVE_WINDOW_MS,

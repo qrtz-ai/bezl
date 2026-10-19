@@ -341,7 +341,7 @@ pub struct BuiltApp {
     pub attach: Arc<crate::speech::HelperAttach>,
     pub note_speech: Option<Arc<crate::speech::NoteSpeech>>,
     pub speech: Option<crate::speech::SpeechSetup>,
-    /// Onboarding / settings "speech": the module download. Call
+    /// Settings "speech" (and switching echo or nano on in the module manager, ADR 0163): the module download. Call
     /// `setup.speech.resume_pending()` inside the tokio runtime after boot (a download a quit cut short resumes).
     pub setup: Arc<crate::setup::Setup>,
 }
@@ -354,7 +354,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let config: SharedConfig = crate::ConfigStore::open(dirs.data.join("config.json")).into();
     let events = Events::new();
     // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
-    // downloaded from onboarding/settings into <data>/models and read by the helper from there only.
+    // downloaded from settings into <data>/models and read by the helper from there only.
     let local_models = (b.speech.is_none()
         && (cfg!(target_os = "macos") || b.knobs.local_models_base.is_some()))
     .then(|| {

@@ -1,6 +1,6 @@
 //! The Laya backend interface (slice 4, ADR 0106). Laya (Convai Innovations, Apache-2.0) is a small encoder that
 //! answers typed questions (choice / score / yes-no) with calibrated probabilities in one forward pass; its Core ML
-//! port runs on the Mac. ctrl uses it only when the user has downloaded it from onboarding or settings (consent,
+//! port runs on the Mac. ctrl uses it only when the user has downloaded it from ctrl's settings (consent,
 //! ADR 0076): there is no download here and no network ever.
 //!
 //! This module is pure and builds everywhere: the request format ([`laya_request`]) and the adapter from a runtime's
@@ -66,7 +66,7 @@ impl<R: LayaRuntime> Scorer for LayaScorer<R> {
     }
 }
 
-/// Whether the user downloaded the model (onboarding / settings) and where it is.
+/// Whether the user downloaded the model (ctrl's settings) and where it is.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModelConsent {
     pub consented: bool,
@@ -122,7 +122,7 @@ impl LayaRuntime for Box<dyn LayaRuntime> {
 
 /// The Laya runtime behind the ctrl helper protocol (slice 5, ADR 0108): one `ctrl.laya` request per question, run
 /// by the helper's Core ML stack on the consented, installed model. The helper answers `laya.no_model` until the
-/// model is downloaded from onboarding / settings; [`decide::decide`](crate::decide::decide) then falls back to the
+/// model is downloaded from ctrl's settings; [`decide::decide`](crate::decide::decide) then falls back to the
 /// heuristic layer for that question and the log says so. Selecting it still goes through [`select_scorer`].
 pub struct HelperLaya {
     pub helper: std::sync::Arc<crate::helper::HelperClient>,

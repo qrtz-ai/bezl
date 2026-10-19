@@ -1,4 +1,4 @@
-//! Speech setup (ADR 0046 §7, ADR 0061): what onboarding and the settings "speech" section show
+//! Speech setup (ADR 0046 §7, ADR 0061): what the settings "speech" section shows
 //! and do. The speech module downloads in the background with pause, resume and retry, survives a quit (a
 //! marker file in the speech store resumes it on the next launch, from the `.part` files), checks for the newest
 //! release, re-downloads and deletes. No engine or model names leave this module: a version, a size and a state.
@@ -76,7 +76,7 @@ fn error_kind(e: &SpeechError) -> &'static str {
     }
 }
 
-/// Lowercase, no engine detail (N72): what the settings row and onboarding say.
+/// Lowercase, no engine detail (N72): what the settings row says.
 fn error_text(kind: &str) -> &'static str {
     match kind {
         "network" => "couldn't reach the download server",

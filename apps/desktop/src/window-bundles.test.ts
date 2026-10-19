@@ -31,7 +31,7 @@ function closure(
 }
 
 const SHELL_ONLY =
-  /packages\/features\/|src\/shell\/(App|SubAppHost|subapps|Palette|Onboarding)\.tsx?$|src\/renderer\.tsx$|node_modules\/react-router/;
+  /packages\/features\/|src\/shell\/(App|SubAppHost|subapps|Palette)\.tsx?$|src\/renderer\.tsx$|node_modules\/react-router/;
 
 describe('window pages', () => {
   it('the hud bundle includes no shell, router or sub app modules', async () => {
@@ -76,7 +76,7 @@ describe('window pages', () => {
         .some((m) => /packages\/features\/note\//.test(m)),
     ).toBe(true);
     // ADR 0093: first paint of the main window is the shell and the note list. The meeting detail, the
-    // palette, onboarding, settings and the gallery are their own chunks, loaded when needed.
+    // palette, settings and the gallery are their own chunks, loaded when needed.
     const first = closure(chunks, entry('main'), (c) =>
       c.moduleIds.some((m) =>
         /src\/renderer\.tsx$|note\/src\/NoteView\.tsx$/.test(m),
@@ -84,9 +84,9 @@ describe('window pages', () => {
     ).flatMap((c) => c.moduleIds);
     expect(first.some((m) => m.endsWith('note/src/NoteView.tsx'))).toBe(true);
     const LATER =
-      /note\/src\/(MeetingDetail|Speakers)\.tsx$|shell\/(Palette|Onboarding)\.tsx$|features\/(settings|gallery|talk)\/src\/\w+View\.tsx$|ui\/src\/gallery\//;
+      /note\/src\/(MeetingDetail|Speakers)\.tsx$|shell\/Palette\.tsx$|features\/(settings|gallery|talk)\/src\/\w+View\.tsx$|ui\/src\/gallery\//;
     expect(first.filter((m) => LATER.test(m))).toEqual([]);
-    for (const later of ['MeetingDetail', 'Palette', 'Onboarding'])
+    for (const later of ['MeetingDetail', 'Palette'])
       expect(
         main.flatMap((c) => c.moduleIds).some((m) => m.includes(later)),
       ).toBe(true);

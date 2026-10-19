@@ -128,4 +128,13 @@ describe('config', () => {
     for (const k of ['searchModelDownload', 'backgroundIndexing'])
       expect(k in c.note).toBe(false);
   });
+
+  it('ADR 0163: an old config with onboarding (done or not) loads without it, and nothing else changes', () => {
+    for (const done of [true, false]) {
+      const c = loadConfig({ onboarding: { done }, theme: 'light' });
+      expect('onboarding' in c).toBe(false);
+      expect(c.theme).toBe('light');
+    }
+    expect('onboarding' in defaultConfig()).toBe(false);
+  });
 });

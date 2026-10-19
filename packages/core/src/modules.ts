@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Config } from './config';
+import type { ModulePermission } from './packages/contract';
 
 /**
  * qrtz modules (ADR 0146). The Rust crate `qrtz-modules` is the authority on manifests and the lockfile; this is the
@@ -17,13 +18,25 @@ export const MODULE_VIEWS: Readonly<Record<ModuleId, readonly string[]>> = {
   snap: ['snap'],
 };
 
+/**
+ * The macOS permissions each module uses (its manifest's `permissions`). ADR 0163: the module manager shows them,
+ * with their live state, beside the module's switch; macOS asks for any not granted the first time it is needed.
+ */
+export const MODULE_PERMISSIONS: Readonly<
+  Record<ModuleId, readonly ModulePermission[]>
+> = {
+  echo: ['microphone', 'accessibility'],
+  nano: ['microphone', 'screen-recording', 'accessibility'],
+  ctrl: ['accessibility', 'automation', 'files-and-folders'],
+  snap: ['accessibility'],
+};
+
 /** Config sections that stay global; every other section belongs to one module (`settings.legacySections`). */
 export const GLOBAL_CONFIG_SECTIONS = [
   'schemaVersion',
   'theme',
   'logLevel',
   'app',
-  'onboarding',
   'modules',
 ] as const;
 

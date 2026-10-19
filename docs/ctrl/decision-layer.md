@@ -100,7 +100,7 @@ The gate is a **static rules table** (role, label keywords, app) **OR** Laya's "
 
 ## 10. Offline constraint
 
-- No network calls at runtime. Model downloads happen only from onboarding or settings, with consent, never on first use. This follows ADR 0076.
+- No network calls at runtime. Model downloads happen only from settings, with consent (ADR 0163), never on first use. This follows ADR 0076.
 - History and bookmark candidates come from local browser data only, and only with permission.
 - `choose_text` never calls a search API. "search: X" means typing X into the app's own field.
 

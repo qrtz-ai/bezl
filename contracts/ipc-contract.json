@@ -13471,11 +13471,7 @@
         "note.record",
         "talk.read",
         "talk.dictate",
-        "os.permissions",
-        "config.write",
-        "log.write",
-        "speech.read",
-        "speech.manage"
+        "log.write"
       ]
     },
     {
@@ -13519,7 +13515,10 @@
       "capabilities": [
         "packages.read",
         "packages.manage",
-        "config.read"
+        "config.read",
+        "os.permissions",
+        "speech.read",
+        "speech.manage"
       ]
     },
     {
@@ -13593,9 +13592,6 @@
         "snap": {
           "enabled": true
         }
-      },
-      "onboarding": {
-        "done": false
       },
       "privacy": {
         "excludedApps": [],
@@ -13883,19 +13879,6 @@
           ],
           "additionalProperties": false
         },
-        "onboarding": {
-          "type": "object",
-          "properties": {
-            "done": {
-              "default": false,
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "done"
-          ],
-          "additionalProperties": false
-        },
         "privacy": {
           "type": "object",
           "properties": {
@@ -13968,7 +13951,6 @@
         "talk",
         "speech",
         "modules",
-        "onboarding",
         "privacy",
         "snap"
       ],

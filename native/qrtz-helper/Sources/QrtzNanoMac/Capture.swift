@@ -96,7 +96,7 @@ public final class CoreAudioTapSource: QrtzNano.AudioSource, @unchecked Sendable
 }
 
 /// Echo cancellation for the mic using the system tap as far-end reference: FluidAudio LocalVQE (v1.3, 16 ms
-/// streaming hop, CPU), from the onboarding-downloaded model only (ADR 0079). Any load/inference error makes
+/// streaming hop, CPU), from the settings-downloaded model only (ADR 0079). Any load/inference error makes
 /// MicPipeline fall back to the AX/energy echo gate. Set QRTZ_AEC=0 to disable.
 /// [MAC-VERIFY: reference/mic clock alignment on target devices]
 public final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {
@@ -106,7 +106,7 @@ public final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {
     public func prepare() async throws {
         if ProcessInfo.processInfo.environment["QRTZ_AEC"] == "0" { throw AudioError("disabled by QRTZ_AEC=0") }
         if stream != nil { return }
-        // ADR 0078 / ADR 0079: only the verified local file from onboarding; never FluidAudio's first-use download.
+        // ADR 0078 / ADR 0079: only the verified local file from settings; never FluidAudio's first-use download.
         // Missing = the echo gate does the job (MicPipeline falls back on a throw).
         let dir = try LocalModels.dir(LocalModels.echo)
         let vqe = try LocalVqeManager(config: LocalVqeConfig(chunk: .realtime16ms), modelDirectory: dir)

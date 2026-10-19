@@ -116,7 +116,7 @@ pub enum HostMsg {
     Laya {
         id: String,
         /// The consented, installed model the helper should run (ADR 0116). The host sends it only after the
-        /// user agreed to the download in onboarding / settings; without it the helper answers `laya.no_model`
+        /// user agreed to the download in ctrl's settings; without it the helper answers `laya.no_model`
         /// (or uses the `QRTZ_CTRL_LAYA_MODEL` it was started with). Omitted when `None` (older fixture lines).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,

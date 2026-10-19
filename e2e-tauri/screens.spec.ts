@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { axe } from './axe';
 
-// First run, the speech setup screens and every view in both themes (e2e-parity rows 8, 12, 13, 29, 30, 39, 40),
+// A fresh install (no first-run screen, ADR 0163), the speech setup in settings and every view in both themes (e2e-parity rows 8, 12, 13, 29, 30, 39, 40),
 // against the mocked backend. Screenshots go to test-results/screens, or docs/screenshots with QRTZ_DOC_SHOTS=1.
 const out = process.env.QRTZ_DOC_SHOTS
   ? path.join(__dirname, '..', 'docs', 'screenshots')
@@ -52,56 +52,8 @@ const invoke = (
 
 const tab = (page: Page, name: string) => page.getByTestId(`nav-${name}`);
 
-test('first run → record → review walkthrough', async ({ page }) => {
-  const errors = watch(page);
-  await page.goto('/?dev=1&onboarding=1&mockPerms=denied&mockSpeed=60');
-  await expect(page.getByTestId('onboarding-welcome')).toBeVisible();
-  await expect(tab(page, 'note')).toHaveCount(0);
-  await clean(page, 'onboarding-welcome');
-  await shot(page, 'onboarding-welcome');
-  await page.getByTestId('onboarding-start').click();
-
-  // permissions: live state, allow (retry is the same button until granted)
-  await expect(page.getByTestId('onboarding-permissions')).toBeVisible();
-  const mic = page.getByTestId('perm-microphone');
-  await expect(mic.getByRole('button', { name: 'allow' })).toBeVisible();
-  await clean(page, 'onboarding-permissions');
-  await shot(page, 'onboarding-permissions');
-  await mic.getByRole('button', { name: 'allow' }).click();
-  await expect(mic).toContainText('allowed');
-  await page.getByTestId('onboarding-continue').click();
-
-  // speech: size, download with progress, pause / resume, installed
-  await expect(page.getByTestId('onboarding-speech')).toBeVisible();
-  await expect(page.getByTestId('speech-size')).toHaveText('speech · 412 mb');
-  await expect(page.getByTestId('onboarding-continue')).toHaveText('later');
-  await page.getByTestId('speech-download').click();
-  await expect(page.getByTestId('speech-progress')).toBeVisible();
-  await page.getByTestId('speech-pause').click();
-  await expect(page.getByTestId('speech-progress-text')).toContainText(
-    'paused',
-  );
-  await clean(page, 'onboarding-speech');
-  await shot(page, 'onboarding-speech');
-  const paused = await page
-    .getByTestId('speech-progress')
-    .getAttribute('aria-valuenow');
-  await page.waitForTimeout(300);
-  expect(
-    await page.getByTestId('speech-progress').getAttribute('aria-valuenow'),
-  ).toBe(paused);
-  await page.getByTestId('speech-resume').click();
-  await expect(page.getByTestId('speech-installed')).toHaveText(
-    'speech 1.0.0 · 412 mb',
-    {
-      timeout: 10_000,
-    },
-  );
-  await page.getByTestId('onboarding-continue').click();
-
-  // ADR 0076: no key step; speech is the last step before done, and onboarding stores no secret (ADR 0078:
-  // there is no secrets channel at all).
-  const calls = await page.evaluate(
+const mockCalls = (page: Page) =>
+  page.evaluate(
     () =>
       (
         window as unknown as {
@@ -109,28 +61,95 @@ test('first run → record → review walkthrough', async ({ page }) => {
         }
       ).__qrtzMock.calls,
   );
-  expect(calls.some((c) => c.channel === 'secrets:set')).toBe(false);
-  // ADR 0078: opening onboarding never looks online; speech:check runs only when the user asks.
-  expect(calls.some((c) => c.channel === 'speech:check')).toBe(false);
 
-  await expect(page.getByTestId('onboarding-done')).toBeVisible();
-  await page.getByTestId('onboarding-finish').click();
+test('a fresh install opens straight to qrtz → settings → record → review', async ({
+  page,
+}) => {
+  const errors = watch(page);
+  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on note.
+  await page.goto('/?dev=1&mockSpeech=missing&mockPerms=denied&mockSpeed=60');
   await expect(tab(page, 'note')).toBeVisible();
+  await expect(page.getByTestId('note-app')).toBeVisible();
+  await expect(page.locator('[data-testid^="onboarding"]')).toHaveCount(0);
+  await expect(page.getByTestId('speech-notice')).toContainText(
+    "speech isn't downloaded",
+  );
+  await page.waitForTimeout(300);
+  // Nothing downloads, asks for a permission or looks online at launch (ADR 0078 / 0160); there is no secrets
+  // channel at all (ADR 0076).
+  const atLaunch = (await mockCalls(page)).map((c) => c.channel);
+  for (const ch of [
+    'speech:download',
+    'speech:check',
+    'permissions:request',
+    'secrets:set',
+  ])
+    expect(atLaunch, ch).not.toContain(ch);
   const cfg = (await invoke(page, 'settings', 'config:get')) as {
-    data: { onboarding: { done: boolean } };
+    data: Record<string, unknown>;
   };
-  expect(cfg.data.onboarding.done).toBe(true);
+  expect(cfg.data).not.toHaveProperty('onboarding');
+
+  // marketplace → installed (the module manager): each module's permissions beside its switch, live state, allow.
+  await tab(page, 'marketplace').click();
+  const market = page.locator('[data-subapp="marketplace"]');
+  await market.getByTestId('tab-installed').click();
+  const mic = market.getByTestId('perm-echo-microphone');
+  await expect(mic.getByRole('button', { name: 'allow' })).toBeVisible();
+  await expect(market.getByTestId('perm-nano-screen-recording')).toBeVisible();
+  await expect(market.getByTestId('perm-ctrl-automation')).toContainText(
+    'asked on first use',
+  );
+  await clean(page, 'module-manager-permissions');
+  await shot(page, 'module-manager-permissions');
+  await mic.getByRole('button', { name: 'allow' }).click();
+  await expect(mic).toContainText('allowed');
+  // One grant covers every module (ADR 0154): nano's microphone row follows.
+  await expect(market.getByTestId('perm-nano-microphone')).toContainText(
+    'allowed',
+  );
+
+  await tab(page, 'settings').click();
+  // settings → speech: size, download with progress, pause / resume, installed (the user's yes).
+  const sec = page.getByTestId('speech-settings');
+  await expect(sec.getByTestId('speech-size')).toHaveText('speech · 412 mb');
+  await sec.getByTestId('speech-download').click();
+  await expect(sec.getByTestId('speech-progress')).toBeVisible();
+  await sec.getByTestId('speech-pause').click();
+  await expect(sec.getByTestId('speech-progress-text')).toContainText('paused');
+  await clean(page, 'settings-speech-download');
+  await shot(page, 'settings-speech-download');
+  const paused = await sec
+    .getByTestId('speech-progress')
+    .getAttribute('aria-valuenow');
+  await page.waitForTimeout(300);
+  expect(
+    await sec.getByTestId('speech-progress').getAttribute('aria-valuenow'),
+  ).toBe(paused);
+  await sec.getByTestId('speech-resume').click();
+  await expect(sec.getByTestId('speech-installed')).toHaveText(
+    'speech 1.0.0 · 412 mb',
+    { timeout: 10_000 },
+  );
+  expect(
+    (await mockCalls(page)).some((c) => c.channel === 'speech:check'),
+  ).toBe(false);
+
+  await tab(page, 'note').click();
   await expect(page.getByTestId('speech-notice')).toHaveCount(0);
   await shot(page, 'note-empty');
 
-  // record → review
-  await page.getByTestId('note-record-manual').click();
+  // record → review (settings stays mounted, hidden: scope to note)
+  const note = page.locator('[data-subapp="note"]');
+  await note.getByTestId('note-record-manual').click();
   await expect(page.getByText("Let's start with the roadmap.")).toBeVisible({
     timeout: 10_000,
   });
   await shot(page, 'note-live');
-  await page.getByRole('button', { name: 'stop' }).first().click();
-  await expect(page.getByText('ready')).toBeVisible({ timeout: 10_000 });
+  await note.getByRole('button', { name: 'stop' }).first().click();
+  await expect(note.getByText('ready', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
   await page
     .getByRole('tab', { name: 'summary' })
     .or(page.getByRole('button', { name: 'summary' }))
@@ -147,29 +166,47 @@ test('first run → record → review walkthrough', async ({ page }) => {
 test('a failed speech download shows the error and retries', async ({
   page,
 }) => {
-  await page.goto('/?dev=1&onboarding=1&mockFail=speech-once&mockSpeed=40');
-  await page.getByTestId('onboarding-start').click();
-  await page.getByTestId('onboarding-continue').click();
-  await page.getByTestId('speech-download').click();
-  await expect(page.getByTestId('speech-error')).toContainText(
+  await page.goto(
+    '/?dev=1&mockSpeech=missing&mockFail=speech-once&mockSpeed=40',
+  );
+  await tab(page, 'settings').click();
+  const sec = page.getByTestId('speech-settings');
+  await sec.getByTestId('speech-download').click();
+  await expect(sec.getByTestId('speech-error')).toContainText(
     "couldn't reach the download server",
   );
-  await clean(page, 'onboarding-speech-error');
-  await page.getByTestId('speech-retry').click();
-  await expect(page.getByTestId('speech-installed')).toBeVisible({
+  await clean(page, 'settings-speech-error');
+  await sec.getByTestId('speech-retry').click();
+  await expect(sec.getByTestId('speech-installed')).toBeVisible({
     timeout: 10_000,
   });
 });
 
-test('the download continues in the background after onboarding; note shows it', async ({
+test('switching a module on is the yes to its download; it continues in the background and note shows it', async ({
   page,
 }) => {
-  await page.goto('/?dev=1&onboarding=1&mockSpeed=150');
-  await page.getByTestId('onboarding-start').click();
-  await page.getByTestId('onboarding-continue').click();
-  await page.getByTestId('speech-download').click();
-  await page.getByTestId('onboarding-continue').click();
-  await page.getByTestId('onboarding-finish').click();
+  await page.goto('/?dev=1&mockSpeech=missing&mockSpeed=150');
+  await tab(page, 'marketplace').click();
+  const market = page.locator('[data-subapp="marketplace"]');
+  await market.getByTestId('tab-installed').click();
+  const downloads = async () =>
+    (await mockCalls(page)).filter((c) => c.channel === 'speech:download')
+      .length;
+  const sw = (n: string) => market.getByTestId(`module-enabled-${n}`);
+  // Switching off never downloads; switching ctrl on doesn't either (its model has its own yes in ctrl's settings).
+  await sw('echo').click();
+  await expect(sw('echo')).toHaveAttribute('aria-checked', 'false');
+  await sw('ctrl').click();
+  await expect(sw('ctrl')).toHaveAttribute('aria-checked', 'false');
+  await sw('ctrl').click();
+  await expect(sw('ctrl')).toHaveAttribute('aria-checked', 'true');
+  expect(await downloads()).toBe(0);
+  await expect(market.getByTestId('perm-echo-microphone')).toHaveCount(0);
+  // echo back on: speech starts downloading.
+  await sw('echo').click();
+  await expect.poll(downloads).toBe(1);
+  await expect(market.getByTestId('perm-echo-microphone')).toBeVisible();
+  await tab(page, 'note').click();
   await expect(page.getByTestId('speech-notice')).toContainText(
     'downloading speech',
   );

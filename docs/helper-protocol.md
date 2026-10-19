@@ -432,7 +432,7 @@ On the host side:
 - `NoteService` (and the Rust `NoteRuntime`) applies `permission.revoked.degraded` to the session's `degraded[]` as is.
   Only when the field is missing (older helper) does it derive the list with `degradationsForRevocation` from its own
   permission snapshot, which may still be `unknown` (scenario `N4-revoked-carries-degraded`), so the recording keeps running with badges. It also updates the permission state. The note view never
-  replaces a running recording with onboarding.
+  replaces a running recording with a permissions screen.
 - `TalkService` treats an unsolicited `dictation.stopped{reason}` as a graceful stop. It cleans up and inserts the text
   heard so far, keeps the history entry, then shows `microphone access was turned off, so dictation stopped`.
 

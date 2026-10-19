@@ -1,5 +1,5 @@
 //! ADR 0116: ctrl's Laya model on disk. ctrl is offline: the model is fetched only after the user says yes in
-//! onboarding or ctrl's settings, through the same pinned-manifest, resumable, size- and sha256-checked path as the
+//! ctrl's settings, through the same pinned-manifest, resumable, size- and sha256-checked path as the
 //! speech models (ADR 0079, `local_models`), as the `model.laya` package.
 //!
 //! ADR 0157 §9 (Bozniak's ruling): ctrl reading `model.laya` in its own process is a time-boxed exception, the

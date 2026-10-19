@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * qrtz speech setup (ADR 0046 §7): the installed module and its download, as settings and onboarding show it.
+ * qrtz speech setup (ADR 0046 §7): the installed module and its download, as settings shows it.
  * Model-agnostic: a version, a size and a download state; never an engine or model name.
  */
 export const SpeechDownloadState = z.enum([

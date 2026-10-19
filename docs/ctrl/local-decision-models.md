@@ -117,5 +117,5 @@ Agent harnesses that matter:
 4. **Apple Foundation Models only as the multi-step planner.** It exposes no probabilities, so it never gates.
 5. **Fallback for poor or flat trees:** group and summarize, then OCR labels, then the screenshot locator (Holo2-30B-A3B, or Step-GUI-4B / Qwen3-VL-4B), downloaded with consent.
 6. **A confirm gate before irreversible actions:** a rules table OR Laya ≥ 0.3.
-7. **Fully offline;** model downloads only from onboarding or settings.
+7. **Fully offline;** model downloads only from settings (ADR 0163).
 8. **Benchmark** the hierarchical chain against flat scoring on 20 tasks on the Mac before locking this in (decision-layer.md §12).

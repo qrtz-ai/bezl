@@ -12,5 +12,10 @@ export const manifest = SubAppManifest.parse({
     'packages.manage',
     // The module switches it shows (it writes them only through packages:set-enabled).
     'config.read',
+    // ADR 0163 (no onboarding): each module's permissions beside its switch, and switching echo or nano on starts
+    // the speech download when speech isn't here yet.
+    'os.permissions',
+    'speech.read',
+    'speech.manage',
   ],
 });

@@ -1,4 +1,4 @@
-//! ADR 0079 / ADR 0157: the Mac helper's pinned models through onboarding/settings ("speech"), installed by the
+//! ADR 0079 / ADR 0157: the Mac helper's pinned models through settings ("speech"), installed by the
 //! package manager: status, download with progress, pause and resume, a damaged file refused and retried (only it),
 //! the `.qrtz-verified` markers the helper waits for, the `model.*` packages in `qrtz.lock`, delete and prune.
 //! Served by the qrtz-speech test kit (loopback, playing Hugging Face), with a small manifest of the same shape.

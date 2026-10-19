@@ -44,7 +44,7 @@ pub struct ModuleManifest {
     pub views: Vec<String>,
     /// IPC capabilities (packages/core capabilities.ts) the module's views may use.
     pub capabilities: Vec<String>,
-    /// TCC permissions the module asks for (onboarding asks per module).
+    /// TCC permissions the module asks for (the module manager shows them beside its switch; macOS asks on first use).
     pub permissions: Vec<Permission>,
     /// Entitlements the module's signed bundle carries (M5).
     pub entitlements: Vec<String>,

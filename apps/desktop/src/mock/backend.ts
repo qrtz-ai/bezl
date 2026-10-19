@@ -3,8 +3,7 @@
 // (capability + zod checks), and plays a scripted meeting: start → streamed transcript (partials replaced by
 // finals) → stop → finalize/summary/index → done. Query params inject faults:
 //   ?mockFail=start-permission | summary-once | speech-once   ?seed=1 (one finished meeting)
-//   ?mockSpeed=<ms per tick>   ?onboarding=1 (first run: onboarding not done, speech not downloaded)
-//   ?mockSpeech=missing | installed (default installed, or missing with onboarding=1)
+//   ?mockSpeed=<ms per tick>   ?mockSpeech=missing | installed (default installed; missing = a fresh install)
 //   ?mockPerms=denied (every OS permission starts not-determined)   ?theme=light | dark | system
 import {
   AppError,
@@ -70,16 +69,11 @@ export function createMockBridge(): TauriBridge {
   let live: Json | null = null;
   let timers: ReturnType<typeof setTimeout>[] = [];
   let summaryFailed = false;
-  const firstRun = params.get('onboarding') === '1';
-  if (!firstRun)
-    config = applyConfigPatch(config, { onboarding: { done: true } });
   const theme = params.get('theme');
   if (theme === 'light' || theme === 'dark' || theme === 'system')
     config = applyConfigPatch(config, { theme });
   const SPEECH_BYTES = 412_000_000;
-  const speechMissing =
-    (params.get('mockSpeech') ?? (firstRun ? 'missing' : 'installed')) ===
-    'missing';
+  const speechMissing = params.get('mockSpeech') === 'missing';
   let speech = {
     configured: true,
     installed: speechMissing ? null : '1.0.0',

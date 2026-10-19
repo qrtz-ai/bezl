@@ -1,5 +1,5 @@
 //! Test kit (feature `testkit`): a signing toolkit, signed bundles and denylists, and a tiny HTTP/1.1 bundle
-//! server with fault injection. Used by this crate's tests and by qrtz-app's E2E tests (onboarding, attach).
+//! server with fault injection. Used by this crate's tests and by qrtz-app's E2E tests (settings speech setup, attach).
 use crate::bundle::PinnedKey;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};

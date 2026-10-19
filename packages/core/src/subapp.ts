@@ -12,7 +12,7 @@ export const SubAppManifest = z.object({
   order: z.number().optional(),
   /** IPC capabilities this sub app may use. Least privilege: declare only what you call. */
   capabilities: z.array(Capability).default([]),
-  /** macOS permissions this sub app needs (for onboarding). */
+  /** macOS permissions this sub app needs (the module manager shows their state beside its switch; ADR 0163). */
   permissions: z.array(OsPermission).default([]),
 });
 export type SubAppManifest = z.infer<typeof SubAppManifest>;
@@ -59,13 +59,8 @@ export const SHELL_MANIFEST: SubAppManifest = {
     'note.record',
     'talk.read',
     'talk.dictate',
-    // First-run onboarding: permissions and the speech download.
-    'os.permissions',
-    'config.write',
     // ADR 0083: uncaught errors and player errors from every window go to the local log.
     'log.write',
-    'speech.read',
-    'speech.manage',
   ],
   permissions: [],
 };

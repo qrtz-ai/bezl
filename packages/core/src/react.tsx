@@ -85,7 +85,7 @@ export function useQrtzEvent<E extends EventName>(
 }
 
 /**
- * Speech module setup (onboarding and the settings "speech" section): live status from `speech:status`
+ * Speech module setup (the settings "speech" section and the modules switches): live status from `speech:status`
  * events and the actions. Needs `speech.read` (+ `speech.manage` to act).
  *
  * ADR 0078: opening a screen never goes online. `speech:check` (the release list) runs only from `check()`,

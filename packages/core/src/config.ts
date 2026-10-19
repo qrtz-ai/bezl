@@ -98,8 +98,6 @@ export const ConfigSchema = z.object({
       snap: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     })
     .prefault({}),
-  /** First-run setup (welcome, permissions, speech download). */
-  onboarding: z.object({ done: z.boolean().default(false) }).prefault({}),
   privacy: z
     .object({
       /** Meetings detected in these apps/platforms (e.g. "Safari", "zoom", "google-meet") are ignored. */

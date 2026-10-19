@@ -34,6 +34,7 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 - **After the call:** summary, action items and Q&A in five templates (General, 1:1, Standup, Sales, Interview). Written on this Mac by Apple Intelligence; when it isn't available, a transcript-based summary with a retry.
 - **Your archive:** full-text search, speaker rename and merge, Markdown export, and delete with confirmation and Undo.
 - **Privacy:** pause capture (⌘⇧P), excluded apps and optional audio retention. Nothing leaves your Mac: the only network use is downloading signed speech updates.
+- **No setup screen (ADR 0163):** qrtz opens straight to its views. Nothing downloads until you ask: press download in settings → speech, or switch echo or nano on in marketplace → installed (the module manager). Each module's macOS permissions show beside its switch there with an "allow" button, and macOS asks for any you haven't granted the first time the feature needs it.
 - **Backup:** one streamed zip with a sha256 manifest and a progress bar. Import verifies everything and never overwrites.
 - **Built to fail soft:** if the helper crashes, the audio and transcript are kept. LLM failures fall back to the on-device summary with a Retry button. Settings sections load independently.
 

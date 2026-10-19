@@ -36,6 +36,7 @@ import {
   requestNavigate,
   type CatalogEntry,
   type Config,
+  type OsPermission,
   type PackageOp,
   type PackagePlan,
   type PackagesProgress,
@@ -56,8 +57,11 @@ import {
   statusOf,
   type MarketRoute,
 } from './catalog';
+import { ModulePermissions, usePermissions } from './ModulePermissions';
 
 type Verb = 'install' | 'update' | 'remove';
+/** The modules whose models are the speech download (ctrl's model has its own yes in ctrl's settings, ADR 0116). */
+const SPEECH_MODULES: readonly string[] = ['echo', 'nano'];
 const PAST: Record<Verb, string> = {
   install: 'installed',
   update: 'updated',
@@ -173,10 +177,24 @@ export default function MarketplaceView() {
           ),
         fail,
       );
+  const { perms, ask } = usePermissions();
+  const allow = (p: OsPermission) => void ask(p).catch(fail);
+  // ADR 0163: switching echo or nano on is the user's yes to its speech models. If speech is neither installed nor
+  // on its way, the download starts here; nothing downloads at launch. The speech download is still one bundle for
+  // echo and nano: fetching only the switched-on module's models is the installer's (ADR 0157, audit P0-3).
+  const downloadSpeechFor = (name: string) =>
+    SPEECH_MODULES.includes(name)
+      ? qrtz.invoke('speech:status').then((s) => {
+          const idle = ['idle', 'error'].includes(s.download.state);
+          if (s.configured && !s.installed && idle)
+            return qrtz.invoke('speech:download', {}).then(() => undefined);
+        })
+      : Promise.resolve();
   const setEnabled = (name: string, on: boolean) => {
     if (!isModuleId(name)) return;
     qrtz
       .invoke('packages:set-enabled', { name, enabled: on })
+      .then(() => (on ? downloadSpeechFor(name) : undefined))
       .then(() => qrtz.invoke('config:get'))
       .then((c) => setCfg(loadConfig(c)), fail);
   };
@@ -436,6 +454,13 @@ export default function MarketplaceView() {
                   </>
                 }
               >
+                {on && isModuleId(name) ? (
+                  <ModulePermissions
+                    module={name}
+                    perms={perms}
+                    onAsk={allow}
+                  />
+                ) : null}
                 {deps.length ? (
                   <IconLines
                     aria-label={`${name} dependencies`}

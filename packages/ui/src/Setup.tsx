@@ -1,8 +1,6 @@
-import type { ReactNode } from 'react';
 import { Button } from './Button';
 import { Callout } from './Callout';
-import { Heading } from './Heading';
-import { Page, Stack } from './Layout';
+import { Stack } from './Layout';
 import { Progress } from './Progress';
 import { Spinner } from './Spinner';
 import { Text } from './Text';
@@ -42,7 +40,7 @@ const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
 
 /**
  * The speech module: size, download progress with pause / resume, retry on error, and (in settings) update,
- * re-download and delete. Onboarding and settings both render this.
+ * re-download and delete. Settings → speech renders this.
  */
 export function SpeechSetupPanel({
   status,
@@ -223,36 +221,6 @@ export function SpeechSetupPanel({
         </Stack>
       ) : null}
     </Stack>
-  );
-}
-
-/** One first-run step: a step count, a title, its content and the actions. */
-export function OnboardingStep({
-  step,
-  steps,
-  title,
-  children,
-  actions,
-  'data-testid': testId,
-}: {
-  step: number;
-  steps: number;
-  title: string;
-  children?: ReactNode;
-  actions: ReactNode;
-  'data-testid'?: string;
-}) {
-  return (
-    <Page width={480} data-testid={testId}>
-      <Stack gap={2}>
-        <Text variant="caption" muted>{`${step} of ${steps}`}</Text>
-        <Heading cursor>{title}</Heading>
-      </Stack>
-      {children}
-      <Stack dir="row" gap={2} justify="end">
-        {actions}
-      </Stack>
-    </Page>
   );
 }
 

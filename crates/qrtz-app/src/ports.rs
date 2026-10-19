@@ -66,7 +66,7 @@ pub const TALK_PREFIX: &str = "talk:";
 pub const CTRL_PREFIX: &str = "ctrl:";
 /// qrtz snap (ADR 0159): what qrtz-snap last reported (`crate::snap::SnapHost`).
 pub const SNAP_CHANNELS: &[&str] = &["snap:status"];
-/// qrtz speech setup (onboarding, settings "speech"; ADR 0046 §7).
+/// qrtz speech setup (settings "speech" and the modules switches; ADR 0046 §7, ADR 0163).
 pub const SETUP_CHANNELS: &[&str] = &[
     "speech:status",
     "speech:check",

@@ -9,8 +9,9 @@ use qrtz_modules::ModuleManifest;
 use serde_json::Value;
 use std::sync::OnceLock;
 
-/// Capabilities the shell itself needs whatever is installed: onboarding asks for permissions, and settings
-/// manages the speech downloads and the packages (ADR 0157's Extensions screen).
+/// Capabilities the shell's views need whatever is installed: the module manager shows and asks for permissions
+/// beside each module's switch (ADR 0163), and settings and the marketplace manage the speech downloads and the
+/// packages (ADR 0157, ADR 0161).
 const SHELL_SHARED: &[&str] = &[
     "os.permissions",
     "speech.read",

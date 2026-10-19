@@ -51,7 +51,7 @@ mkdir -p /tmp/q && (printf '{"type":"recording.start","audioPath":"/tmp/q/r.wav"
 
 Play a YouTube talk and speak for a few seconds.
 
-- [ ] The first run prompts for System Audio Recording and Microphone. The Parakeet models (about 600 MB) download once, so the first run may take a minute.
+- [ ] A fresh install opens straight to note (no setup screen, ADR 0163) and downloads nothing until you press download in settings → speech or switch echo or nano on. The first recording prompts for System Audio Recording and Microphone; the first fn press prompts for Input Monitoring; marketplace → installed shows each permission with "allow".
 - [ ] The log shows `audio: core-audio-tap` and `asr: parakeet-unified-streaming`.
 - [ ] `asr` partial and final events arrive within about 2 s of speech, for both the video and your voice.
 - [ ] `afplay /tmp/q/r.wav` plays both sides, and `recording.stopped.durationMs` is about 25000.

@@ -2,7 +2,7 @@
 import CryptoKit
 import Foundation
 
-/// ADR 0079: the helper's models are files the host downloaded and verified (pinned sha256s, onboarding or settings).
+/// ADR 0079: the helper's models are files the host downloaded and verified (pinned sha256s, after the user's yes in settings).
 /// The helper never fetches a model: it reads `$QRTZ_MODELS_DIR/<set>/` only once the host has written the set's
 /// `.qrtz-verified` marker, and throws otherwise (the caller falls back or reports "speech not downloaded").
 public enum LocalModels {

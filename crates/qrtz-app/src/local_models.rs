@@ -1,8 +1,8 @@
 //! ADR 0079 / ADR 0157: the Mac helper's own speech models (Nemotron ASR for recordings, Nemotron 3 diarization,
 //! LocalVQE echo cancellation, Parakeet TDT v2 for echo dictation) for builds without the signed speech module. Each
 //! set is a `model.*` package whose tree (every file's path, size and sha256, and its Hugging Face URL at a fixed
-//! revision) is pinned in this binary (`local_models.json`). The download is the package manager's: onboarding or
-//! settings asks, `Op::Pinned` plans it, and the one fetcher takes each file from the package hosts
+//! revision) is pinned in this binary (`local_models.json`). The download is the package manager's: the user's yes
+//! (settings → speech, or switching echo or nano on in the module manager; ADR 0163) asks, `Op::Pinned` plans it, and the one fetcher takes each file from the package hosts
 //! (`modules.qrtz.ai`, then its mirrors) or else the pinned Hugging Face URL, verified by the same sha256 into the
 //! content-addressed store, then installed read-only under `<data>/packages/`. The helper's view is unchanged:
 //! `<data>/models/<set>/` (0700) holds store links of the files, and a set is usable once its `.qrtz-verified` marker

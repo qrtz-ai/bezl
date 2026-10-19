@@ -250,3 +250,76 @@ describe('module manager (ADR 0161)', () => {
     expect(f.calls.map((c) => c.channel)).toContain('packages:prune');
   });
 });
+
+describe('no onboarding: permissions and the speech yes live at the switch (ADR 0163)', () => {
+  const missing = {
+    ...ipcSamples['speech:status'].response,
+    installed: null,
+    bytes: 0,
+    download: { state: 'idle', done: 0, total: 0 },
+  };
+  const open = async (overrides: Record<string, (p: unknown) => unknown>) => {
+    const f = fake(overrides);
+    await render(f.client);
+    await act(async () => q('tab-installed')!.click());
+    await settle();
+    return f;
+  };
+
+  it("shows each switched-on module's permissions with their state and asks only on allow", async () => {
+    const f = await open({
+      'permissions:get': () => ({
+        microphone: 'not-determined',
+        accessibility: 'granted',
+        'screen-recording': 'denied',
+      }),
+      'permissions:request': () => ({
+        microphone: 'granted',
+        accessibility: 'granted',
+        'screen-recording': 'denied',
+      }),
+    });
+    expect(q('perm-echo-microphone')?.textContent).toContain('allow');
+    expect(q('perm-echo-accessibility')?.textContent).toContain('allowed');
+    expect(
+      q('perm-nano-screen-recording')?.querySelector('button'),
+    ).not.toBeNull();
+    expect(q('perm-ctrl-automation')?.textContent).toContain(
+      'asked on first use',
+    );
+    const channels = () => f.calls.map((c) => c.channel);
+    for (const ch of ['permissions:request', 'speech:download'])
+      expect(channels(), ch).not.toContain(ch);
+    await act(async () =>
+      q('perm-echo-microphone')!.querySelector('button')!.click(),
+    );
+    await settle();
+    expect(f.calls.filter((c) => c.channel === 'permissions:request')).toEqual([
+      { channel: 'permissions:request', payload: { permission: 'microphone' } },
+    ]);
+    expect(q('perm-echo-microphone')?.textContent).toContain('allowed');
+    expect(q('perm-nano-microphone')?.textContent).toContain('allowed');
+    // A module that is off shows no rows.
+    await click('module-enabled-ctrl');
+    expect(q('perm-ctrl-accessibility')).toBeNull();
+  });
+
+  it('switching echo on starts the speech download when speech is missing; off, or ctrl on, never does', async () => {
+    const f = await open({ 'speech:status': () => missing });
+    const downloads = () =>
+      f.calls.filter((c) => c.channel === 'speech:download').length;
+    await click('module-enabled-echo');
+    await click('module-enabled-ctrl');
+    await click('module-enabled-ctrl');
+    expect(downloads()).toBe(0);
+    await click('module-enabled-echo');
+    expect(downloads()).toBe(1);
+  });
+
+  it('switching echo on with speech installed downloads nothing', async () => {
+    const f = await open({});
+    await click('module-enabled-echo');
+    await click('module-enabled-echo');
+    expect(f.calls.map((c) => c.channel)).not.toContain('speech:download');
+  });
+});

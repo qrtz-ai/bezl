@@ -263,7 +263,7 @@ export const CtrlRunView = z.object({
 export type CtrlRunView = z.infer<typeof CtrlRunView>;
 
 /**
- * ctrl's Laya decision model (ADR 0116). Downloaded only after the user says yes here or in onboarding; until then
+ * ctrl's Laya decision model (ADR 0116). Downloaded only after the user says yes here; until then
  * (and whenever the model is missing or fails) the deterministic heuristic scorer decides. `unavailable`: consented,
  * but the pinned manifest is still a placeholder, so nothing can be fetched. Mirrors qrtz-app `ctrl_model`.
  */

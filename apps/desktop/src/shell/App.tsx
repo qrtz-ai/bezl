@@ -21,15 +21,12 @@ import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
 import { useModuleSwitches } from './useModuleSwitches';
-import { useOnboarded } from './useOnboarded';
 import { joinRoute, navTarget, resolveRoute, splitRoute } from './routes';
 
-// Not needed to paint the shell (ADR 0093): onboarding shows once, the palette on ⌘K (preloaded when idle).
+// Not needed to paint the shell (ADR 0093): the palette opens on ⌘K (preloaded when idle). There is no first-run
+// screen (ADR 0163): qrtz opens straight to its views, and downloads and permissions are asked where they are used.
 const loadPalette = () => import('./Palette');
 const Palette = lazy(() => loadPalette().then((m) => ({ default: m.Palette })));
-const Onboarding = lazy(() =>
-  import('./Onboarding').then((m) => ({ default: m.Onboarding })),
-);
 
 /** One splat route: the shell owns the whole path and stays mounted across every navigation (ADR 0091). */
 export const routes: RouteObject[] = [{ path: '*', element: <Shell /> }];
@@ -115,17 +112,6 @@ export function Shell() {
     [navigate, apps],
   );
   const theme = useConfigTheme();
-  const [onboarded, setOnboarded] = useOnboarded();
-  if (onboarded === false)
-    return (
-      <ThemeProvider mode={theme}>
-        <ToastProvider>
-          <Suspense fallback={null}>
-            <Onboarding onDone={() => setOnboarded(true)} />
-          </Suspense>
-        </ToastProvider>
-      </ThemeProvider>
-    );
   return (
     <ThemeProvider mode={theme}>
       <ToastProvider>

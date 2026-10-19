@@ -28,7 +28,7 @@ fn each_module_has_its_own_file_and_cant_write_global_keys() {
     );
     assert_eq!(s.get("nano").unwrap(), json!({}), "echo's settings stay echo's");
     assert!(dir.path().join("modules/echo/settings.json").exists());
-    for g in ["theme", "logLevel", "modules", "onboarding"] {
+    for g in ["theme", "logLevel", "modules"] {
         assert!(s.set("echo", &json!({g: 1})).is_err(), "{g}");
     }
     // ADR 0146 M2.3: privacy is nano's now; the speech downloads stay global even inside `speech`.

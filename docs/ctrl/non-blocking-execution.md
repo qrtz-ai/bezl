@@ -27,7 +27,7 @@ need a measurement on a real Mac say so.
 - The catch is consent, not UI. `~/Downloads`, `~/Desktop` and `~/Documents` are protected by Files and Folders
   privacy, and the first access shows a **modal system prompt** ("qrtz would like to access files in your Downloads
   folder") **[doc]** ([Apple: control access to files and folders](https://support.apple.com/guide/mac-help/control-access-to-files-and-folders-on-mac-mchld5a35146/mac)).
-  A modal prompt is a takeover. So ctrl asks for it in the foreground (onboarding or when the task is created) and a
+  A modal prompt is a takeover. So ctrl asks for it in the foreground (marketplace → installed, or when the task is created) and a
   background run that finds it missing **asks** instead of triggering it.
 - Deletion is always a move to the Trash, never an unlink, so every file action has an inverse (spec §13.4).
 

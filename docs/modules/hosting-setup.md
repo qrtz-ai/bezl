@@ -126,7 +126,7 @@ rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --include 'v1/timestamp.js
 - Each `packages` dir holds the package's `qrtz.json` (name, version, kind, dependency ranges; no `scripts`, they're
   refused) and its files: an extension's signed, notarized, **stapled** helper, a service's `.xpc`.
 - A model is published from the files you already downloaded from Hugging Face, e.g. the app's own
-  `~/Library/Application Support/ai.qrtz.desktop/models/parakeet-tdt-v2` after onboarding. Every file must match its
+  `~/Library/Application Support/ai.qrtz.desktop/models/parakeet-tdt-v2` after the speech download (settings → speech, or switching echo on). Every file must match its
   pin in the `pinnedModels` file, and the published package is exactly the tree the app pins (same sha256), with the
   Hugging Face URL kept as a second source. Publish only the models whose license allows mirroring.
 - Keep `~/qrtz-publish-out` (or back it up): it's the record of everything published.

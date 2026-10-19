@@ -11,6 +11,7 @@ import {
   pickModuleSettings,
   isViewOn,
   MODULE_IDS,
+  MODULE_PERMISSIONS,
   MODULE_VIEWS,
   ModuleManifest,
   moduleOfView,
@@ -32,6 +33,7 @@ describe('module manifests (ADR 0146)', () => {
       const m = ModuleManifest.parse(raw);
       expect(m.id).toBe(id);
       expect(m.views).toEqual(MODULE_VIEWS[id]);
+      expect(m.permissions).toEqual(MODULE_PERMISSIONS[id]);
     }
   });
 
