@@ -351,6 +351,23 @@ impl AppService {
         }
     }
 
+    /// ADR 0216: a ctrl+fn dictation's text, as a `ctrl:do`. `false` (nothing runs) when ctrl is switched off or
+    /// not in this build. The run itself goes on in the background; ctrl's view shows it (`ctrl:changed`).
+    pub fn ctrl_do_from_voice(self: Arc<Self>, text: String) -> bool {
+        if self.ctrl.get().is_none() || !crate::modules::is_on(&self.config.get(), "ctrl") {
+            return false;
+        }
+        let Ok(rt) = tokio::runtime::Handle::try_current() else {
+            return false;
+        };
+        rt.spawn(async move {
+            if let Err(e) = self.ctrl_channel("ctrl:do", json!({ "text": text })).await {
+                tracing::warn!(code = ?e.code, "ctrl+fn: ctrl:do refused");
+            }
+        });
+        true
+    }
+
     /// `ctrl:*`: the store writes and `fsync`s, so off the async runtime.
     async fn ctrl_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
         use qrtz_ctrl::service::CtrlErrorCode as C;

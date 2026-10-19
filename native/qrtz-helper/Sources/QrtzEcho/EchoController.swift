@@ -119,7 +119,7 @@ public actor EchoController: ModulePart {
     public nonisolated func observe(_ m: HostMessage) { pill?.host(m) }
     public nonisolated func willSend(_ m: HelperMessage) { pill?.helper(m) }
     public nonisolated func didSend(_ m: HelperMessage) {
-        if case .hotkey(let a) = m { Task { [weak self] in await self?.pushKey(a) } }
+        if case .hotkey(let a, _) = m { Task { [weak self] in await self?.pushKey(a) } }
     }
 
     public func apply(effect: String) async {

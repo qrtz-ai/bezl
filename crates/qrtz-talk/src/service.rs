@@ -373,6 +373,9 @@ pub struct TalkDeps {
     /// its model is downloaded, ADR 0175). Read only when the helper refuses a start for want of a recogniser, so
     /// the pill points at the download instead of saying "try again in a moment". Talk never learns which model.
     pub speech_missing: Arc<dyn Fn() -> bool + Send + Sync>,
+    /// ADR 0216: a ctrl+fn dictation's text goes here (`ctrl:do`) instead of being inserted. `false`: ctrl
+    /// couldn't take it (not available in this build); the words are never typed either way.
+    pub command: Arc<dyn Fn(String) -> bool + Send + Sync>,
 }
 
 // ------------------------------------------------------------------------------------------------- state
@@ -385,6 +388,8 @@ struct Attempt {
     local_done: Option<oneshot::Sender<()>>,
     finals: Vec<String>,
     partial: String,
+    /// ADR 0216: started by a ctrl+fn press: the transcript is a ctrl do command, never inserted.
+    to_ctrl: bool,
 }
 
 impl Attempt {
@@ -410,6 +415,8 @@ struct Inner {
     via_push_key: bool,
     /// N111: the push key is physically down (last `hotkey` was `down`).
     key_held: bool,
+    /// ADR 0216: the last press was ctrl+fn (`hotkey{down, ctrl: true}`).
+    press_ctrl: bool,
     key_down: f64,
     key_up: f64,
     /// N166: when the push key last went down (a press queued behind a finishing dictation, N110, starts later).
@@ -506,6 +513,7 @@ impl TalkService {
                 dictation_helper: 0,
                 via_push_key: false,
                 key_held: false,
+                press_ctrl: false,
                 key_down: 0.0,
                 key_up: 0.0,
                 press_at: 0.0,
@@ -754,6 +762,7 @@ impl TalkService {
                 let mut g = self.lock();
                 if action == "down" {
                     g.key_held = true;
+                    g.press_ctrl = m["ctrl"] == true;
                     g.press_at = self.mono();
                     if g.view.takes_a_start() {
                         g.via_push_key = true;
@@ -1201,6 +1210,7 @@ impl TalkService {
                 local_done: None,
                 finals: Vec::new(),
                 partial: String::new(),
+                to_ctrl: from_key && g.press_ctrl,
             });
             Self::waiter(&mut g, format!("started:{id}"))
         };
@@ -1503,9 +1513,9 @@ impl TalkService {
                 g.level.summary(),
                 g.asr.clone(),
             );
-            (text, times)
+            (text, times, a.to_ctrl)
         };
-        let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs)) = text;
+        let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs), to_ctrl) = text;
         if text.trim().is_empty() {
             // Oct 18 (Jared: "holding fn does nothing"): a dictation that heard no words used to end with no line
             // and no sign at all. Now it logs the mic level (content-free, like `talk latency`) and says on the
@@ -1540,6 +1550,30 @@ impl TalkService {
         let clean_at = self.mono();
         let cleaned = cleanup_dictation(&text, &dictionary, cfg.auto_cleanup);
         let cleanup_ms = self.mono() - clean_at;
+        if to_ctrl {
+            // ADR 0216: ctrl+fn. The words are a command for ctrl do: never inserted, never on the clipboard,
+            // not in the dictation history (ctrl keeps its own runs). The pill says where they went.
+            let took = (self.deps().command)(cleaned.text.clone());
+            tracing::info!(
+                audio_ms = duration_ms.max(0.0).round(),
+                chars = cleaned.text.chars().count(),
+                took,
+                "talk: ctrl+fn command"
+            );
+            let mut g = self.lock();
+            let own = g.view.id.as_deref() == Some(id.as_str());
+            if own {
+                g.view = g.view.idle_keeping();
+            }
+            self.emit_view(&g);
+            drop(g);
+            if took {
+                self.pill_flash("info", &format!("ctrl: {}", cleaned.text));
+            } else {
+                self.pill_flash("error", "ctrl isn't available, so the command didn't run");
+            }
+            return own;
+        }
         let mut insert: Option<Value> = None;
         let mut error: Option<String> = None;
         if cfg.auto_insert {

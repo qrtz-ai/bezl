@@ -5,10 +5,16 @@ import QrtzShared
 // clipboard restore, PCM framing) is tested on Linux; the macOS executable supplies the real seams.
 
 /// Native key monitor for push-to-talk (Electron global shortcuts only report key-down).
+public extension HotkeyMonitor {
+    var pressWithControl: Bool { false }
+}
+
 public protocol HotkeyMonitor: AnyObject, Sendable {
     /// key: "fn", "right-option", "right-command", "right-control". consumeFn: with `fn`, swallow the Fn/globe events
     /// so macOS doesn't also run its globe action ([`HotkeyFilter`]). Returns false if unsupported or not permitted.
     func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool
+    /// ADR 0216: the current press began as ctrl+fn (read when an edge is reported).
+    var pressWithControl: Bool { get }
     func stop()
 }
 
@@ -254,7 +260,7 @@ public actor DictationEngine {
             self.consumeFn = consumeFn
             if !pushKey.isEmpty, let hk = hotkeys {
                 let send = self.send
-                if !hk.start(key: pushKey, consumeFn: consumeFn, onChange: { send(.hotkey($0)) }) {
+                if !hk.start(key: pushKey, consumeFn: consumeFn, onChange: { [weak hk] a in send(.hotkey(a, ctrl: hk?.pressWithControl ?? false)) }) {
                     send(.error(code: "dictation.hotkey", message: "push-to-talk key \(pushKey) unavailable (Input Monitoring / Accessibility?)", fatal: false))
                 }
             }

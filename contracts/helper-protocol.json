@@ -699,6 +699,9 @@
               "down",
               "up"
             ]
+          },
+          "ctrl": {
+            "type": "boolean"
           }
         },
         "required": [

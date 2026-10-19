@@ -89,7 +89,8 @@ public enum HelperMessage: Equatable, Sendable {
     /// Answer to recording.abort{audioPath}: no writer on that file remains (sent even when nothing recorded it).
     case recordingAborted(audioPath: String)
     // talk (dictation)
-    case hotkey(HotkeyAction)
+    /// `ctrl`: ADR 0216, the press was ctrl+fn: the transcript goes to ctrl do, never inserted (set on both edges).
+    case hotkey(HotkeyAction, ctrl: Bool = false)
     case dictationStarted(id: String, preRollMs: Double)
     case dictationLevel(rms: Double)
     case dictationAsr(id: String, event: AsrEvent)
@@ -279,7 +280,10 @@ extension HelperMessage {
         case .recordingStarted(let p): return obj("recording.started", ["audioPath": s(p)])
         case .recordingStopped(let p, let d): return obj("recording.stopped", ["audioPath": s(p), "durationMs": n(d)])
         case .recordingAborted(let p): return obj("recording.aborted", ["audioPath": s(p)])
-        case .hotkey(let a): return obj("hotkey", ["action": s(a.rawValue)])
+        case .hotkey(let a, let ctrl):
+            var o: [String: JSONValue] = ["action": s(a.rawValue)]
+            if ctrl { o["ctrl"] = .bool(true) }
+            return obj("hotkey", o)
         case .dictationStarted(let id, let pre): return obj("dictation.started", ["id": s(id), "preRollMs": n(pre)])
         case .dictationLevel(let rms): return obj("dictation.level", ["rms": n(min(1, max(0, rms)))])
         case .dictationAsr(let id, let e): return obj("dictation.asr", ["id": s(id), "event": e.json])
@@ -378,7 +382,7 @@ extension HelperMessage {
         case "recording.started": self = .recordingStarted(audioPath: try f.str("audioPath"))
         case "recording.stopped": self = .recordingStopped(audioPath: try f.str("audioPath"), durationMs: try f.num("durationMs"))
         case "recording.aborted": self = .recordingAborted(audioPath: try f.str("audioPath"))
-        case "hotkey": self = .hotkey(try f.enumValue("action", HotkeyAction.self))
+        case "hotkey": self = .hotkey(try f.enumValue("action", HotkeyAction.self), ctrl: f.o["ctrl"] == .bool(true))
         case "dictation.started": self = .dictationStarted(id: try f.str("id"), preRollMs: try f.num("preRollMs"))
         case "dictation.level":
             let r = try f.num("rms")

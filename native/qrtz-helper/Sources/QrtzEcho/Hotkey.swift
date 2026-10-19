@@ -25,6 +25,9 @@ public struct HotkeyFilter: Equatable, Sendable {
     public let flag: UInt64
     public let consumeFn: Bool
     public private(set) var down = false
+    /// ADR 0216: this press began with ⌃ held (ctrl+fn → ctrl do). Read at the down edge only, kept until the up
+    /// edge, so ⌃ let go first still ends as a ctrl press, and ⌃ pressed after fn is still dictation. fn only.
+    public private(set) var withControl = false
 
     /// nil for a key this monitor doesn't support.
     public init?(key: String, consumeFn: Bool) {
@@ -50,6 +53,7 @@ public struct HotkeyFilter: Equatable, Sendable {
             if isDown != down {
                 down = isDown
                 action = isDown ? .down : .up
+                if isDown { withControl = key == "fn" && flags & Self.controlFlag != 0 }
             }
         }
         guard consumes else { return (action, false) }
@@ -61,6 +65,6 @@ public struct HotkeyFilter: Equatable, Sendable {
     /// The tap was disabled (timeout or user input): forget a held key so the next press starts clean.
     public mutating func reset() -> HotkeyAction? {
         defer { down = false }
-        return down ? .up : nil
+        return down ? .up : nil  // `withControl` stays for this release; the next press sets it again
     }
 }

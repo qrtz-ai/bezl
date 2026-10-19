@@ -324,8 +324,9 @@ fn every_extension_helper_has_a_target_its_per_process_entitlement_and_the_launc
             // ADR 0159: snap (and, since the ADR 0214 review, ctrl: Accessibility only, no Apple Events) needs Accessibility only (a TCC grant, not an entitlement) and Carbon hotkeys (none),
             // so its signature carries no entitlement at all.
             "snap" | "ctrl" => {
-                let ent = std::fs::read_to_string(pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements")))
-                    .unwrap();
+                let ent =
+                    std::fs::read_to_string(pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements")))
+                        .unwrap();
                 assert!(
                     !ent.contains("<key>"),
                     "qrtz-{id}'s signature carries no entitlement"

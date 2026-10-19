@@ -210,7 +210,12 @@ export const HelperToHost = z.discriminatedUnion('type', [
   z.object({ type: z.literal('recording.aborted'), audioPath: z.string() }),
   // --- talk (dictation: mic only) ---
   /** Push-to-talk key from the helper's native key monitor (Electron shortcuts have no key-up). */
-  z.object({ type: z.literal('hotkey'), action: z.enum(['down', 'up']) }),
+  // ADR 0216: `ctrl`: the press was ctrl+fn (its transcript goes to ctrl do, never inserted).
+  z.object({
+    type: z.literal('hotkey'),
+    action: z.enum(['down', 'up']),
+    ctrl: z.boolean().optional(),
+  }),
   z.object({
     type: z.literal('dictation.started'),
     id: z.string(),

@@ -484,6 +484,8 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         pending: Some(pending.clone()),
         app_version: b.info.version.clone(),
     };
+    // ADR 0216: ctrl+fn hands its words to ctrl do; the service is built below, so talk reaches it through this.
+    let voice_ctrl: Arc<std::sync::OnceLock<std::sync::Weak<crate::AppService>>> = Default::default();
     let talk: Arc<dyn crate::ports::TalkPort> = match b.talk {
         Some(t) => t,
         None => Arc::new(crate::talk::Talk(crate::talk::talk_service(
@@ -499,6 +501,14 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                     Arc::new(e) as Arc<dyn qrtz_speech::SpeechEngine>
                 }),
                 speech_missing: crate::talk::echo_speech_missing(local_models.as_ref()),
+                command: {
+                    let slot = voice_ctrl.clone();
+                    Arc::new(move |text: String| {
+                        slot.get()
+                            .and_then(std::sync::Weak::upgrade)
+                            .is_some_and(|svc| svc.ctrl_do_from_voice(text))
+                    })
+                },
             },
         ))),
     };
@@ -669,6 +679,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         ctrl = ctrl.with_helper(helper).with_scorer(Box::new(scorer));
     }
     service.set_ctrl(Arc::new(ctrl));
+    let _ = voice_ctrl.set(Arc::downgrade(&service));
     // ADR 0116: the model's consent and verified download, on every OS (only a macOS `laya` build runs it).
     service.set_ctrl_model(Arc::new(crate::ctrl_model::CtrlModelSlot::new(
         crate::ctrl_model::CtrlLayaModel::new(

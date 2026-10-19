@@ -84,6 +84,8 @@ pub struct TalkWiring {
     pub local: Option<Arc<dyn qrtz_speech::SpeechEngine>>,
     /// N182 (ADR 0177): echo's own speech model isn't on this Mac (`false` when this build has no local models).
     pub speech_missing: Arc<dyn Fn() -> bool + Send + Sync>,
+    /// ADR 0216: where a ctrl+fn dictation's text goes (ctrl do).
+    pub command: Arc<dyn Fn(String) -> bool + Send + Sync>,
 }
 
 /// Build the service. The on-device engine is today's helper's `dictation.asr` lines until the qrtz speech
@@ -104,6 +106,7 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         store_io: Arc::new(qrtz_talk::FsIo),
         timeouts: Timeouts::default(),
         speech_missing: w.speech_missing,
+        command: w.command,
     })
 }
 

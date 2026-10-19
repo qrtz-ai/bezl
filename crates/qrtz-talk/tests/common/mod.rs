@@ -506,6 +506,8 @@ pub struct Rig {
     pub config: Arc<Mutex<Value>>,
     /// The mock module, when `HelperOpts.module` is set.
     pub speech: Option<MockSpeech>,
+    /// ADR 0216: what ctrl+fn handed to ctrl do, in order.
+    pub commands: Arc<Mutex<Vec<String>>>,
 }
 
 pub struct RigOpts {
@@ -519,6 +521,8 @@ pub struct RigOpts {
     pub local_finish_delay_ms: u64,
     /// N182: the app's "echo's speech model isn't downloaded" probe answers this.
     pub speech_missing: bool,
+    /// ADR 0216: ctrl do isn't available (the command sink refuses).
+    pub no_ctrl: bool,
 }
 impl Default for RigOpts {
     fn default() -> Self {
@@ -541,6 +545,7 @@ impl Default for RigOpts {
             local_start_delay_ms: 0,
             local_finish_delay_ms: 0,
             speech_missing: false,
+            no_ctrl: false,
         }
     }
 }
@@ -640,6 +645,7 @@ pub fn rig(o: RigOpts) -> Rig {
     } else {
         local
     };
+    let commands = Arc::new(Mutex::new(Vec::new()));
     let svc = TalkService::new(TalkDeps {
         helper: Arc::new(SinkHandle(helper.clone())),
         events: events.clone(),
@@ -656,6 +662,14 @@ pub fn rig(o: RigOpts) -> Rig {
             let m = o.speech_missing;
             Arc::new(move || m)
         },
+        command: {
+            let c = commands.clone();
+            let no = o.no_ctrl;
+            Arc::new(move |t| {
+                c.lock().unwrap().push(t);
+                !no
+            })
+        },
     });
     helper.attach(svc.clone());
     Rig {
@@ -668,6 +682,7 @@ pub fn rig(o: RigOpts) -> Rig {
         store,
         config,
         speech,
+        commands,
     }
 }
 

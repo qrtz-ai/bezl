@@ -131,6 +131,9 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
 
     public init() {}
 
+    /// ADR 0216: read on the tap's thread right after the filter reported the edge.
+    public var pressWithControl: Bool { filter?.withControl ?? false }
+
     public func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
         stop()
         guard let f = HotkeyFilter(key: key, consumeFn: consumeFn) else { return false }

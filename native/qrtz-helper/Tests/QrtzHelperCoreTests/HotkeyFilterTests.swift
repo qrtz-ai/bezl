@@ -21,6 +21,35 @@ final class HotkeyFilterTests: XCTestCase {
         XCTAssertEqual(up.action, .up); XCTAssertTrue(up.consume)
     }
 
+    /// ADR 0216: ctrl+fn is a ctrl press (⌃ held at fn's down edge), plain fn stays dictation, and the edges and
+    /// the Fn consumption are the same either way.
+    func testCtrlFnIsACtrlPressAndPlainFnIsDictation() throws {
+        var f = try XCTUnwrap(F(key: "fn", consumeFn: true))
+        let down = f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: F.fnFlag | F.controlFlag)
+        XCTAssertEqual(down.action, .down); XCTAssertTrue(down.consume); XCTAssertTrue(f.withControl)
+        // ⌃ let go before fn: still the ctrl press.
+        _ = f.handle(type: F.flagsChanged, keyCode: 59, flags: F.fnFlag)
+        let up = f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: 0)
+        XCTAssertEqual(up.action, .up); XCTAssertTrue(f.withControl)
+        // Plain fn: dictation.
+        XCTAssertEqual(f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: F.fnFlag).action, .down)
+        XCTAssertFalse(f.withControl)
+        _ = f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: 0)
+        // ⌃ pressed after fn went down: dictation.
+        XCTAssertEqual(f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: F.fnFlag).action, .down)
+        _ = f.handle(type: F.flagsChanged, keyCode: 59, flags: F.fnFlag | F.controlFlag)
+        XCTAssertFalse(f.withControl)
+        // Another talk key never makes a ctrl press.
+        var o = try XCTUnwrap(F(key: "right-option", consumeFn: true))
+        _ = o.handle(type: F.flagsChanged, keyCode: 61, flags: F.optionFlag | F.controlFlag)
+        XCTAssertFalse(o.withControl)
+    }
+
+    func testHotkeyLineCarriesCtrlOnlyWhenSet() throws {
+        XCTAssertEqual(HelperMessage.hotkey(.down, ctrl: true).json.object?["ctrl"]?.bool, true)
+        XCTAssertNil(HelperMessage.hotkey(.down).json.object?["ctrl"])
+    }
+
     func testOtherEventsPassThroughWhileConsuming() throws {
         var f = try XCTUnwrap(F(key: "fn", consumeFn: true))
         // Typing, Fn+arrow (the Fn flag rides on the key event), and other modifiers are never dropped.
