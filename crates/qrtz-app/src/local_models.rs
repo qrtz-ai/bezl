@@ -369,9 +369,10 @@ impl LocalModels {
                 .all(|f| std::fs::metadata(dir.join(&f.path)).is_ok_and(|m| m.is_file() && m.len() == f.size))
     }
 
-    /// Every set downloaded, verified and marked for this manifest version (a cheap check: marker + sizes).
+    /// Every set downloaded, verified and marked for this manifest version (a cheap check: marker + sizes). Fails
+    /// closed: a view with no sets (an empty or unknown scope) is never "installed" (QRT-277).
     pub fn installed(&self) -> bool {
-        self.manifest.sets.iter().all(|s| self.set_ok(s))
+        !self.manifest.sets.is_empty() && self.manifest.sets.iter().all(|s| self.set_ok(s))
     }
 
     /// Bytes under the models root (finished files), or in the installed packages an extension reads.
@@ -858,7 +859,10 @@ mod tests {
         assert_eq!(all.for_extensions(&["echo", "nano"]).set_ids(), all.set_ids());
         let none = all.for_extensions::<&str>(&[]);
         assert_eq!(none.total_size(), 0);
-        assert!(none.installed(), "nothing selected: nothing to download");
+        assert!(
+            !none.installed(),
+            "nothing selected is never installed (fail closed)"
+        );
     }
 
     /// One name per model: a bundled manifest's `model:<dir>`, qrtz_lock's ADR 0146 → 0157 table and the package the

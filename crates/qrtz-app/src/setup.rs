@@ -814,9 +814,32 @@ fn scope(p: &Value) -> Option<Vec<String>> {
     })
 }
 
+/// QRT-277: a named scope must name at least one module, each with model sets of its own. An empty list, an empty
+/// name or an unknown module is an error, never "every module" or "nothing to check".
+fn check_scope(p: &Value) -> Result<(), AppError> {
+    if p.get("extensions").is_none_or(Value::is_null) {
+        return Ok(());
+    }
+    let bad = |m: String| Err(AppError::new(ErrorCode::Validation, m).retryable(false));
+    let Some(a) = p["extensions"].as_array() else {
+        return bad("extensions must be a list".into());
+    };
+    if a.is_empty() {
+        return bad("extensions is empty".into());
+    }
+    for e in a {
+        match e.as_str() {
+            Some(id) if !id.is_empty() && !crate::local_models::sets_needed_by(id).is_empty() => {}
+            _ => return bad(format!("unknown speech scope {e}")),
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl SetupPort for Setup {
     async fn call(&self, channel: &str, p: Value) -> Result<Value, AppError> {
+        check_scope(&p)?;
         match channel {
             "speech:status" => Ok(self.speech.status_for(scope(&p).as_deref())),
             "speech:check" => self.speech.check_for(scope(&p).as_deref()).await,
@@ -833,6 +856,31 @@ impl SetupPort for Setup {
 
 #[cfg(test)]
 mod tests {
+    /// QRT-277: an empty, blank or unknown scope errors; a real module's scope, or none, passes.
+    #[test]
+    fn an_empty_or_unknown_speech_scope_errors() {
+        use serde_json::json;
+        for ok in [
+            json!({}),
+            json!({"extensions": null}),
+            json!({"extensions": ["echo"]}),
+            json!({"extensions": ["nano"]}),
+        ] {
+            assert!(super::check_scope(&ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            json!({"extensions": []}),
+            json!({"extensions": [""]}),
+            json!({"extensions": ["bogus"]}),
+            json!({"extensions": ["echo", ""]}),
+            json!({"extensions": ["snap"]}),
+            json!({"extensions": [1]}),
+            json!({"extensions": "echo"}),
+        ] {
+            assert!(super::check_scope(&bad).is_err(), "{bad}");
+        }
+    }
+
     /// N189 (ADR 0213): the install lock held past the wait reads as a busy store, not a signature failure.
     #[test]
     fn install_busy_reads_as_another_download_running() {
