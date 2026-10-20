@@ -996,6 +996,8 @@ impl AppService {
 
     /// Split: nano's status goes to the runtime, echo's to talk; the UI's `helper:status` is all of them together.
     pub fn on_helper_status_from(&self, src: crate::module_helpers::HelperSource, s: &HelperStatus) {
+        // QRT-291: no path reaches the runtime, talk or the UI, whatever spawner produced the error.
+        let s = &crate::installed::public_status(s);
         if src.serves_nano() {
             self.runtime.helper_status(s);
         }
@@ -1139,7 +1141,9 @@ impl AppService {
             }
             "helper:status" => Ok(match (&self.helper, self.module_helpers.get()) {
                 (_, Some(m)) => serde_json::to_value(m.status()).unwrap(),
-                (Some(h), None) => serde_json::to_value(h.status()).unwrap(),
+                (Some(h), None) => {
+                    serde_json::to_value(crate::installed::public_status(&h.status())).unwrap()
+                }
                 (None, None) => json!({"state": "stopped", "restarts": 0}),
             }),
             "log:write" => {
