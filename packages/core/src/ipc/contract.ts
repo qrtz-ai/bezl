@@ -563,7 +563,7 @@ export const ipcContract = {
     request: z.void(),
     response: AppUpdateStatus,
   }),
-  /** ADR 0181: "check for updates" for qrtz itself: asks modules.qrtz.ai/v1/app/latest.json; installs nothing. */
+  /** ADR 0181: "check for updates" for qrtz itself: asks the index release's v1.app.latest.json (QRT-297); installs nothing. */
   'app-update:check': defineChannel({
     version: 1,
     capability: 'app.update',

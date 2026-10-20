@@ -1,7 +1,7 @@
 # CI for qrtz (docs/ci.md). The repo is public, so Actions minutes (macOS included) are free: Linux and macOS both
 # run the full test suite, and macOS also builds an UNSIGNED release qrtz.app/.dmg and runs the parts of
-# scripts/release/verify-bundle.sh that don't need a Developer ID signature. No workflow here uses any secret;
-# signing, notarizing and publishing stay on Jared's Mac (bun run release:mac, scripts/app/publish-local.sh).
+# scripts/release/verify-bundle.sh that don't need a Developer ID signature. This workflow uses no secret; signing,
+# notarizing and publishing run in release.yml's approved `sign` job (QRT-297).
 name: ci
 
 on:

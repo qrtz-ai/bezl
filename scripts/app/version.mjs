@@ -3,7 +3,7 @@
 // release.yml count as earlier releases). A change to the shell since its last tag gets a patch bump in every file
 // that carries the app's version (tauri.conf.json, the root and desktop package.json, the workspace Cargo.toml and
 // its Cargo.lock entries) and a CHANGELOG.md section: the "## Unreleased" notes become "## <version> (<date>)", or,
-// when there are none, the commit subjects since the tag. app-release.yml releases a commit whose tauri.conf.json
+// when there are none, the commit subjects since the tag. release.yml releases a commit whose tauri.conf.json
 // version went up, and tags it (`tag`).
 //
 //   node scripts/app/version.mjs plan  [--force]   print `app\t<old>\t<new|->` (no writes)
