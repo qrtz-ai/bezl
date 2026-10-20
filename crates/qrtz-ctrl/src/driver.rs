@@ -8,7 +8,7 @@
 use crate::act::Action;
 use crate::ax::{diff, find, prune, shortcuts_obs, wire_labels};
 use crate::chain::{next, position, Next};
-use crate::decide::{decide, next_backtrack, BacktrackReason, Goal, Heuristic, Scorer};
+use crate::decide::{decide, next_backtrack, BacktrackReason, Goal, ModelStatus, Scorer};
 use crate::gate::{rules_for, Binding, ConfirmAnswer};
 use crate::guard::StopReason;
 use crate::helper::HelperClient;
@@ -64,6 +64,11 @@ impl Driver<'_> {
 
     /// Run until Jared must answer or the run ends.
     pub fn drive(&mut self) -> Step {
+        // QRT-293: no model, no run. Nothing is read or acted on until the decision model is ready; the run ends
+        // as failed and `ctrl:model` says why (the "download to start" screen).
+        if self.log.state().status.is_none() && self.scorer.status() != ModelStatus::Ready {
+            return self.finish(TaskStatus::Failed, None);
+        }
         if self.log.state().status.is_none() {
             // Review H-A: watch from the start of every drive (a new run, or a resume after an answer), not only at
             // act time, so Esc right after the ctrl+fn release, or while the first tree is read, stops the run.
@@ -126,7 +131,10 @@ impl Driver<'_> {
                 },
                 Next::Ask(q) => {
                     let id = format!("d{}", st.decisions_made);
-                    let e = decide(&q, &goal, &position(&st), self.scorer, self.clock, id);
+                    // QRT-293: the model only proposes; a failed or unready model ends the run with no action.
+                    let Ok(e) = decide(&q, &goal, &position(&st), self.scorer, self.clock, id) else {
+                        return self.finish(TaskStatus::Failed, None);
+                    };
                     self.push(e);
                     if self.log.state().ask.is_some() {
                         return self.pause(Step::Asking);
@@ -336,17 +344,9 @@ impl Driver<'_> {
 }
 
 /// Replay (spec §13): every decision's question, rebuilt from the log up to it, has the same options and input
-/// hash, and a heuristic decision comes out the same. A changed prior or option source shows up here.
+/// hash. A changed option source shows up here. (QRT-293: there is no rules scorer to re-decide with; the model's
+/// own choice is checked only against the options it was offered.)
 pub fn replay_check(log: &EventLog, goal: &str) -> Result<(), String> {
-    struct Zero;
-    impl Clock for Zero {
-        fn mono_ns(&self) -> u64 {
-            0
-        }
-        fn wall_ms(&self) -> u64 {
-            0
-        }
-    }
     let labels: BTreeMap<String, String> = BTreeMap::new();
     let g = Goal { text: goal };
     for (i, r) in log.records().iter().enumerate() {
@@ -356,7 +356,6 @@ pub fn replay_check(log: &EventLog, goal: &str) -> Result<(), String> {
             input_hash,
             chosen,
             p_bp,
-            model,
             node,
             ..
         } = &r.event
@@ -371,20 +370,17 @@ pub fn replay_check(log: &EventLog, goal: &str) -> Result<(), String> {
         if ids != options.iter().map(|o| &o.id).collect::<Vec<_>>() || q.node != *node {
             return Err(format!("{decision_id}: options differ"));
         }
-        let e = decide(&q, &g, &position(&st), &Heuristic, &Zero, decision_id.clone());
-        if let Event::DecisionMade {
-            input_hash: h,
-            chosen: c,
-            p_bp: p,
-            ..
-        } = e
+        if &crate::decide::input_hash(
+            &g,
+            q.node,
+            &q.choices.iter().map(|c| c.opt.clone()).collect::<Vec<_>>(),
+            &position(&st),
+        ) != input_hash
         {
-            if &h != input_hash {
-                return Err(format!("{decision_id}: input hash differs"));
-            }
-            if model.id == crate::decide::HEURISTIC_ID && (&c != chosen || &p != p_bp) {
-                return Err(format!("{decision_id}: heuristic decision differs"));
-            }
+            return Err(format!("{decision_id}: input hash differs"));
+        }
+        if !options.iter().any(|o| &o.id == chosen) || p_bp.len() != options.len() {
+            return Err(format!("{decision_id}: chose outside its options"));
         }
     }
     Ok(())

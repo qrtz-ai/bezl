@@ -85,7 +85,8 @@ fn service(dir: &std::path::Path, sup: Option<Supervisor>, wire: Option<Supervis
         helper: sup,
         events: Events::new(),
     });
-    let mut ctrl = CtrlService::open(dir.join("ctrl"), Box::new(SystemClock::default()));
+    let mut ctrl = CtrlService::open(dir.join("ctrl"), Box::new(SystemClock::default()))
+        .with_scorer(Box::new(TestModel));
     if let Some(w) = wire {
         ctrl = ctrl.with_helper(Arc::new(HelperClient::new(Box::new(w))));
     }
@@ -255,4 +256,27 @@ async fn the_real_helper_binary_answers_ctrl_lines_on_its_stdio() {
     }
     assert!(saw_hello, "echo/nano lines still flow");
     sup.stop();
+}
+
+/// A test stand-in for ctrl's decision model (QRT-293: ctrl ships no rules scorer and refuses without a ready model):
+/// the option sources' ranks as its logits. Lives only in this test.
+struct TestModel;
+impl qrtz_ctrl::decide::Scorer for TestModel {
+    fn model(&self) -> qrtz_ctrl::decide::ModelId {
+        qrtz_ctrl::decide::ModelId {
+            id: "test-model".into(),
+            version: "1".into(),
+            quant: None,
+        }
+    }
+    fn logits(
+        &self,
+        q: &qrtz_ctrl::decide::Question,
+        _g: &qrtz_ctrl::decide::Goal,
+    ) -> Result<Vec<i64>, String> {
+        Ok(q.choices.iter().map(|c| c.prior).collect())
+    }
+    fn status(&self) -> qrtz_ctrl::decide::ModelStatus {
+        qrtz_ctrl::decide::ModelStatus::Ready
+    }
 }

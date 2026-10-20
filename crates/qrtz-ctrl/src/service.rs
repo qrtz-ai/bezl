@@ -11,7 +11,7 @@
 //! The store lock is never held across a helper call: the run's log is loaded, driven in memory, then its new
 //! records are written. Readable labels (element titles, app names) live in memory only, per run.
 use crate::chain::resolve;
-use crate::decide::{ask_options, Heuristic, Node, Scorer};
+use crate::decide::{ask_options, ModelStatus, NoModel, Node, Scorer};
 use crate::driver::{Driver, Step};
 use crate::gate::ConfirmAnswer;
 use crate::guard::StopReason;
@@ -256,7 +256,7 @@ impl CtrlService {
         CtrlService {
             store: Mutex::new(Store::open(dir.into().join("do"))),
             clock,
-            scorer: Box::new(Heuristic),
+            scorer: Box::new(NoModel(ModelStatus::NotDownloaded)),
             helper: None,
             labels: Mutex::new(BTreeMap::new()),
             active: Mutex::new(None),
@@ -270,10 +270,28 @@ impl CtrlService {
         self
     }
 
-    /// The chain's scorer (default: the heuristic layer; see `laya::select_scorer`).
+    /// The chain's decision model (default: none, so ctrl never acts; see `laya::LiveScorer`).
     pub fn with_scorer(mut self, scorer: Box<dyn Scorer>) -> Self {
         self.scorer = scorer;
         self
+    }
+
+    /// The decision model's status (QRT-293): what `ctrl:do` checks first and what blocks a resume.
+    pub fn model_status(&self) -> ModelStatus {
+        self.scorer.status()
+    }
+
+    fn require_model(&self) -> Result<(), CtrlError> {
+        match self.scorer.status() {
+            ModelStatus::Ready => Ok(()),
+            s => Err(CtrlError::new(
+                CtrlErrorCode::Unavailable,
+                format!(
+                    "ctrl's decision model isn't ready (model.{}), so ctrl takes no action",
+                    s.code()
+                ),
+            )),
+        }
     }
 
     fn live_helper(&self) -> Option<Arc<HelperClient>> {
@@ -509,6 +527,9 @@ impl CtrlService {
                     ));
                 }
                 let text = str_field(&p, "text")?.to_string();
+                // QRT-293: refused before anything is written, read or acted on until the model is ready.
+                self.scorer.retry_load();
+                self.require_model()?;
                 let (m, now) = (self.clock.mono_ns(), self.clock.wall_ms());
                 // A run still waiting on Jared is cancelled by a new command.
                 // (Only the latest run can be unfinished: every earlier one was ended this way.)
