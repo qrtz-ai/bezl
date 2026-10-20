@@ -73,8 +73,16 @@ impl HelperLayout {
     /// Module `id`'s helper: next to the base helper (split), or its installed package (installed).
     pub fn spawner(&self, base: &ProcessSpawn, id: &str) -> Arc<dyn Spawn> {
         match self {
-            Self::Monolith => Arc::new(module_spawn(base, id, &BTreeMap::new())),
-            Self::Split { programs } => Arc::new(module_spawn(base, id, programs)),
+            // QRT-291: every arm goes through PublicRefusal, so no launch error (a dev stub's or a missing binary's,
+            // both naming the path) reaches `helper:status` or talk.
+            Self::Monolith => Arc::new(crate::installed::PublicRefusal(
+                module_spawn(base, id, &BTreeMap::new()),
+                id.to_owned(),
+            )),
+            Self::Split { programs } => Arc::new(crate::installed::PublicRefusal(
+                module_spawn(base, id, programs),
+                id.to_owned(),
+            )),
             Self::Installed {
                 root,
                 programs,
@@ -166,7 +174,10 @@ impl ModuleHelpers {
     /// Spawn the supervisors (not started: `AppService::start_helper` starts them). Call inside tokio.
     pub fn spawn(layout: &HelperLayout, base: ProcessSpawn, opts: SupervisorOptions) -> Self {
         match layout {
-            HelperLayout::Monolith => Self::monolith(Supervisor::spawn(opts, Arc::new(base))),
+            HelperLayout::Monolith => Self::monolith(Supervisor::spawn(
+                opts,
+                Arc::new(crate::installed::PublicRefusal(base, "helper".to_owned())),
+            )),
             HelperLayout::Split { .. } | HelperLayout::Installed { .. } => {
                 let mk = |id: &str| {
                     let mut o = opts.clone();
@@ -228,9 +239,9 @@ impl ModuleHelpers {
     /// counting as running; ctrl's own state reaches ctrl's runs through its wire (`helper.not_running`).
     pub fn status(&self) -> HelperStatus {
         if !self.split {
-            return self.nano.status();
+            return crate::installed::public_status(&self.nano.status());
         }
-        aggregate(&[self.nano.status(), self.echo.status()])
+        crate::installed::public_status(&aggregate(&[self.nano.status(), self.echo.status()]))
     }
 
     /// Graceful quit of every process at once (each gets `goodbye`, then `grace` before a kill).
