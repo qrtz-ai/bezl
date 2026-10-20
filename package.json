@@ -12,6 +12,10 @@
   },
   "scripts": {
     "dev:local": "bash scripts/dev/dev-local.sh",
+    "dash:dev": "bash scripts/dash/dev.sh",
+    "dash:token": "bash scripts/dash/token.sh",
+    "dash:app": "bash scripts/dash/app.sh",
+    "dash:e2e": "bash scripts/dash/e2e.sh",
     "start": "bun run build:helper && bun --bun run --cwd apps/desktop start",
     "make": "bun run build:helper && bun --bun run --cwd apps/desktop make",
     "release:mac": "bash scripts/release/sign-notarize.sh",
