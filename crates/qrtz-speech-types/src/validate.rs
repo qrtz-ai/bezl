@@ -253,7 +253,7 @@ impl OutputValidator {
 /// The handshake: protocol and expected version. Confinement is checked by the host (code requirement,
 /// entitlements, `sandbox_check`, Landlock/seccomp), never taken from the module's word (N57).
 pub fn check_hello(line: &str, expected_version: &str) -> Result<Value, String> {
-    let v = parse_speech_line(line)?;
+    let v = parse_speech_line(line).map_err(|e| e.to_string())?;
     if v["type"] != "hello" {
         return Err("expected hello".into());
     }
