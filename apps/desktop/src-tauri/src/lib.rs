@@ -6,6 +6,7 @@ mod backend;
 mod commands;
 mod media;
 mod paths;
+mod poison;
 mod policy;
 pub mod strings;
 mod tray;

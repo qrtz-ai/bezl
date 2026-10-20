@@ -2,6 +2,8 @@
 //! JSON-lines protocol. This crate spawns it (`process`), supervises it (`supervisor`) and validates lines
 //! against the zod-generated schema (`protocol`). Lifecycle-facing mapping lives in the app layer.
 pub mod fdpass;
+#[cfg(target_os = "macos")] // only the macOS suspended-spawn path locks a std Mutex
+mod poison;
 pub mod process;
 pub mod protocol;
 pub mod supervisor;

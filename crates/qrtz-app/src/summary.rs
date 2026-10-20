@@ -387,14 +387,17 @@ struct Attempt<'a> {
 
 impl<'a> Attempt<'a> {
     fn begin(cache: &'a std::sync::Mutex<PartCache>, id: &'a str) -> Self {
-        let deletes = cache.lock().unwrap_or_else(|p| p.into_inner()).begin(id);
+        let deletes = cache.lock().unwrap_or_else(crate::poison::recover).begin(id);
         Attempt { cache, id, deletes }
     }
 }
 
 impl Drop for Attempt<'_> {
     fn drop(&mut self) {
-        self.cache.lock().unwrap_or_else(|p| p.into_inner()).end(self.id);
+        self.cache
+            .lock()
+            .unwrap_or_else(crate::poison::recover)
+            .end(self.id);
     }
 }
 
@@ -479,7 +482,7 @@ impl OnDeviceSummaries {
     }
 
     fn cache(&self) -> std::sync::MutexGuard<'_, PartCache> {
-        self.cache.lock().unwrap_or_else(|p| p.into_inner())
+        self.cache.lock().unwrap_or_else(crate::poison::recover)
     }
 
     fn nonce(&self) -> String {

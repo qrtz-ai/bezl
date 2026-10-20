@@ -31,7 +31,7 @@ pub fn max_rejects() -> u32 {
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
+    m.lock().unwrap_or_else(crate::poison::recover)
 }
 
 /// The full final text in `dictation.stopped`: cap it and drop control characters.

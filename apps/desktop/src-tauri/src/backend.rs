@@ -435,7 +435,7 @@ fn pump_events(app: &AppHandle) {
             let targets = b
                 .subs
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .unwrap_or_else(crate::poison::recover)
                 .fanout(&event);
             for (label, sub_apps) in targets {
                 let msg = json!({"event": event, "payload": payload, "subApps": sub_apps});
@@ -460,7 +460,7 @@ fn pump_events(app: &AppHandle) {
                 .state::<Backend>()
                 .session
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .unwrap_or_else(crate::poison::recover)
                 .clone();
             if tray::is_recording(&s) {
                 tray::tick(&app2, &s);
@@ -472,10 +472,7 @@ fn pump_events(app: &AppHandle) {
 /// ADR 0095: the payload is serialized once and the same JSON goes to every window's stream for `event` (the
 /// broadcast path built and serialized a message per window). A send that fails means the page is gone: drop it.
 fn send_stream(b: &Backend, event: &str, payload: &Value) {
-    let mut streams = b
-        .streams
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut streams = b.streams.lock().unwrap_or_else(crate::poison::recover);
     let mut chans = streams.fanout(event).peekable();
     if chans.peek().is_none() {
         return;
@@ -492,9 +489,7 @@ fn send_stream(b: &Backend, event: &str, payload: &Value) {
 
 fn on_session(app: &AppHandle, session: Value) {
     let b = app.state::<Backend>();
-    *b.session
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = session.clone();
+    *b.session.lock().unwrap_or_else(crate::poison::recover) = session.clone();
     tray::update(app, &session);
     let want = policy::hud_wanted(&b.service.config(), &session);
     linger(app, &b.hud, windows::HUD, want, policy::HUD_LINGER, true);
@@ -510,7 +505,7 @@ fn on_talk(app: &AppHandle, talk: &Value) {
     let action = b
         .flash
         .lock()
-        .unwrap_or_else(|p| p.into_inner())
+        .unwrap_or_else(crate::poison::recover)
         .next(&b.service.config(), talk);
     let PillAction::Flash { error, notify, .. } = action else {
         return; // shown and hidden by the helper
@@ -583,24 +578,13 @@ fn apply_config(app: &AppHandle, cfg: &Value, first: bool) {
 
     let b = app.state::<Backend>();
     let next = policy::hotkeys(cfg);
-    let changed = {
-        *b.hotkeys
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            != next
-    };
+    let changed = { *b.hotkeys.lock().unwrap_or_else(crate::poison::recover) != next };
     if first || changed {
         bind_hotkeys(app, &next);
-        *b.hotkeys
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
+        *b.hotkeys.lock().unwrap_or_else(crate::poison::recover) = next;
     }
     if !first {
-        let s = b
-            .session
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let s = b.session.lock().unwrap_or_else(crate::poison::recover).clone();
         if !policy::hud_wanted(cfg, &s) {
             linger(app, &b.hud, windows::HUD, false, policy::HUD_LINGER, true);
         }
@@ -662,11 +646,11 @@ pub fn forget_webview(app: &AppHandle, label: &str) {
     if let Some(b) = app.try_state::<Backend>() {
         b.subs
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .remove_target(label);
         b.streams
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .remove_target(label);
     }
 }

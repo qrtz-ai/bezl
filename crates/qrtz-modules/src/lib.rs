@@ -36,6 +36,7 @@ pub mod lock;
 pub mod manifest;
 pub mod models;
 pub mod pkg;
+mod poison;
 pub mod qrtz_json;
 pub mod qrtz_lock;
 pub mod resolve;

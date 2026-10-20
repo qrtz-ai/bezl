@@ -104,7 +104,7 @@ impl SnapHost {
 
     /// `snap:status`.
     pub fn status(&self) -> Value {
-        self.status.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        self.status.lock().unwrap_or_else(crate::poison::recover).clone()
     }
 
     /// Start or stop qrtz-snap for the switch, and send the settings when they changed. True if anything changed.
@@ -114,7 +114,7 @@ impl SnapHost {
         let g = qrtz_modules::settings::GlobalSettings::from_config(cfg);
         let on = g.is_installed(MODULE_ID) && g.is_on(MODULE_ID);
         let line = configure_line(cfg);
-        let mut last = self.applied.lock().unwrap_or_else(|p| p.into_inner());
+        let mut last = self.applied.lock().unwrap_or_else(crate::poison::recover);
         let was = last.clone();
         if was.as_ref() == Some(&(on, line.clone())) {
             return false;
@@ -132,7 +132,7 @@ impl SnapHost {
             (_, false) => {
                 tracing::info!("snap is off: qrtz-snap not running");
                 self.sup.stop();
-                *self.status.lock().unwrap_or_else(|p| p.into_inner()) = Self::idle();
+                *self.status.lock().unwrap_or_else(crate::poison::recover) = Self::idle();
             }
         }
         true
@@ -144,7 +144,7 @@ impl SnapHost {
             self.sup.try_send(configure_line(cfg));
             false
         } else {
-            let mut s = self.status.lock().unwrap_or_else(|p| p.into_inner());
+            let mut s = self.status.lock().unwrap_or_else(crate::poison::recover);
             let was_running = s["running"] == json!(true);
             *s = Self::idle();
             was_running
@@ -161,7 +161,7 @@ impl SnapHost {
                     Some(Value::Object(o)) => Value::Object(o.clone()),
                     _ => json!({}),
                 };
-                *self.status.lock().unwrap_or_else(|p| p.into_inner()) = json!({
+                *self.status.lock().unwrap_or_else(crate::poison::recover) = json!({
                     "running": true,
                     "axTrusted": v["axTrusted"].as_bool().unwrap_or(false),
                     "registered": obj("registered"),

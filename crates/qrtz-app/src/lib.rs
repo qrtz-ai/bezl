@@ -3,7 +3,6 @@
 /// The repository's THIRD_PARTY_NOTICES.md, built in so settings → "open-source licenses" always has the notices of
 /// the build that runs (audit P0-4). The bundle also carries the file in Contents/Resources (tauri.conf.json).
 pub const THIRD_PARTY_NOTICES: &str = include_str!("../../../THIRD_PARTY_NOTICES.md");
-#[cfg(feature = "runtime")]
 pub mod app_update;
 #[cfg(feature = "runtime")]
 pub mod calendar;
@@ -35,6 +34,8 @@ pub mod pill;
 pub mod pill_theme;
 #[cfg(feature = "runtime")]
 pub mod pm_cli;
+#[cfg(feature = "runtime")]
+mod poison;
 pub mod ports;
 #[cfg(feature = "runtime")]
 pub mod runtime_port;

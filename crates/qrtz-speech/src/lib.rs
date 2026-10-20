@@ -6,6 +6,7 @@ pub mod confine;
 pub mod download;
 pub mod files;
 pub mod fsx;
+mod poison;
 pub mod spawn;
 pub mod store;
 #[cfg(feature = "testkit")]

@@ -146,7 +146,7 @@ impl AppSink {
     }
     fn no_audio_edge(&self, view: &qrtz_model::SessionView) {
         let key = view.meeting_id.clone().filter(|_| view.no_audio);
-        let mut last = self.no_audio_for.lock().unwrap_or_else(|p| p.into_inner());
+        let mut last = self.no_audio_for.lock().unwrap_or_else(crate::poison::recover);
         match key {
             Some(id) if last.as_deref() != Some(&id) => {
                 *last = Some(id.clone());

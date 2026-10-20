@@ -556,7 +556,7 @@ impl TalkService {
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.0.inner.lock().unwrap_or_else(|p| p.into_inner())
+        self.0.inner.lock().unwrap_or_else(crate::poison::recover)
     }
     fn deps(&self) -> &TalkDeps {
         &self.0.deps

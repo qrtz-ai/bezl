@@ -542,7 +542,7 @@ impl SelfUpdate {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap_or_else(|p| p.into_inner())
+        self.inner.lock().unwrap_or_else(crate::poison::recover)
     }
 
     pub fn status(&self) -> Value {
@@ -658,7 +658,7 @@ impl SelfUpdate {
         }
         let last = Mutex::new(0u64);
         let progress = |done: u64, _total: u64| {
-            let mut l = last.lock().unwrap_or_else(|p| p.into_inner());
+            let mut l = last.lock().unwrap_or_else(crate::poison::recover);
             // About every 1%: enough for the bar, few events.
             if done == r.size || done.saturating_sub(*l) >= (r.size / 100).max(1) {
                 *l = done;
