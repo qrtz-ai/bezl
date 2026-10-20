@@ -14,6 +14,9 @@ export default defineConfig({
         bindings: {
           DASH_PEPPER:
             '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+          // QRT-284: test placeholder for the enrollment-code HMAC key (a Worker secret in production).
+          DASH_ENROLL_KEY:
+            'e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff',
           DASH_SETUP_TOKEN: 'test-setup-token-not-a-real-secret-0000',
           // Read on the Node side and handed in: the shared vectors and the Rust constants (twin check).
           TEST_VECTORS: repo('contracts/dash/vectors.json'),
