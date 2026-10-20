@@ -720,7 +720,21 @@ impl AppService {
                 sup.stop();
             }
         }
+        // QRT-291: after a crash-loop give-up (Failed), the user's echo switch going on is their retry: one
+        // stop()+start(), so one fresh set of tries. Off never starts it, an unrelated config:set never retries it,
+        // and while Failed it stays stopped until the next toggle. The launch checks are untouched.
+        let echo_on = g.is_installed("echo") && g.is_on("echo");
+        let was_on = last.insert("echo.switch", echo_on);
         drop(last);
+        if h.is_split()
+            && echo_on
+            && was_on == Some(false)
+            && h.echo.status().state == qrtz_helper_bridge::HelperState::Failed
+        {
+            tracing::info!(module = "echo", "echo switched on while failed: one fresh retry");
+            self.note_started("echo");
+            h.echo.restart();
+        }
         self.refresh_in_use();
     }
 
