@@ -42,12 +42,20 @@ public protocol InsertionBackend: AnyObject, Sendable {
 public struct PreRollBuffer {
     public private(set) var capacity: Int
     private var buf: [Float] = []
+    /// Samples the ring has let go of since the last `drain` (QRT-270: a held start reports them, never silently).
+    public private(set) var trimmed = 0
     public init(capacity: Int) { self.capacity = max(0, capacity) }
     public mutating func setCapacity(_ c: Int) { capacity = max(0, c); trim() }
     public mutating func append(_ s: [Float]) { buf += s; trim() }
-    public mutating func drain() -> [Float] { defer { buf.removeAll(keepingCapacity: true) }; return buf }
+    public mutating func resetTrimmed() { trimmed = 0 }
+    public mutating func drain() -> [Float] { defer { buf.removeAll(keepingCapacity: true); trimmed = 0 }; return buf }
     public var count: Int { buf.count }
-    private mutating func trim() { if buf.count > capacity { buf.removeFirst(buf.count - capacity) } }
+    private mutating func trim() {
+        guard buf.count > capacity else { return }
+        let n = buf.count - capacity
+        trimmed += n
+        buf.removeFirst(n)
+    }
 }
 
 public enum PCM16 {
@@ -241,6 +249,9 @@ public actor DictationEngine {
     /// QRT-270: echo is ready once a recogniser has finished loading (`prepare` returned). Until then a press still
     /// opens the mic (the arm keeps its audio) but the start waits for the load instead of decoding on a cold model.
     public private(set) var asrReady = false
+    /// QRT-270: while a start waits for the recogniser's first load, the ring keeps everything since the press up to
+    /// this long (a cold Parakeet compile on a CI runner takes 10–15 s, past the arm's 10 s). Then it is fed whole.
+    public static let loadHoldMaxMs = 120_000
     /// ADR 0099: the last stopped dictation's stage timings (the bench reads them; the log line carries them).
     public private(set) var lastTiming: DictationTiming?
     /// ADR 0099: set by `finalText` when the final decode outlived its limit (the last partial was sent).
@@ -438,10 +449,15 @@ public actor DictationEngine {
         var s = Session(id: id, startMs: now())
         backlog?.rearm()
         // QRT-270: a press before echo is ready waits here for the load (joining the one in flight) rather than
-        // decoding on a cold model. The mic is already open from the press, so the arm's ring keeps the audio
-        // (up to `armMaxMs`) and it is fed once the start goes through.
-        if !asrReady, !transcribers.isEmpty {
+        // decoding on a cold model. The mic is already open from the press, so the ring keeps the audio from
+        // press-down (up to `loadHoldMaxMs` while held) and all of it is fed once the start goes through.
+        let held = !asrReady && !transcribers.isEmpty
+        if held {
+            preRoll.resetTrimmed()  // from here on a trim would be audio from this press
             send(.log(level: .info, msg: "dictation \(id): echo asr still warming; start waits for it"))
+            // The arm's ring stops at `armMaxMs` (and a warm mic's at the pre-roll), so a load longer than that
+            // would drop the head of what was said from press-down. Hold all of it until the load is done.
+            preRoll.setCapacity(max(preRoll.capacity, 16 * Self.loadHoldMaxMs))
         }
         for t in transcribers {
             if busy.contains(ObjectIdentifier(t)) {
@@ -455,13 +471,22 @@ public actor DictationEngine {
         if s.transcriber == nil, !(speech?.has(.dictation(id: id)) ?? false) {
             let why = transcribers.isEmpty ? "no speech recogniser" : "no speech recogniser is ready"
             send(.error(code: "dictation.asr", message: why, fatal: false, id: id))
+            if held, !armed { preRoll.setCapacity(16_000 * preRollMs / 1000) }
             return
         }
         // N195 (ADR 0224): with a managed mic the arbiter's mic.subscribe opens it, at the press (the arm) or at
         // this start's admit. If that open failed (or the reader was dropped under a warm mic), try once more here;
         // if it still fails, refuse this start by its id (error{dictation.mic, id, reason}), like N134.
-        if managedMic, !micRunning, !startMic(id: id) { return }
+        if managedMic, !micRunning, !startMic(id: id) {
+            if held, !armed { preRoll.setCapacity(16_000 * preRollMs / 1000) }
+            return
+        }
+        let lost = preRoll.trimmed
         let pre = preRoll.drain()
+        if held, lost > 0 {
+            send(.log(level: .warn, msg: "dictation \(id): the load outlasted the hold; \(lost / 16) ms of the press's start dropped"))
+        }
+        if held { preRoll.setCapacity(16_000 * preRollMs / 1000) }
         if armed {
             armed = false; s.timing.armed = true
             preRoll.setCapacity(16_000 * preRollMs / 1000)
