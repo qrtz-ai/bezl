@@ -102,7 +102,7 @@ describe('dev-local review (23d892af)', () => {
   it('verify-bundle scans qrtz-echo too and refuses QRTZ_MODULE_HELPERS / QRTZ_HELPER_BIN', () => {
     const v = read('scripts/release/verify-bundle.sh');
     expect(v).toContain(
-      'for bin in "$macos/qrtz-app" "$macos/qrtz-echo" "$macos/qrtz"; do',
+      'for bin in "$macos/qrtz-app" "$macos/qrtz" $(helper_names | sed "s|^|$macos/|"); do',
     );
     expect(v).toContain(
       'QRTZ_(NANO|SNAP|CTRL|ECHO|HELPER)_BIN|QRTZ_MODULE_HELPERS|QRTZ_DEV_REPO|dev-local: ',
