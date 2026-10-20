@@ -181,6 +181,9 @@ jobs:
           printf '#!/bin/sh\nexit 1\n' > apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin
           chmod +x apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin
       - run: cargo check -p qrtz-desktop --all-targets
+      # QRT-288: lint the macOS-only code paths too (Linux clippy never compiles cfg(target_os = "macos")).
+      - name: clippy (macOS)
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: cargo test (workspace)
         run: cargo test --workspace
 
