@@ -20,13 +20,13 @@ Every command below runs from `services/dash-worker` with this package's own scr
 
 ## What the worker needs (from `wrangler.toml` and `src/env.ts`)
 
-| Name               | Kind                     | Notes                                                                   |
-| ------------------ | ------------------------ | ----------------------------------------------------------------------- |
-| `DASHBOARD`        | Durable Object binding   | class `Dashboard` (SQLite), migration `v1`                              |
-| `ENROLL`           | Durable Object binding   | class `EnrollDirectory` (SQLite), migration `v1`                        |
-| `DASH_PEPPER`      | secret, required         | exactly 64 hex chars (32 bytes). HMAC key for tokens, owner keys, codes, IPs. Missing/bad → every request 503 `server not configured`. |
-| `DASH_SETUP_TOKEN` | secret, required         | ≥ 32 chars. One-time bearer for `POST /v1/owner/setup`; one dashboard per token, ever. |
-| `DASH_DEV_LOCAL`   | local only, NEVER in prod | only in `.dev.vars` from `bun run dev:local`. Must not be set as a var or secret. |
+| Name               | Kind                      | Notes                                                                                                                                  |
+| ------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `DASHBOARD`        | Durable Object binding    | class `Dashboard` (SQLite), migration `v1`                                                                                             |
+| `ENROLL`           | Durable Object binding    | class `EnrollDirectory` (SQLite), migration `v1`                                                                                       |
+| `DASH_PEPPER`      | secret, required          | exactly 64 hex chars (32 bytes). HMAC key for tokens, owner keys, codes, IPs. Missing/bad → every request 503 `server not configured`. |
+| `DASH_SETUP_TOKEN` | secret, required          | ≥ 32 chars. One-time bearer for `POST /v1/owner/setup`; one dashboard per token, ever.                                                 |
+| `DASH_DEV_LOCAL`   | local only, NEVER in prod | only in `.dev.vars` from `bun run dev:local`. Must not be set as a var or secret.                                                      |
 
 There is no `DASH_ENROLL_KEY` in the code; the enrollment HMAC key is `DASH_PEPPER`. Do not create extra secrets.
 
