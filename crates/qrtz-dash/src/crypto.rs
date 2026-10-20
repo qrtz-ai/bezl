@@ -44,6 +44,11 @@ pub fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
 }
 
 /// OS randomness only (rand 0.9's OsRng is fallible): no secret is ever made from anything else.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "fail closed: no secret is ever made from anything but the OS random source"
+)]
 pub(crate) fn os_random(b: &mut [u8]) {
     rand::rngs::OsRng
         .try_fill_bytes(b)

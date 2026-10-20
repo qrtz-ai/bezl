@@ -145,6 +145,11 @@ impl QrtzLock {
     }
 
     /// Pretty, sorted, newline-terminated: the same state always writes the same bytes.
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "serde_json on a plain derived type with string keys cannot fail"
+    )]
     pub fn to_bytes(&self) -> Vec<u8> {
         let v = serde_json::to_value(self).expect("plain json");
         let mut b = serde_json::to_vec_pretty(&v).expect("plain json");

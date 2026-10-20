@@ -124,6 +124,11 @@ impl Action {
     }
 
     /// The `ctrl.ax.act` payload: `text` is the resolved pointer (this call only, never logged).
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "serde_json on a plain derived type with string keys cannot fail"
+    )]
     pub fn wire(&self, text: Option<&str>) -> serde_json::Value {
         let mut v = serde_json::to_value(self).expect("serializes");
         if let Some(o) = v.as_object_mut() {

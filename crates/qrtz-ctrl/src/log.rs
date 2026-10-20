@@ -155,6 +155,11 @@ pub struct Record {
     pub hash: String,
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "serde_json on a plain derived type with string keys cannot fail"
+)]
 fn digest(r: &Record) -> String {
     #[derive(Serialize)]
     struct Body<'a> {
@@ -235,8 +240,9 @@ impl EventLog {
             hash: String::new(),
         };
         r.hash = digest(&r);
+        let at = self.records.len();
         self.records.push(r);
-        self.records.last().expect("just pushed")
+        &self.records[at]
     }
 
     /// A new run that starts with this run's records `[0..=at]` (rehashed under the new run id; the first record
@@ -275,6 +281,11 @@ impl EventLog {
         Ok(())
     }
 
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "serde_json on a plain derived type with string keys cannot fail"
+    )]
     pub fn to_jsonl(&self) -> String {
         self.records
             .iter()

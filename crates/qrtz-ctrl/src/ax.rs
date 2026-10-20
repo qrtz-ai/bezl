@@ -377,6 +377,11 @@ pub fn prune(app: &str, scope: Option<&str>, root: &AxNodeWire, focused: Option<
 }
 
 /// Content hash of a pruned tree (what a confirm approval binds to).
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "serde_json on a plain derived type with string keys cannot fail"
+)]
 pub fn tree_hash(root: &AxNode) -> String {
     hex::encode(&Sha256::digest(serde_json::to_vec(root).expect("serializes"))[..8])
 }

@@ -22,7 +22,10 @@ impl CodeChecks for NoAppleChecks {
 }
 
 fn write(p: &Path, b: &[u8], exec: bool) -> crate::Result<()> {
-    std::fs::create_dir_all(p.parent().expect("parent")).map_err(|e| e.to_string())?;
+    let dir = p
+        .parent()
+        .ok_or_else(|| format!("{}: no parent folder", p.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     std::fs::write(p, b).map_err(|e| e.to_string())?;
     #[cfg(unix)]
     if exec {
@@ -35,7 +38,11 @@ fn write(p: &Path, b: &[u8], exec: bool) -> crate::Result<()> {
 }
 
 fn json(p: &Path, v: serde_json::Value) -> crate::Result<()> {
-    write(p, &serde_json::to_vec_pretty(&v).expect("json"), false)
+    write(
+        p,
+        &serde_json::to_vec_pretty(&v).map_err(|e| e.to_string())?,
+        false,
+    )
 }
 
 /// A sample model (`model.sample`), service (`inference.sample`) and the nano extension that depends on both (ADR
@@ -46,6 +53,11 @@ pub const SAMPLE_REVISION: &str = "abc0000000000000000000000000000000000000";
 
 /// What Hugging Face serves for [`sample`]'s model (ADR 0171: the index points there, never at the package host):
 /// `(path under https://huggingface.co/, bytes)`, for a loopback server playing Hugging Face.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "dry-run sample: reads back files sample() just wrote"
+)]
 pub fn sample_hugging_face_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
     let model = dir.join("sample/model");
     let mut v = vec![];
