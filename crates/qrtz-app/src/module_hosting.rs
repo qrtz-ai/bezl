@@ -558,7 +558,7 @@ mod tests {
         );
         assert!(layout::is_release_base(&h.primary));
         assert!(h.mirrors.is_empty(), "ADR 0167: no package-host mirror");
-        assert_eq!(h.all(), [h.primary.clone()]);
+        assert_eq!(h.all(), std::slice::from_ref(&h.primary));
         assert_eq!(
             h.redirect_hosts,
             [
