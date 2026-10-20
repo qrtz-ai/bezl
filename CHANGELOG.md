@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.4 (2026-10-19)
+
 - nano: read-only Apple Calendar on the Mac (ADR 0217): opt-in 'connect calendar', an upcoming block, notes named after the overlapping event, a start-of-meeting prompt; offline, no auto-record by default.
 
 ## 0.2.3 (2026-10-19)
