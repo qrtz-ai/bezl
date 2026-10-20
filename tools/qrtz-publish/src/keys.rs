@@ -69,6 +69,11 @@ fn read_secret(p: &Path) -> Result<String, String> {
 }
 
 impl Keys {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "fail closed: no signing key is ever made from anything but the OS random source"
+    )]
     pub fn generate() -> SigningKey {
         use rand::TryRngCore;
         let mut b = [0u8; 32];

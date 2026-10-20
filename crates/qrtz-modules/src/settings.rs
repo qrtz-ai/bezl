@@ -188,7 +188,7 @@ impl ModuleSettingsStore {
         };
         merge(&mut cur, p);
         let out = Value::Object(cur);
-        let bytes = serde_json::to_vec_pretty(&out).expect("json");
+        let bytes = serde_json::to_vec_pretty(&out).map_err(|e| ModuleError::Json(e.to_string()))?;
         if bytes.len() > MAX_SETTINGS_BYTES {
             return Err(ModuleError::invalid("settings", "too large"));
         }
@@ -209,7 +209,7 @@ impl ModuleSettingsStore {
                 "a global setting; change it in the global opts",
             ));
         }
-        let bytes = serde_json::to_vec_pretty(value).expect("json");
+        let bytes = serde_json::to_vec_pretty(value).map_err(|e| ModuleError::Json(e.to_string()))?;
         if bytes.len() > MAX_SETTINGS_BYTES {
             return Err(ModuleError::invalid("settings", "too large"));
         }
@@ -245,7 +245,9 @@ impl ModuleSettingsStore {
 
 fn write_private(path: &Path, bytes: &[u8]) -> Result<(), ModuleError> {
     use std::io::Write;
-    let dir = path.parent().expect("settings path has a dir");
+    let dir = path
+        .parent()
+        .ok_or_else(|| ModuleError::invalid("settings", "path has no parent folder"))?;
     std::fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {

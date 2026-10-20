@@ -110,6 +110,11 @@ pub enum IndexError {
 }
 
 /// Canonical bytes of `v`: serialized through `serde_json::Value`, whose maps are sorted (no `preserve_order`).
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "serde_json on a plain derived type with string keys cannot fail"
+)]
 pub fn canonical<T: Serialize>(v: &T) -> Vec<u8> {
     serde_json::to_vec(&serde_json::to_value(v).expect("plain json")).expect("plain json")
 }
@@ -125,7 +130,8 @@ pub fn parse_canonical<T: DeserializeOwned>(
     }
     let v: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|e| IndexError::Invalid(what, e.to_string()))?;
-    if serde_json::to_vec(&v).expect("plain json") != bytes || has_float(&v) {
+    let reencoded = serde_json::to_vec(&v).map_err(|e| IndexError::Invalid(what, e.to_string()))?;
+    if reencoded != bytes || has_float(&v) {
         return Err(IndexError::NotCanonical(what));
     }
     serde_json::from_value(v).map_err(|e| IndexError::Invalid(what, e.to_string()))

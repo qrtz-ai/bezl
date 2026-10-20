@@ -80,11 +80,13 @@ pub struct Installed<'a> {
 }
 
 fn in_range(app: &semver::Version, m: &ModuleManifest) -> bool {
-    let min = semver::Version::parse(&m.min_app).expect("validated");
-    let max = m
-        .max_app
-        .as_deref()
-        .map(|v| semver::Version::parse(v).expect("validated"));
+    // `ModuleManifest::validate` refuses bad versions; if one slips through, the module doesn't launch.
+    let Ok(min) = semver::Version::parse(&m.min_app) else {
+        return false;
+    };
+    let Ok(max) = m.max_app.as_deref().map(semver::Version::parse).transpose() else {
+        return false;
+    };
     *app >= min && max.is_none_or(|max| *app <= max)
 }
 
@@ -119,12 +121,16 @@ fn check_one(
         .iter()
         .filter(|r| r.dependency.kind == DependencyKind::XpcService)
         .filter_map(|r| r.package.as_ref().map(|p| (r, p)))
-        .map(|(r, p)| ServiceCheck {
-            id: r.dependency.id.clone(),
-            path: root.join(&p.path),
-            requirement: p.designated_requirement.clone().expect("validated"),
+        .map(|(r, p)| {
+            // Validation requires a designated requirement on every xpc-service; without one, fail closed.
+            let requirement = p.designated_requirement.clone().ok_or(Skip::ManifestChanged)?;
+            Ok(ServiceCheck {
+                id: r.dependency.id.clone(),
+                path: root.join(&p.path),
+                requirement,
+            })
         })
-        .collect();
+        .collect::<Result<_, Skip>>()?;
     Ok(LaunchStep {
         module: id.to_owned(),
         kind: m.launch.kind.clone(),
@@ -136,6 +142,11 @@ fn check_one(
 }
 
 /// `installed(id)` returns the module's manifest as found on disk. `root` is the app data dir.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "the caller passes the app's own CARGO_PKG_VERSION, which is always semver"
+)]
 pub fn plan<'a>(
     global: &GlobalSettings,
     lock: &Lockfile,

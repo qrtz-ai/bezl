@@ -152,7 +152,7 @@ fn run() -> Result<(), String> {
                 Some(d) => PathBuf::from(d),
                 None => {
                     tmp = std::env::temp_dir().join(format!("qrtz-publish-dry-run-{}", std::process::id()));
-                    tmp.clone()
+                    tmp
                 }
             };
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

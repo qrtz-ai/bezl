@@ -534,8 +534,11 @@ impl FakeWorld {
                     self.focused.insert(app.clone(), f);
                 }
                 None => {
-                    let st = &self.app(&app).expect("app").states[&t.to];
-                    match focused_of(st) {
+                    let focus = self
+                        .app(&app)
+                        .and_then(|a| a.states.get(&t.to))
+                        .and_then(focused_of);
+                    match focus {
                         Some(f) => {
                             self.focused.insert(app.clone(), f);
                         }

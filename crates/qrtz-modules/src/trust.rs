@@ -121,7 +121,8 @@ impl Trust {
         Ok(Self {
             state: TrustState {
                 trust_version: TRUST_VERSION,
-                root: String::from_utf8(root_bytes.to_vec()).expect("canonical json is utf-8"),
+                root: String::from_utf8(root_bytes.to_vec())
+                    .map_err(|e| IndexError::Invalid("root", e.to_string()))?,
                 timestamp: None,
                 index: None,
                 clock_hwm_ms: root.issued_ms,
@@ -147,7 +148,9 @@ impl Trust {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), crate::ModuleError> {
-        crate::fsutil::write_private_atomic(path, &serde_json::to_vec_pretty(&self.state).expect("json"))
+        let bytes =
+            serde_json::to_vec_pretty(&self.state).map_err(|e| crate::ModuleError::Json(e.to_string()))?;
+        crate::fsutil::write_private_atomic(path, &bytes)
     }
 
     /// `max(now, every issued time seen)`: what expiry is measured against.
@@ -172,8 +175,10 @@ impl Trust {
         self.root
             .verify_role("root (old keys)", &self.root.roles.root, bytes, &sigs)?;
         next.verify_role("root (new keys)", &next.roles.root, bytes, &sigs)?;
+        let text =
+            String::from_utf8(bytes.to_vec()).map_err(|e| IndexError::Invalid("root", e.to_string()))?;
         self.root = next;
-        self.state.root = String::from_utf8(bytes.to_vec()).expect("canonical json is utf-8");
+        self.state.root = text;
         // A key rotation of the timestamp or index role resets nothing: versions stay monotonic across roots.
         Ok(())
     }
