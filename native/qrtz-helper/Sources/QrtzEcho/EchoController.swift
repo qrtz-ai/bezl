@@ -40,7 +40,6 @@ public actor EchoController: ModulePart {
     public nonisolated let pill: PillDriver?
     private let link: HostLink
     private let preloadAsr: Bool
-    private let loads: ModelLoads
     /// N174: answers `models.warm` itself (qrtz-echo; in the monolith nano's warm prewarms echo afterwards).
     private let ownsWarm: Bool
     private var shuttingDown = false
@@ -72,8 +71,8 @@ public actor EchoController: ModulePart {
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now,
                                          managedMic: true, speech: speech, tail: deps.dictationTail, echo: gate,
-                                         micPermission: { permissions.status()[.microphone] })
-        self.link = link; self.preloadAsr = deps.preloadDictationAsr; self.loads = deps.modelLoads; self.ownsWarm = ownsWarm
+                                         micPermission: { permissions.status()[.microphone] }, loads: deps.modelLoads)
+        self.link = link; self.preloadAsr = deps.preloadDictationAsr; self.ownsWarm = ownsWarm
     }
 
     /// ADR 0087: the startup load of echo's recogniser (tests await it).
@@ -83,8 +82,7 @@ public actor EchoController: ModulePart {
         guard preloadAsr else { return }
         // Inside the "asr" gate (N137), so it never compiles alongside a recording's loads; a press meanwhile
         // doesn't wait for the gate: it starts (or joins) the transcriber's one load itself.
-        let engine = dictation, loads = self.loads
-        startupPreload = Task { _ = try? await loads.load("asr") { await engine.preload().value } }
+        startupPreload = dictation.preload(gated: true)
     }
 
     public nonisolated func owns(_ m: HostMessage) -> Bool {
