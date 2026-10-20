@@ -12,34 +12,37 @@ describe('enroll lock (item 4)', () => {
     const now = Date.now();
     for (let i = 0; i < C.ENROLL_IP_FAILS_BEFORE_LOCK; i++)
       await dir.fail(src, now - 120_000 + i);
-    await dir.register('valid-code-hash', 'dash_x', now + 60_000);
-    const r = await dir.claim(src, 'valid-code-hash', now);
+    await dir.register('ENR-LOCKTEST', 'mac-valid', 'dash_x', now + 60_000);
+    const r = await dir.claim(src, 'ENR-LOCKTEST', 'mac-valid', now);
     expect(r.ok).toBe(false);
     expect(!r.ok && r.status).toBe(429);
     // The code was not consumed by the locked attempt, and another source can still use it.
     const other = await dir.claim(
       { narrow: 'lock-test-other', wide: null },
-      'valid-code-hash',
+      'ENR-LOCKTEST',
+      'mac-valid',
       now,
     );
     expect(other.ok).toBe(true);
     // A success elsewhere did not lift the lock.
-    const again = await dir.claim(src, 'nope', now + 1000);
+    const again = await dir.claim(src, 'nope', 'nope', now + 1000);
     expect(!again.ok && again.status).toBe(429);
   });
 
   it('unknown and expired codes get the same answer', async () => {
     const dir = env.ENROLL.getByName('enroll');
     const now = Date.now();
-    await dir.register('expired-hash', 'dash_y', now - 1);
+    await dir.register('ENR-EXPIRED1', 'mac-x', 'dash_y', now - 1);
     const a = await dir.claim(
       { narrow: 'same-a', wide: null },
-      'never-issued',
+      'ENR-NEVERISS',
+      'mac-x',
       now,
     );
     const b = await dir.claim(
       { narrow: 'same-b', wide: null },
-      'expired-hash',
+      'ENR-EXPIRED1',
+      'mac-x',
       now,
     );
     expect(a).toEqual(b);

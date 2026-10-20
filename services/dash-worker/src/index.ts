@@ -5,7 +5,14 @@
  * (except /v1/enroll, which has no bearer). Bearers are only ever read from the Authorization header.
  */
 import * as C from './constants';
-import { ctEq, hmacHex, pepperOk, randomHex } from './crypto';
+import {
+  codeMac,
+  ctEq,
+  hmacHex,
+  parseCode,
+  pepperOk,
+  randomHex,
+} from './crypto';
 import {
   fail,
   gone,
@@ -103,19 +110,24 @@ async function enroll(req: Request, env: Env): Promise<Out> {
         ? null
         : await hmacHex(env.DASH_PEPPER, `ip:${source.wide}`),
   };
-  const code = (typeof body.code === 'string' ? body.code : '')
-    .trim()
-    .toUpperCase();
-  const codeHash = await hmacHex(env.DASH_PEPPER, code);
-  const dir = env.ENROLL.getByName('enroll');
-  // A test code outside local test mode goes down the normal path with a hash that can never match: the same
-  // lock check first (429 when locked), then counted as a wrong code and the same 401.
-  const claim = await dir.claim(
-    src,
-    code.startsWith(TEST_CODE_PREFIX) && !dev
-      ? `refused:${codeHash}`
-      : codeHash,
+  if (!pepperOk(env.DASH_ENROLL_KEY)) return fail(503, 'server not configured');
+  // QRT-284: `<id>.<secret>`. Every outcome (malformed, unknown id, wrong secret, dead, used, expired, or a test
+  // code outside local test mode) costs one HMAC here and one lookup + one constant-time compare in the directory,
+  // is counted as a wrong code, and gets the same 401. Malformed and refused codes use an id that can never exist.
+  const raw = typeof body.code === 'string' ? body.code : '';
+  const parsed = parseCode(raw);
+  const codeId = !parsed
+    ? 'invalid:'
+    : parsed.id.startsWith(TEST_CODE_PREFIX) && !dev
+      ? `refused:${parsed.id}`
+      : parsed.id;
+  const secretMac = await codeMac(
+    env.DASH_ENROLL_KEY,
+    parsed?.id ?? 'invalid:',
+    parsed?.secret ?? raw.slice(0, 64),
   );
+  const dir = env.ENROLL.getByName('enroll');
+  const claim = await dir.claim(src, codeId, secretMac);
   if (!claim.ok) {
     if (claim.status === 429)
       return out(429, {
@@ -128,7 +140,8 @@ async function enroll(req: Request, env: Env): Promise<Out> {
   const tokenHash = await hmacHex(env.DASH_PEPPER, token);
   const r = unwire(
     await env.DASHBOARD.getByName(claim.dashId).enroll({
-      codeHash,
+      codeId,
+      secretMac,
       name: body.name,
       description: body.description,
       tokenHash,

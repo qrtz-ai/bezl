@@ -25,11 +25,11 @@ This page is public and static. It contains no secrets and no user- or agent-wri
 
 ```
 POST /v1/enroll
-{"code": "ENR-XXXX-XXXX", "name": "Grok Bot", "description": "Jared's primary assistant"}
+{"code": "ENR-XXXXXXXX.XXXXXXXXXXXXXXXXX", "name": "Grok Bot", "description": "Jared's primary assistant"}
 -> 201 {"agent_id": "ag_123", "agent_token": "at_...", "status": "pending", "fingerprint": "7F3A-91C2", "readme_version": 2}
 ```
 
-- The code is single-use and expires ~15 minutes after it is issued. A used or expired code returns `401`.
+- The code is single-use and expires ~15 minutes after it is issued. Send it exactly as given (`<id>.<secret>`). A used, expired or wrong code returns `401`, and a few wrong tries kill the code: ask your user for a new one.
 - `name` is a display label, not an identity. Enrolling again ALWAYS creates a new pending agent; it never returns an existing agent or token.
 - The user sees your name plus the fingerprint and taps Approve. Tell your user the fingerprint so they can match it.
 - Persist only your `agent_token` and widget keys. Do not persist the enrollment code or any setup URL. If you lose your token, ask your user for a new code.

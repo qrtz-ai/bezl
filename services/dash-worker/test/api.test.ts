@@ -249,7 +249,7 @@ describe('enrollment', () => {
       env.DASHBOARD.getByName(dashId),
       (_i: Dashboard, state) => {
         state.storage.sql.exec(
-          'UPDATE enroll_codes SET expires_at = ?',
+          'UPDATE enroll_code_macs SET expires_at = ?',
           Date.now() - 1,
         );
       },
@@ -315,7 +315,7 @@ describe('enrollment', () => {
     const lockIp = { narrow: 'iphash-test-lock', wide: null };
     for (let i = 0; i < C.ENROLL_IP_FAILS_BEFORE_LOCK; i++)
       await dir.fail(lockIp, Date.now() - 2 * 60_000 - i);
-    const c = await dir.claim(lockIp, 'whatever');
+    const c = await dir.claim(lockIp, 'whatever', 'f'.repeat(64));
     expect(c).toMatchObject({ ok: false, status: 429 });
     expect(c.ok === false && (c.retryAfterMs ?? 0) > 60 * 60_000).toBe(true);
   });
@@ -418,13 +418,13 @@ describe('enrollment', () => {
     const a = { narrow: 'h64-a', wide: 'h48-x' };
     for (let i = 0; i < C.ENROLL_IP_FAILS_BEFORE_LOCK; i++)
       await dir.fail(a, Date.now() - 2 * 60_000 - i);
-    expect(await dir.claim(a, 'whatever')).toMatchObject({
+    expect(await dir.claim(a, 'whatever', 'f'.repeat(64))).toMatchObject({
       ok: false,
       status: 429,
     });
     // Another /64 in the same /48 is fine until the /48 itself reaches its lock count.
     const b = { narrow: 'h64-b', wide: 'h48-x' };
-    expect(await dir.claim(b, 'whatever')).toMatchObject({
+    expect(await dir.claim(b, 'whatever', 'f'.repeat(64))).toMatchObject({
       ok: false,
       status: 401,
     });
@@ -436,6 +436,7 @@ describe('enrollment', () => {
     const c = await dir.claim(
       { narrow: 'h64-fresh', wide: 'h48-y' },
       'whatever',
+      'f'.repeat(64),
     );
     expect(c).toMatchObject({ ok: false, status: 429 });
     expect(c.ok === false && (c.retryAfterMs ?? 0) > 60 * 60_000).toBe(true);
@@ -507,7 +508,8 @@ describe('enrollment', () => {
           String(C.ENROLL_FAILS_BEFORE_ROTATION - 1),
         );
         const r = await i.enroll({
-          codeHash: 'f'.repeat(64),
+          codeId: 'ENR-NOSUCHID',
+          secretMac: 'f'.repeat(64),
           name: 'x',
           description: '',
           tokenHash: 'a'.repeat(64),
