@@ -157,7 +157,10 @@ impl SpeechManager {
 
     /// Which extensions' models the local download fetches when a request names none (audit P0-3).
     pub fn select_extensions(&self, f: Selector) {
-        *self.selector.lock().unwrap() = Some(f);
+        *self
+            .selector
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(f);
     }
 
     /// The pinned sets the next download covers: the request's extensions, else the selector's, else all.
@@ -166,9 +169,15 @@ impl SpeechManager {
         let exts = self
             .wanted
             .lock()
-            .unwrap()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
-            .or_else(|| self.selector.lock().unwrap().clone().map(|f| f()));
+            .or_else(|| {
+                self.selector
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone()
+                    .map(|f| f())
+            });
         Some(match exts {
             Some(e) => Arc::new(full.for_extensions(&e)),
             None => full,
@@ -177,12 +186,18 @@ impl SpeechManager {
 
     /// Called once per completed local model download (not for a module bundle, not when already installed).
     pub fn on_installed(&self, f: Arc<dyn Fn() + Send + Sync>) {
-        *self.on_installed.lock().unwrap() = Some(f);
+        *self
+            .on_installed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(f);
     }
 
     /// What a finished install runs (tests stand in for a download with it).
     pub fn installed_hook(&self) -> Option<Arc<dyn Fn() + Send + Sync>> {
-        self.on_installed.lock().unwrap().clone()
+        self.on_installed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     fn marker_path(&self) -> Option<PathBuf> {
@@ -217,7 +232,11 @@ impl SpeechManager {
     /// [`Self::status`] of only the models `extensions` need (ADR 0174: echo's view asks about Parakeet before
     /// switching echo on, whatever else is on). `None` = the next download's sets.
     pub fn status_for(&self, extensions: Option<&[String]>) -> Value {
-        let dl = self.dl.lock().unwrap().clone();
+        let dl = self
+            .dl
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         let view = match (extensions, &self.local) {
             (Some(e), Some(full)) => Some(Arc::new(full.for_extensions(e))),
             _ => self.local_view(),
@@ -235,7 +254,11 @@ impl SpeechManager {
                 "download": dl,
             });
         }
-        let latest = self.latest.lock().unwrap().clone();
+        let latest = self
+            .latest
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         let (installed, bytes, waiting, expired) = match &self.setup {
             Some(s) => {
                 let st = s.store.status(wall());
@@ -257,7 +280,10 @@ impl SpeechManager {
 
     fn emit(&self, force: bool) {
         {
-            let mut last = self.last_emit.lock().unwrap();
+            let mut last = self
+                .last_emit
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if !force && last.is_some_and(|t| t.elapsed() < EMIT_EVERY) {
                 return;
             }
@@ -267,7 +293,7 @@ impl SpeechManager {
     }
 
     fn set_dl(&self, d: Dl) {
-        *self.dl.lock().unwrap() = d;
+        *self.dl.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = d;
         self.emit(true);
     }
 
@@ -278,14 +304,20 @@ impl SpeechManager {
     /// Launch: resume a download a quit interrupted (not one the user paused: that one shows paused).
     pub fn resume_pending(self: &Arc<Self>) {
         let Some(m) = self.marker() else { return };
-        let _gate = self.again.lock().unwrap();
+        let _gate = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if self.running.load(Ordering::SeqCst) {
             return;
         }
-        *self.wanted.lock().unwrap() = m.extensions.clone();
+        *self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = m.extensions.clone();
         if m.paused {
             self.ctl.pause();
-            *self.dl.lock().unwrap() = Dl {
+            *self.dl.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Dl {
                 state: "paused",
                 ..Default::default()
             };
@@ -296,7 +328,11 @@ impl SpeechManager {
 
     /// Start (or resume) the background download; answers at once with the new status.
     pub fn download(self: &Arc<Self>, force: bool) -> Result<Value, AppError> {
-        let wanted = self.wanted.lock().unwrap().clone();
+        let wanted = self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         self.download_for(force, wanted)
     }
 
@@ -313,14 +349,20 @@ impl SpeechManager {
         // ADR 0209: before, a request while `running` only cleared the pause flag. A running download that had
         // already seen the pause then ended paused (or as a "network" error) and nothing ran again: the resume was
         // lost; a request for other models (echo's while nano's finished) was dropped outright.
-        let mut again = self.again.lock().unwrap();
+        let mut again = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.ctl.resume();
         if self.running.load(Ordering::SeqCst) {
             *again = Some(Again { force, extensions });
             self.show_resumed();
         } else {
             *again = None;
-            *self.wanted.lock().unwrap() = extensions;
+            *self
+                .wanted
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = extensions;
             self.spawn(force);
         }
         drop(again);
@@ -333,7 +375,11 @@ impl SpeechManager {
         if let Some(m) = self.marker().filter(|m| m.paused) {
             self.set_marker(Some(Marker { paused: false, ..m }));
         }
-        let d = self.dl.lock().unwrap().clone();
+        let d = self
+            .dl
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         if d.state == "paused" {
             self.set_dl(Dl {
                 state: "downloading",
@@ -351,7 +397,12 @@ impl SpeechManager {
         if self.ctl.is_paused() {
             return None;
         }
-        let same = self.setup.is_some() || a.extensions == *self.wanted.lock().unwrap();
+        let same = self.setup.is_some()
+            || a.extensions
+                == *self
+                    .wanted
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
         if ok && !a.force && same {
             return None;
         }
@@ -386,7 +437,11 @@ impl SpeechManager {
             paused: false,
             extensions: None,
         }));
-        let keep = self.dl.lock().unwrap().clone();
+        let keep = self
+            .dl
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         self.set_dl(Dl {
             state: "checking",
             done: keep.done,
@@ -412,12 +467,16 @@ impl SpeechManager {
             now_ms: &now,
         };
         if let Ok((m, _, _)) = up.latest().await {
-            *self.latest.lock().unwrap() = Some((m.version.clone(), m.total_size()));
+            *self
+                .latest
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some((m.version.clone(), m.total_size()));
         }
         let me2 = self.clone();
         let on_progress = move |p: Progress| {
             let installing = p.total > 0 && p.done >= p.total;
-            *me2.dl.lock().unwrap() = Dl {
+            *me2.dl.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Dl {
                 state: if installing { "installing" } else { "downloading" },
                 done: p.done,
                 total: p.total,
@@ -431,7 +490,10 @@ impl SpeechManager {
     /// The module download's attempt ended: under the run gate, either the request that came meanwhile runs next
     /// (returned) or the outcome is recorded and `running` goes false (N101: last, after the marker and state).
     fn end_module(&self, r: Result<UpdateOutcome, SpeechError>, force: bool) -> Option<Again> {
-        let mut again = self.again.lock().unwrap();
+        let mut again = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(a) = self.take_again(&mut again, r.is_ok()) {
             self.begin_module(a.force);
             return Some(a);
@@ -457,7 +519,11 @@ impl SpeechManager {
                     paused: true,
                     extensions: None,
                 }));
-                let d = self.dl.lock().unwrap().clone();
+                let d = self
+                    .dl
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
                 self.set_dl(Dl {
                     state: "paused",
                     done: d.done,
@@ -476,7 +542,11 @@ impl SpeechManager {
 
     fn record_error(&self, e: &SpeechError) {
         let kind = error_kind(e);
-        let d = self.dl.lock().unwrap().clone();
+        let d = self
+            .dl
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         self.set_dl(Dl {
             state: "error",
             done: d.done,
@@ -500,7 +570,7 @@ impl SpeechManager {
             loop {
                 let me2 = me.clone();
                 let on_progress = move |p: Progress| {
-                    *me2.dl.lock().unwrap() = Dl {
+                    *me2.dl.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Dl {
                         state: "downloading",
                         done: p.done,
                         total: p.total,
@@ -522,14 +592,22 @@ impl SpeechManager {
         if let Err(e) = qrtz_speech::fsx::mkdir_private(local.root()) {
             tracing::warn!(err = %e, "speech models dir");
         }
-        let extensions = self.wanted.lock().unwrap().clone();
+        let extensions = self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         tracing::info!(sets = ?local.set_ids(), bytes = local.total_size(), "speech models download");
         self.set_marker(Some(Marker {
             force,
             paused: false,
             extensions,
         }));
-        let keep = self.dl.lock().unwrap().clone();
+        let keep = self
+            .dl
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         self.set_dl(Dl {
             state: "downloading",
             done: keep.done,
@@ -542,12 +620,21 @@ impl SpeechManager {
     /// (its view and force are returned) or the outcome is recorded and `running` goes false (N101: last, after
     /// the marker and state). The install hook runs after the gate is released.
     fn end_local(&self, r: Result<(), SpeechError>, local: &LocalModels) -> Option<(Arc<LocalModels>, bool)> {
-        let mut again = self.again.lock().unwrap();
+        let mut again = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(a) = self.take_again(&mut again, r.is_ok()) {
-            let mut wanted = self.wanted.lock().unwrap();
+            let mut wanted = self
+                .wanted
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if *wanted != a.extensions {
                 // Other models: their progress starts at what they have, not at the last run's bytes.
-                self.dl.lock().unwrap().done = 0;
+                self.dl
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .done = 0;
             }
             *wanted = a.extensions;
             drop(wanted);
@@ -562,16 +649,28 @@ impl SpeechManager {
                 tracing::info!(version = local.version(), "speech models installed");
                 self.set_marker(None);
                 self.set_dl(Dl::idle());
-                hook = self.on_installed.lock().unwrap().clone();
+                hook = self
+                    .on_installed
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
             }
             Err(SpeechError::Paused) => {
-                let extensions = self.wanted.lock().unwrap().clone();
+                let extensions = self
+                    .wanted
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
                 self.set_marker(Some(Marker {
                     force: false,
                     paused: true,
                     extensions,
                 }));
-                let d = self.dl.lock().unwrap().clone();
+                let d = self
+                    .dl
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
                 self.set_dl(Dl {
                     state: "paused",
                     done: d.done,
@@ -593,7 +692,10 @@ impl SpeechManager {
     }
 
     pub fn pause(&self) -> Value {
-        let gate = self.again.lock().unwrap();
+        let gate = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.pause_gated();
         drop(gate);
         self.status()
@@ -609,7 +711,11 @@ impl SpeechManager {
                 paused: true,
                 extensions: m.extensions,
             }));
-            let d = self.dl.lock().unwrap().clone();
+            let d = self
+                .dl
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
             if d.state != "installing" {
                 self.set_dl(Dl {
                     state: "paused",
@@ -650,7 +756,11 @@ impl SpeechManager {
         }
         match up.latest().await {
             Ok((m, _, _)) => {
-                *self.latest.lock().unwrap() = Some((m.version.clone(), m.total_size()));
+                *self
+                    .latest
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some((m.version.clone(), m.total_size()));
                 self.emit(true);
                 Ok(self.status())
             }
@@ -659,7 +769,10 @@ impl SpeechManager {
     }
 
     pub fn delete(&self) -> Result<Value, AppError> {
-        let gate = self.again.lock().unwrap();
+        let gate = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let r = self.delete_gated();
         drop(gate);
         r.map(|()| self.status())
@@ -705,7 +818,7 @@ impl SpeechManager {
     fn download_scope(&self) -> Option<Vec<String>> {
         self.wanted
             .lock()
-            .unwrap()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
             .or_else(|| self.marker().and_then(|m| m.extensions))
     }
@@ -715,7 +828,10 @@ impl SpeechManager {
         let Some(e) = extensions else {
             return Ok(self.pause());
         };
-        let gate = self.again.lock().unwrap();
+        let gate = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let busy = self.running.load(Ordering::SeqCst) || self.marker().is_some();
         if busy && self.download_scope().as_deref() != Some(e) {
             return Err(Self::scope_error("this download isn't for these models"));
@@ -765,14 +881,17 @@ impl SpeechManager {
         let Some(full) = &self.local else {
             return Err(Self::unconfigured());
         };
-        let _gate = self.again.lock().unwrap();
+        let _gate = self
+            .again
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if self.running.load(Ordering::SeqCst) {
             return Err(AppError::new(ErrorCode::Unavailable, "pause the download first").retryable(true));
         }
         let others: Vec<String> = self
             .selector
             .lock()
-            .unwrap()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
             .map(|f| f())
             .unwrap_or_default()
@@ -789,7 +908,10 @@ impl SpeechManager {
         }
         if self.marker().is_some_and(|m| m.extensions.as_deref() == Some(e)) {
             self.set_marker(None);
-            *self.wanted.lock().unwrap() = None;
+            *self
+                .wanted
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
             self.ctl.resume();
             self.set_dl(Dl::idle());
         } else {

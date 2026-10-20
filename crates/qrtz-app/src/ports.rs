@@ -209,7 +209,12 @@ impl RuntimePort for StubRuntime {
         match channel {
             "permissions:get" => {
                 let mut v = idle_response("permissions:get").unwrap_or(Value::Null);
-                if let Some(Value::Object(p)) = self.permissions.lock().unwrap().clone() {
+                if let Some(Value::Object(p)) = self
+                    .permissions
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone()
+                {
                     for (k, s) in p {
                         v[k] = s;
                     }
@@ -218,7 +223,12 @@ impl RuntimePort for StubRuntime {
             }
             "note:session" | "note:dismiss" => {
                 let mut v = idle_or_pending("qrtz-lifecycle runtime", channel)?;
-                if let Some(h) = self.helper.lock().unwrap().as_ref() {
+                if let Some(h) = self
+                    .helper
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .as_ref()
+                {
                     use qrtz_helper_bridge::HelperState::*;
                     v["helper"] = match h.state {
                         Running | Starting => "ok",
@@ -237,11 +247,17 @@ impl RuntimePort for StubRuntime {
     }
     fn helper_line(&self, msg: &Value) {
         if msg["type"] == "permissions.status" {
-            *self.permissions.lock().unwrap() = Some(msg["status"].clone());
+            *self
+                .permissions
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(msg["status"].clone());
         }
     }
     fn helper_status(&self, status: &HelperStatus) {
-        *self.helper.lock().unwrap() = Some(status.clone());
+        *self
+            .helper
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(status.clone());
     }
 }
 
