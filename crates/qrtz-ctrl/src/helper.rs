@@ -659,10 +659,13 @@ impl FakeHelper {
         FakeHelper(Mutex::new(world))
     }
     pub fn world(&self) -> FakeWorld {
-        self.0.lock().expect("fake world").clone()
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
     pub fn with<R>(&self, f: impl FnOnce(&mut FakeWorld) -> R) -> R {
-        f(&mut self.0.lock().expect("fake world"))
+        f(&mut self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
     }
 }
 
