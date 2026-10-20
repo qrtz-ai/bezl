@@ -417,6 +417,9 @@ struct Inner {
     dictation_helper: u64,
     /// N200/N201 (ADR 0226): how many times the supervisor reported the helper down (`helper_status(false)`).
     helper_downs: u64,
+    /// QRT-291: why the supervisor gave up on the helper (its `lastError`, which names the refused check and never a
+    /// path), while it is failed. Shown with "the capture helper isn't running".
+    helper_refusal: Option<String>,
     /// N200: `hellos` and `helper_downs` when the push key last went down. A new process starts with its push key
     /// up, so the release of a press an older process heard never comes.
     press_helper: (u64, u64),
@@ -533,6 +536,7 @@ impl TalkService {
                 hellos: 0,
                 dictation_helper: 0,
                 helper_downs: 0,
+                helper_refusal: None,
                 press_helper: (0, 0),
                 via_push_key: false,
                 key_held: false,
@@ -1001,6 +1005,11 @@ impl TalkService {
     }
 
     /// Supervisor status: not running and not starting while a dictation is active → T1 helper-lost.
+    /// QRT-291: the supervisor gave up (`Some(reason)`) or is trying again (`None`).
+    pub fn helper_refusal(&self, reason: Option<&str>) {
+        self.lock().helper_refusal = reason.map(str::to_owned);
+    }
+
     pub fn helper_status(&self, running_or_starting: bool, why: &str) {
         if !running_or_starting {
             self.lock().helper_downs += 1;
@@ -1360,12 +1369,11 @@ impl TalkService {
         };
         if !self.send(json!({"type": "dictation.start", "id": id})) {
             let mut g = self.lock();
-            self.fail(
-                &mut g,
-                TalkErrorKind::HelperUnavailable,
-                "the capture helper isn't running, so the mic can't open",
-                false,
-            );
+            let msg = match &g.helper_refusal {
+                Some(why) => format!("the capture helper isn't running, so the mic can't open ({why})"),
+                None => "the capture helper isn't running, so the mic can't open".to_owned(),
+            };
+            self.fail(&mut g, TalkErrorKind::HelperUnavailable, &msg, false);
             return g.view.clone();
         }
         {
