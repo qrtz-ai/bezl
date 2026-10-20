@@ -25,6 +25,11 @@ impl TalkPort for Talk {
         self.0.helper_line(msg)
     }
     fn helper_status(&self, s: &HelperStatus) {
+        self.0.helper_refusal(
+            (s.state == HelperState::Failed)
+                .then_some(s.last_error.as_deref())
+                .flatten(),
+        );
         self.0.helper_status(
             matches!(s.state, HelperState::Running | HelperState::Starting),
             s.last_error.as_deref().unwrap_or("helper stopped"),

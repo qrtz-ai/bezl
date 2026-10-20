@@ -82,17 +82,20 @@ impl HelperLayout {
             } => {
                 let mut b = base.clone();
                 b.env.push((MODULE_ENV.to_owned(), id.to_owned()));
-                Arc::new(crate::installed::InstalledSpawn {
-                    module: id.to_owned(),
-                    root: root.clone(),
-                    base: b,
-                    fixed: programs.get(id).cloned(),
-                    bundled: bundled
-                        .get(id)
-                        .filter(|_| qrtz_modules::is_bundled_extension(id))
-                        .cloned(),
-                    check: crate::installed::LaunchCheck::for_build(),
-                })
+                Arc::new(crate::installed::PublicRefusal(
+                    crate::installed::InstalledSpawn {
+                        module: id.to_owned(),
+                        root: root.clone(),
+                        base: b,
+                        fixed: programs.get(id).cloned(),
+                        bundled: bundled
+                            .get(id)
+                            .filter(|_| qrtz_modules::is_bundled_extension(id))
+                            .cloned(),
+                        check: crate::installed::LaunchCheck::for_build(),
+                    },
+                    id.to_owned(),
+                ))
             }
         }
     }
@@ -184,6 +187,16 @@ impl ModuleHelpers {
         }
     }
 
+    /// One supervisor per module (the split layout), from supervisors made elsewhere (tests).
+    pub fn split(nano: Supervisor, echo: Supervisor, ctrl: Supervisor) -> Self {
+        Self {
+            nano,
+            echo,
+            ctrl,
+            split: true,
+        }
+    }
+
     pub fn monolith(s: Supervisor) -> Self {
         Self {
             nano: s.clone(),
@@ -231,11 +244,14 @@ impl ModuleHelpers {
     }
 }
 
-/// Several helpers as one status: running only when all are; otherwise the first (nano, echo) that isn't,
-/// with that one's error. Restarts add up.
+/// Several helpers as one status: running only when all are; otherwise the first (nano, echo) that failed, else the
+/// first that isn't running, with that one's error. Restarts add up.
 pub fn aggregate(all: &[HelperStatus]) -> HelperStatus {
     let restarts = all.iter().map(|s| s.restarts).sum();
-    match all.iter().find(|s| s.state != HelperState::Running) {
+    // QRT-291: one that gave up (Failed) speaks first, so its refusal reason isn't hidden by another that is merely
+    // stopped or starting.
+    let failed = all.iter().find(|s| s.state == HelperState::Failed);
+    match failed.or_else(|| all.iter().find(|s| s.state != HelperState::Running)) {
         None => HelperStatus {
             state: if all.is_empty() {
                 HelperState::Stopped
