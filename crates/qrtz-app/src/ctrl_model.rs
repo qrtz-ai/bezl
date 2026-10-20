@@ -185,7 +185,7 @@ impl CtrlLayaModel {
         let Some(dir) = self.models.read_dir(&self.set, false) else {
             return Readiness::not(S::HashMismatch);
         };
-        let mut v = self.verified.lock().unwrap_or_else(|e| e.into_inner());
+        let mut v = self.verified.lock().unwrap_or_else(crate::poison::recover);
         if v.as_ref() != Some(&dir) {
             if self.models.read_dir(&self.set, true).as_ref() != Some(&dir) {
                 return Readiness::not(S::HashMismatch);
@@ -277,10 +277,16 @@ impl CtrlModelSlot {
         if r.status == S::Ready {
             return r;
         }
-        if self.busy.lock().unwrap_or_else(|e| e.into_inner()).is_some() && self.model.consented() {
+        if self.busy.lock().unwrap_or_else(crate::poison::recover).is_some() && self.model.consented() {
             return qrtz_ctrl::laya::Readiness::not(S::Downloading);
         }
-        if self.error.lock().unwrap_or_else(|e| e.into_inner()).as_deref() == Some("checksum") {
+        if self
+            .error
+            .lock()
+            .unwrap_or_else(crate::poison::recover)
+            .as_deref()
+            == Some("checksum")
+        {
             return qrtz_ctrl::laya::Readiness::not(S::HashMismatch);
         }
         r
@@ -292,10 +298,10 @@ impl CtrlModelSlot {
             s.status = self.readiness().status.code();
             s.scorer = if s.status == "ready" { "laya" } else { "heuristic" };
         }
-        if self.busy.lock().unwrap_or_else(|e| e.into_inner()).is_some() && s.consented {
+        if self.busy.lock().unwrap_or_else(crate::poison::recover).is_some() && s.consented {
             s.state = "downloading";
         }
-        let err = self.error.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let err = self.error.lock().unwrap_or_else(crate::poison::recover).clone();
         if err.is_some() && s.state == "not_installed" {
             s.state = "failed";
         }
@@ -307,22 +313,23 @@ impl CtrlModelSlot {
     /// a download in flight and deletes the model. A changed consent (or a finished download) applies to the scorer at the next question (`LiveScorer`, run 19).
     pub async fn set_consent(&self, yes: bool, now_ms: u64) -> std::io::Result<LayaModelState> {
         if !yes {
-            if let Some(ctl) = self.busy.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            if let Some(ctl) = self.busy.lock().unwrap_or_else(crate::poison::recover).take() {
                 ctl.pause(); // stops the transfer; the task ends and the files go below
             }
         }
         self.model.set_consent(yes, now_ms)?;
-        *self.error.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        if yes && !self.model.installed() && self.busy.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
+        *self.error.lock().unwrap_or_else(crate::poison::recover) = None;
+        if yes && !self.model.installed() && self.busy.lock().unwrap_or_else(crate::poison::recover).is_none()
+        {
             let ctl = DownloadControl::default();
-            *self.busy.lock().unwrap_or_else(|e| e.into_inner()) = Some(ctl.clone());
+            *self.busy.lock().unwrap_or_else(crate::poison::recover) = Some(ctl.clone());
             let (model, busy, error) = (self.model.clone(), self.busy.clone(), self.error.clone());
             let run = async move {
                 let r = model.download(&ctl, &|_| {}).await;
                 if !ctl.is_paused() {
-                    *error.lock().unwrap_or_else(|e| e.into_inner()) = r.err().map(|e| code(&e));
+                    *error.lock().unwrap_or_else(crate::poison::recover) = r.err().map(|e| code(&e));
                 }
-                *busy.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                *busy.lock().unwrap_or_else(crate::poison::recover) = None;
             };
             match tokio::runtime::Handle::try_current() {
                 Ok(h) => {
@@ -331,7 +338,7 @@ impl CtrlModelSlot {
                     let t = h.spawn(run);
                     let _ = tokio::time::timeout(std::time::Duration::from_millis(200), t).await;
                 }
-                Err(_) => *self.busy.lock().unwrap_or_else(|e| e.into_inner()) = None,
+                Err(_) => *self.busy.lock().unwrap_or_else(crate::poison::recover) = None,
             }
         }
         Ok(self.state())
