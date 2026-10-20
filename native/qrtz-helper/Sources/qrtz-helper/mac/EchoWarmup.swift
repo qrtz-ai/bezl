@@ -125,7 +125,9 @@ enum EchoWarmupCLI {
 
     /// Lowercased words, punctuation dropped.
     static func words(_ s: String) -> [String] {
-        s.lowercased().map { $0.isLetter || $0.isNumber || $0 == "'" ? $0 : " " }.split(separator: " ").map(String.init)
+        var kept = ""
+        for ch in s.lowercased() { kept.append(ch.isLetter || ch.isNumber || ch == "'" ? ch : " ") }
+        return kept.split(separator: " ").map { String($0) }
     }
 
     /// Word error rate (Levenshtein over words).
