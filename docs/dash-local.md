@@ -11,18 +11,18 @@ dash.qrtz.ai route.
 
 ## Run it
 
-| command                                        | what it does                                                                                                                                                    |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dash:e2e`                             | Self-check. It starts its own throwaway server on 127.0.0.1:8798, runs setup, code, enroll, approve, heartbeat, widget and owner view, then deletes everything. |
-| `bun run dash:dev` (`-- --wipe` to start over) | Runs the server at http://127.0.0.1:8799 with `wrangler dev --local`. It listens on loopback only and keeps state in `services/dash-worker/.wrangler/state`.    |
-| `bun run dash:token`                           | Copies the one-time setup token to the clipboard without printing it.                                                                                           |
-| `bun run dash:app`                             | Runs the dev app with Dash shown and its helper pointed at the local server.                                                                                    |
+| command                                                                     | what it does                                                                                                                                                    |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run --cwd services/dash-worker e2e`                                    | Self-check. It starts its own throwaway server on 127.0.0.1:8798, runs setup, code, enroll, approve, heartbeat, widget and owner view, then deletes everything. |
+| `bun run --cwd services/dash-worker dev:local` (add `--wipe` to start over) | Runs the server at http://127.0.0.1:8799 with `wrangler dev --local`. It listens on loopback only and keeps state in `services/dash-worker/.wrangler/state`.    |
+| `bun run --cwd services/dash-worker token`                                  | Copies the one-time setup token to the clipboard without printing it.                                                                                           |
+| `bun run --cwd services/dash-worker app`                                    | Runs the dev app with Dash shown and its helper pointed at the local server.                                                                                    |
 
-1. In terminal 1, run `bun run dash:e2e`. It should end with `dash:e2e: all passed`.
-2. Still in terminal 1, run `bun run dash:dev` and leave it running.
-3. In terminal 2, run `bun run dash:app`. The dev app (`ai.qrtz.desktop.dev`) uses its own data dir and leaves
+1. In terminal 1, run `bun run --cwd services/dash-worker e2e`. It should end with `dash:e2e: all passed`.
+2. Still in terminal 1, run `bun run --cwd services/dash-worker dev:local` and leave it running.
+3. In terminal 2, run `bun run --cwd services/dash-worker app`. The dev app (`ai.qrtz.desktop.dev`) uses its own data dir and leaves
    `/Applications/qrtz.app` alone.
-4. Run `bun run dash:token`. Then in the app, open Dash › settings › server, paste the token and connect. The helper
+4. Run `bun run --cwd services/dash-worker token`. Then in the app, open Dash › settings › server, paste the token and connect. The helper
    saves the owner key in the Keychain item `qrtz-dash-dev`, never in the real `ai.qrtz.dash-net` item. The token
    works once. A second setup answers 410.
 5. Get an enrollment code. Codes issued in the app start with `ENR-`. For a test-only code, call the endpoint that

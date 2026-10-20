@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bun run dash:e2e: a self-contained smoke test of the local dash server. Starts its own `wrangler dev --local` on
+# bun run --cwd services/dash-worker e2e: a self-contained smoke test of the local dash server. Starts its own `wrangler dev --local` on
 # 127.0.0.1:8798 with a THROWAWAY state dir and secrets file (deleted at exit; values never printed; separate from
 # dash:dev's), then runs setup -> code -> enroll -> approve -> heartbeat -> widget -> owner view.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -10,7 +10,7 @@ write_vars "$tmp/e2e.vars"
 SETUP="$(sed -n 's/^DASH_SETUP_TOKEN=//p' "$tmp/e2e.vars")"
 ( run_wrangler "$PORT" "$tmp/state" --env-file "$tmp/e2e.vars" --inspector-port 0 ) >"$tmp/dev.log" 2>&1 &
 PID=$!
-stop() { pkill -f "persist-to $tmp/state" 2>/dev/null; pkill -TERM -P $PID 2>/dev/null; kill $PID 2>/dev/null; wait $PID 2>/dev/null; rm -rf "$tmp"; }
+stop() { set +e; pkill -f "persist-to $tmp/state" 2>/dev/null; pkill -TERM -P $PID 2>/dev/null; kill $PID 2>/dev/null; wait $PID 2>/dev/null; rm -rf "$tmp"; return 0; }
 trap stop EXIT
 for _ in $(seq 90); do kill -0 $PID 2>/dev/null || break; curl -fsS -m 2 "$B/v1/readme" >/dev/null 2>&1 && break; sleep 1; done
 curl -fsS -m 2 "$B/v1/readme" >/dev/null 2>&1 || { echo "wrangler dev did not start:"; tail -20 "$tmp/dev.log"; exit 1; }
