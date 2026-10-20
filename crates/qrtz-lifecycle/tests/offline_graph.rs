@@ -1469,6 +1469,38 @@ fn every_bundled_executable_is_signed_as_the_confinement_map_says() {
             (f[0].to_owned(), (f[1].to_owned(), f[2].to_owned()))
         })
         .collect();
+    // QRT-255: sign-mac.sh signs the bundled module helpers from their module.json (scripts/release/bundled-helpers.sh):
+    // launch.kind "bundled-helper", launch.entry the file, code.bundleId the identifier, the entitlements file named
+    // after it. Its NESTED table holds only the `qrtz` command.
+    let mut signed = signed;
+    assert!(
+        !script.contains("ai.qrtz.echo"),
+        "sign-mac.sh must not hard-code a helper identifier (QRT-255): it reads module.json"
+    );
+    for dir in std::fs::read_dir(root().join("modules")).unwrap() {
+        let m = dir.unwrap().path().join("module.json");
+        let Ok(text) = std::fs::read_to_string(&m) else {
+            continue;
+        };
+        let j: Value = serde_json::from_str(&text).unwrap();
+        if j["launch"]["kind"] != "bundled-helper" {
+            continue;
+        }
+        let id = j["code"]["bundleId"].as_str().unwrap().to_owned();
+        let has_ents = j["entitlements"].as_array().is_some_and(|e| !e.is_empty());
+        let ent = if has_ents {
+            format!("native/qrtz-helper/entitlements/{id}.entitlements")
+        } else {
+            "none".to_owned()
+        };
+        assert!(
+            signed
+                .insert(j["launch"]["entry"].as_str().unwrap().to_owned(), (id, ent))
+                .is_none(),
+            "{}: helper also listed in sign-mac.sh NESTED",
+            m.display()
+        );
+    }
     assert_eq!(signed, mapped, "sign-mac.sh signs differently from bundledCode");
     let owners: BTreeSet<&str> = map["owners"]
         .as_array()
