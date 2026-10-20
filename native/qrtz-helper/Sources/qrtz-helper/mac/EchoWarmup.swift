@@ -1,8 +1,7 @@
 #if os(macOS)
 import AVFoundation
 import Foundation
-import QrtzEcho
-import QrtzEchoMac
+import QrtzEchoMac  // QrtzEcho comes re-exported through QrtzHelperCore (the offline_graph allowlist)
 import QrtzHelperCore
 import QrtzMacShared
 import QrtzShared
