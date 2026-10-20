@@ -40,6 +40,7 @@ fn service(dir: &std::path::Path) -> (CtrlService, Arc<FakeHelper>) {
     w.apps = apps;
     let fake = Arc::new(FakeHelper::new(w));
     let svc = CtrlService::open(dir, Box::new(Tick(AtomicU64::new(0))))
+        .with_scorer(Box::new(TestModel))
         .with_helper(Arc::new(HelperClient::new(Box::new(fake.clone()))));
     (svc, fake)
 }
@@ -212,4 +213,27 @@ fn without_a_helper_do_is_unavailable_and_bad_input_is_refused() {
         svc.call("ctrl:tasks", json!({})).unwrap_err().code,
         CtrlErrorCode::Unavailable
     );
+}
+
+/// A test stand-in for ctrl's decision model (QRT-293: ctrl ships no rules scorer and refuses without a ready model):
+/// the option sources' ranks as its logits. Lives only in this test.
+struct TestModel;
+impl qrtz_ctrl::decide::Scorer for TestModel {
+    fn model(&self) -> qrtz_ctrl::decide::ModelId {
+        qrtz_ctrl::decide::ModelId {
+            id: "test-model".into(),
+            version: "1".into(),
+            quant: None,
+        }
+    }
+    fn logits(
+        &self,
+        q: &qrtz_ctrl::decide::Question,
+        _g: &qrtz_ctrl::decide::Goal,
+    ) -> Result<Vec<i64>, String> {
+        Ok(q.choices.iter().map(|c| c.prior).collect())
+    }
+    fn status(&self) -> qrtz_ctrl::decide::ModelStatus {
+        qrtz_ctrl::decide::ModelStatus::Ready
+    }
 }

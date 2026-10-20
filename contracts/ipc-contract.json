@@ -10888,6 +10888,17 @@
               "laya"
             ]
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_downloaded",
+              "downloading",
+              "hash_mismatch",
+              "load_failed",
+              "unavailable"
+            ]
+          },
           "error": {
             "anyOf": [
               {
@@ -10906,6 +10917,7 @@
           "sizeBytes",
           "bytesOnDisk",
           "scorer",
+          "status",
           "error"
         ],
         "additionalProperties": false
@@ -10962,6 +10974,17 @@
               "laya"
             ]
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_downloaded",
+              "downloading",
+              "hash_mismatch",
+              "load_failed",
+              "unavailable"
+            ]
+          },
           "error": {
             "anyOf": [
               {
@@ -10980,6 +11003,7 @@
           "sizeBytes",
           "bytesOnDisk",
           "scorer",
+          "status",
           "error"
         ],
         "additionalProperties": false
