@@ -71,6 +71,16 @@ The speech module source (download URL and the two pinned Ed25519 keys, hex) is 
 variables before running the script if this release carries one. They are all or none: `sign-notarize.sh` builds
 without speech when none is set and stops before building when only some are (it prints names, never values).
 
+## Source attached to every release (QRT-275)
+
+`scripts/app/publish-local.sh` runs `scripts/release/source-archives.sh <v> <work dir> HEAD` before the upload, and
+`scripts/app/upload.sh` refuses a release without its output. It writes and uploads, immutable, to
+`modules.qrtz.ai/v1/app/<v>/`: `qrtz_<v>_source.tar.gz` (git archive of the release commit, which becomes
+`app-v<v>`), `qrtz_<v>_fluidaudio_source.tar.gz` (FluidAudio fetched by the exact revision `Package.resolved` pins,
+with `Package.swift` required to say `exact:`), `qrtz_<v>_build-scripts.tar.gz` (`scripts/`, the manifests and
+lockfiles, `tauri.conf.json`, this file) and `qrtz_<v>_source.sha256`. It reads no key. The app's settings → system →
+"open-source licenses" shows `THIRD_PARTY_NOTICES.md`, whose "Source code" section says where these are.
+
 ## Module releases in CI (ADR 0179)
 
 nano, ctrl and snap release from GitHub Actions on GitHub-hosted macOS runners, with the release secrets in the

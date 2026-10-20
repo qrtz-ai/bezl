@@ -152,6 +152,7 @@ describe('publish-local.sh --dry-run', () => {
         'release-notes.mjs 0.2.1',
         'feed.mjs --version 0.2.1',
         'sign-feed.sh',
+        'source-archives.sh 0.2.1',
         'upload.sh',
         'verify-live.sh',
         'version.mjs tag --push',
@@ -330,6 +331,29 @@ describe('upload.sh (what publish-local.sh runs for the upload)', () => {
     fs.copyFileSync(envelope(V), path.join(dir, 'latest.json'));
     const dmg = path.join(tmp, 'q.dmg');
     fs.writeFileSync(dmg, 'dmg');
+    const srcs = [
+      `qrtz_${V}_source.tar.gz`,
+      `qrtz_${V}_fluidaudio_source.tar.gz`,
+      `qrtz_${V}_build-scripts.tar.gz`,
+      `qrtz_${V}_source.sha256`,
+    ];
+    const up = () =>
+      spawnSync('bash', [path.join(repo, 'scripts/app/upload.sh'), dir, dmg], {
+        encoding: 'utf8',
+        env: {
+          PATH: `${bin}:${process.env.PATH}`,
+          STUB_LOG: log,
+          VERSION: V,
+          R2_ACCOUNT_ID: 'acct',
+          R2_ACCESS_KEY_ID: 'AKID',
+          R2_SECRET_ACCESS_KEY: R2SECRET,
+        },
+      });
+    // QRT-275: no release goes up without its source.
+    const missing = up();
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toContain('source.sha256');
+    for (const f of srcs) fs.writeFileSync(path.join(dir, f), f);
     const r = spawnSync(
       'bash',
       [path.join(repo, 'scripts/app/upload.sh'), dir, dmg],
@@ -349,10 +373,14 @@ describe('upload.sh (what publish-local.sh runs for the upload)', () => {
     const ups = calls()
       .split('\n')
       .filter((l) => l.startsWith('rclone copyto'));
-    expect(ups).toHaveLength(5);
-    for (const u of ups.slice(0, 3)) expect(u).toContain('--immutable');
-    expect(ups[3]).toContain('/v1/app/qrtz-latest.dmg');
-    expect(ups[4]).toContain('/v1/app/latest.json');
+    expect(ups).toHaveLength(9);
+    for (const u of ups.slice(0, 7)) expect(u).toContain('--immutable');
+    for (const f of srcs)
+      expect(ups.slice(3, 7).some((u) => u.includes(`/v1/app/${V}/${f}`))).toBe(
+        true,
+      );
+    expect(ups[7]).toContain('/v1/app/qrtz-latest.dmg');
+    expect(ups[8]).toContain('/v1/app/latest.json');
     expect(calls()).not.toContain(R2SECRET);
   });
 });
