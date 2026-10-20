@@ -1,6 +1,6 @@
 # CI and releases (GitHub Actions)
 
-Both workflows live in `.github/workflows/`. They run on GitHub-hosted runners; nothing is self-hosted.
+The workflows live in `.github/workflows/`. They run on GitHub-hosted runners; nothing is self-hosted.
 
 ## `ci.yml`: every push to main (and manual "run workflow")
 
@@ -17,35 +17,20 @@ busy a manual run is the way to warm them.
 | `release-unsigned` | `macos-latest` | `bun run make` in apps/desktop with no identity, ad-hoc signed like `sign-mac.sh`, unchanged `verify-bundle.sh` (only the Developer ID / notarization / staple FAILs are tolerated), `.app` + `.dmg` artifact. No caches |
 | `workflow-changes` | `ubuntu-24.04` | push to main only: lists commits touching `.github/**` in the job summary (pre-public checklist)                                                                                                                         |
 
-The repo is public: Actions minutes are free and CI also runs on `pull_request` (never `pull_request_target`). No workflow uses a secret; signing, notarizing and publishing stay on Jared's Mac.
+The repo is public: Actions minutes are free and CI also runs on `pull_request` (never `pull_request_target`). `ci.yml` uses no secret; only `release.yml`'s approved `sign` job and its `timestamp` job do (QRT-297).
 
 macOS minutes count 10x on a private repo, so the macOS job only does what Linux can't: the Mac-only Swift
 (AX, capture, FluidAudio, Foundation Models) and the macOS `cfg` code in the desktop crate. Its `cargo check` uses a
 stub sidecar in `src-tauri/binaries/`; the real helper is built only for releases. Caches: cargo
 (`Swatinem/rust-cache`), bun's install cache, SwiftPM `.build`, and the Playwright browsers.
 
-## `app-release.yml`: qrtz.app releases (ADR 0181)
+## `release.yml`: releases on GitHub (QRT-297)
 
-Replaces `release.yml` (unsigned `v*` tag builds). It runs on a push to main whose
-`apps/desktop/src-tauri/tauri.conf.json` version went up (`node scripts/app/version.mjs bump` writes every version
-file and the CHANGELOG section; a commit that leaves the version alone never releases), or by hand
-(`gh workflow run app-release.yml`).
-
-1. `plan` (Linux): the version, whether it is a bump, whether `app-v<version>` exists, and which secrets are set.
-2. `release` (`macos-latest`): `scripts/ci/macos-signing.sh setup-identity` (temporary keychain: the Developer ID
-   identity and the notary profile, from `MACOS_CERT_*` and `AC_*`), then `scripts/release/sign-notarize.sh` (build
-   with echo bundled, re-sign nested code, notarize and staple the app and the dmg, Gatekeeper checks). The step after
-   checks the bundle's version and identifier and the designated requirements of qrtz.app (`and notarized`) and
-   `qrtz-echo` (`ai.qrtz.echo`, MR26CCZ496). The dmg and its `.sha256` are uploaded as the artifact
-   `qrtz-<version>-macos-aarch64-dmg` (30 days) on every run.
-3. Only with the app-update key (`APP_UPDATE_KEY` secret + the committed `crates/qrtz-app/src/app_update_key.pub`):
-   the `.app.tar.gz` is signed with `tauri signer sign --app-version`, verified with `minisign` against the committed
-   public key, `scripts/app/feed.mjs` writes the feed (expires in 30 days) and `scripts/app/sign-feed.sh` signs it into `latest.json`, `scripts/app/upload.sh` uploads to R2 `v1/app/`,
-   `scripts/app/verify-live.sh` compares what modules.qrtz.ai serves, and `version.mjs tag --push` tags
-   `app-v<version>`. Without the key the run ends after the artifact with a warning: nothing is published.
+Tags `v<x.y.z>` (qrtz.app) and `nano-v*`, `ctrl-v*`, `snap-v*` (packages), "run workflow", and a daily schedule (the
+index timestamp re-sign). `build` compiles with no secrets; `sign` waits for Jared's approval in the `release`
+environment and runs only for a tag whose commit is on main; `timestamp` holds only the timestamp key in
+`release-timestamp`. Everything is hosted on GitHub Releases (the app reads the fixed `index` release). Details:
+[docs/release.md](release.md#releases-on-github-qrt-297); setup:
+[docs/modules/production-setup.md](modules/production-setup.md#releases-on-github-qrt-297).
 
 Apple Silicon only.
-
-The speech module source is baked in at build time from the secrets `QRTZ_SPEECH_URL`, `QRTZ_SPEECH_KEY_ID`,
-`QRTZ_SPEECH_KEY`, `QRTZ_SPEECH_ROOT_KEY_ID` and `QRTZ_SPEECH_ROOT_KEY`; until they're set, release builds ship
-without a speech module.

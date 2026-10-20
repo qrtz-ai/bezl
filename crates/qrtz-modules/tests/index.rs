@@ -497,3 +497,38 @@ fn a_model_file_has_only_its_pinned_hugging_face_url() {
     let err = with(vec![GOOD], vec![GOOD]).unwrap_err();
     assert!(err.contains("only a model's files have URLs"), "{err}");
 }
+
+/// QRT-297: the `index` GitHub release serves layout path `v1/a/b` as the flat asset `v1.a.b`; any other base serves
+/// the path as it is.
+#[test]
+fn a_github_release_base_serves_flat_asset_names() {
+    use qrtz_modules::index::layout;
+    let gh = "https://github.com/qrtz-ai/qrtz/releases/download/index";
+    assert!(layout::is_release_base(gh));
+    let h = "a".repeat(64);
+    assert_eq!(
+        layout::on_host(gh, &layout::blob(&h)),
+        format!("v1.blobs.sha256.{h}")
+    );
+    assert_eq!(layout::on_host(gh, &layout::timestamp()), "v1.timestamp.json");
+    assert_eq!(
+        layout::on_host(gh, &layout::sig(&layout::root(1))),
+        "v1.root.1.root.json.sig"
+    );
+    assert_eq!(
+        layout::on_host(gh, &layout::index(&h)),
+        format!("v1.index.{h}.json")
+    );
+    for other in [
+        "http://127.0.0.1:8080",
+        "https://modules.example",
+        "https://github.com/qrtz-ai/qrtz/releases/download",
+        "https://github.com/qrtz-ai/qrtz/releases/download/index/",
+        "https://github.com/qrtz-ai/qrtz/releases/latest/index",
+        "https://api.github.com/repos/qrtz-ai/qrtz/releases/download/index",
+        "https://github.com/qrtz-ai/qrtz/releases/download/in?dex",
+    ] {
+        assert!(!layout::is_release_base(other), "{other}");
+        assert_eq!(layout::on_host(other, &layout::timestamp()), "v1/timestamp.json");
+    }
+}

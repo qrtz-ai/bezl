@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ADR 0181: publish one qrtz.app release from Jared's Mac exactly the way app-release.yml does after its build, or
-# re-sign the live feed the way app-feed-refresh.yml does (--refresh). While GitHub Actions is off, this is the release.
+# ADR 0181: publish one qrtz.app release from Jared's Mac exactly the way release.yml's sign job does after its
+# build, or re-sign the live feed (--refresh). QRT-297: release.yml is the release; this is the Mac fallback.
 #
 #   scripts/app/publish-local.sh [--app <qrtz.app>] [--dmg <dmg>] [--no-tag] [--dry-run]
 #   scripts/app/publish-local.sh --refresh [--dry-run]
@@ -11,17 +11,18 @@
 #      v1/app/latest.json is below <v> (or not there yet) and nothing is up under v1/app/<v>/. Published objects are
 #      immutable: a version that went up, even partly, is never published again. Bump it (scripts/app/version.mjs bump).
 #   2. The bundle is qrtz <v> (ai.qrtz.desktop) with qrtz-echo, signed by team MR26CCZ496 and notarized (the
-#      app-release.yml checks). The .app is found in $CARGO_TARGET_DIR, target/ or apps/desktop/src-tauri/target/
+#      release.yml checks). The .app is found in $CARGO_TARGET_DIR, target/ or apps/desktop/src-tauri/target/
 #      (release/bundle/macos/qrtz.app); the .dmg is qrtz_<v>_aarch64.dmg next to it.
 #   3. Tars it (COPYFILE_DISABLE=1) into qrtz_<v>_aarch64.app.tar.gz, signs that (`tauri signer sign --app-version`),
 #      verifies the signature with minisign against crates/qrtz-app/src/app_update_key.pub, writes the feed
 #      (scripts/app/feed.mjs --expires-days 30, notes from scripts/release-notes.mjs) and signs it into latest.json
 #      (scripts/app/sign-feed.sh).
-#   4. scripts/app/upload.sh (the versioned files, then qrtz-latest.dmg, latest.json last), scripts/app/verify-live.sh,
+#   4. scripts/release/gh-store.sh upload-app (the versioned files, then qrtz-latest.dmg, latest.json last, as assets
+#      of the `index` GitHub release), scripts/app/verify-live.sh,
 #      then tags app-v<v> and pushes the tag (scripts/app/version.mjs tag --push) unless --no-tag.
 # --refresh (app-feed-refresh.yml): checks that the live latest.json verifies against the committed public key,
-#   re-signs it unchanged but for a new expires 30 days out, uploads only latest.json (60 s cache) and waits until
-#   modules.qrtz.ai serves it. No feed live yet: nothing to do. Run it before the live feed is 30 days old.
+#   re-signs it unchanged but for a new expires 30 days out, uploads only latest.json and waits until the index
+#   release serves it. No feed live yet: nothing to do. Run it before the live feed is 30 days old.
 # --dry-run: the same read-only checks (git, and the live feed over HTTPS), then every step printed as `+ …`. Nothing
 #   else: no key or keychain read, no file written, no upload, no tag. Runs on any OS (scripts/app/publish-local.test.mjs).
 #
@@ -31,22 +32,18 @@
 #                        scripts/ci/setup-secrets.sh app-update, 0600, no password: TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #                        is empty, as in CI). Read into TAURI_SIGNING_PRIVATE_KEY for `tauri signer sign` and
 #                        sign-feed.sh only.
-#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  used as they are when the key id and secret are set;
-#                        otherwise from the login keychain item qrtz-r2 (account = the access key id). The account id
-#                        (not secret) is $R2_ACCOUNT_ID, ~/.qrtz-keys/r2-account-id or the public default
-#                        (docs/release.md). Read only for the upload, in a subshell.
-# Other env: QRTZ_APP_HOST (default https://modules.qrtz.ai), R2_BUCKET (default qrtz-modules), QRTZ_KEYS
+#   The upload uses your own `gh auth login` (or GH_TOKEN); nothing else (QRT-297: no Cloudflare key).
+# Other env: QRTZ_APP_HOST (default https://github.com/qrtz-ai/qrtz/releases/download/index), QRTZ_KEYS
 # (default ~/.qrtz-keys). The work dir (only files that go public) is removed after a good run, kept after a failure.
 #
-# Runs on Jared's Mac only (CI does the same in app-release.yml): the app-update key never touches a server-side box.
+# Runs on Jared's Mac only (CI does the same in release.yml): the app-update key never touches a server-side box.
 set -euo pipefail
 { set +x; } 2>/dev/null
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-host="${QRTZ_APP_HOST:-https://modules.qrtz.ai}"
+host="${QRTZ_APP_HOST:-https://github.com/qrtz-ai/qrtz/releases/download/index}"
 keys="${QRTZ_KEYS:-$HOME/.qrtz-keys}"
 keyfile="${QRTZ_APP_UPDATE_KEY:-$keys/app-update.key}"
-r2_account_default="177665085902fbdae8b82993bb7a0b91"
 pubkey="$repo/crates/qrtz-app/src/app_update_key.pub"
 tauri="$repo/node_modules/.bin/tauri"
 dry=0 refresh=0 tag=1 app="" dmg=""
@@ -90,26 +87,6 @@ with_key() { # [--quiet] <command…>: run it with TAURI_SIGNING_PRIVATE_KEY fro
     TAURI_SIGNING_PRIVATE_KEY="$(tr -d '[:space:]' <"$keyfile")" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" "$@"
   fi
 }
-with_r2() { # <command…>: run it with the R2 credentials and the qrtzr2: remote (scripts/ci/r2-env.sh), in a subshell
-  if [[ $dry == 1 ]]; then
-    printf '+ R2_*=<%s>' "$( [[ -n "${R2_ACCESS_KEY_ID:-}" && -n "${R2_SECRET_ACCESS_KEY:-}" ]] && echo env || echo 'keychain qrtz-r2')"
-    printf ' %q' "$@"; printf '\n'
-    return 0
-  fi
-  (
-    if [[ -z "${R2_ACCESS_KEY_ID:-}" || -z "${R2_SECRET_ACCESS_KEY:-}" ]]; then
-      R2_ACCESS_KEY_ID="$(security find-generic-password -s qrtz-r2 2>/dev/null | sed -n 's/^ *"acct"<blob>="\(.*\)"$/\1/p')"
-      [[ -n "$R2_ACCESS_KEY_ID" ]] || die "no keychain item qrtz-r2 (security add-generic-password -s qrtz-r2 -a <access key id> -w)"
-      R2_SECRET_ACCESS_KEY="$(security find-generic-password -s qrtz-r2 -w)" || die "can't read the keychain item qrtz-r2"
-    fi
-    if [[ -z "${R2_ACCOUNT_ID:-}" ]]; then
-      if [[ -f "$keys/r2-account-id" ]]; then R2_ACCOUNT_ID="$(tr -d '[:space:]' <"$keys/r2-account-id")"; else R2_ACCOUNT_ID="$r2_account_default"; fi
-    fi
-    export R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
-    . "$repo/scripts/ci/r2-env.sh"
-    "$@"
-  )
-}
 sha() { if command -v shasum >/dev/null; then shasum -a 256 "$1"; else sha256sum "$1"; fi | cut -d' ' -f1; }
 gt() { # <a> <b>: a > b (x.y.z)
   # Arguments go in the environment: under `bun --bun` (the tests), `node -e` drops all but its last argument.
@@ -137,7 +114,7 @@ done
 cd "$repo"
 if [[ $dry == 0 ]]; then
   [[ "$(uname -s)" == Darwin ]] || die "runs on Jared's Mac only (the app-update key never touches a server-side box)"
-  for t in node curl minisign rclone security tar git; do command -v "$t" >/dev/null || die "missing $t (brew install minisign rclone)"; done
+  for t in node curl minisign gh security tar git; do command -v "$t" >/dev/null || die "missing $t (brew install minisign gh)"; done
   [[ -x "$tauri" ]] || die "no tauri CLI at $tauri (bun install --frozen-lockfile)"
 fi
 [[ -z "$(git status --porcelain)" ]] || die "the tree isn't clean (commit or stash first; a release is a commit on main)"
@@ -166,12 +143,12 @@ cleanup() {
 trap cleanup EXIT
 live_version() { # print the live feed's version, or nothing when there is no feed (404); dies on anything else
   local code
-  code="$(http -o "$scratch/live.json" "$host/v1/app/latest.json?r=$$-$RANDOM")"
+  code="$(http -L -o "$scratch/live.json" "$host/v1.app.latest.json")"
   case "$code" in
     200) node scripts/app/feed.mjs --unwrap "$scratch/live.json" |
       node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(JSON.parse(s).version))' ;;
     404) rm -f "$scratch/live.json" ;;
-    *) die "$host/v1/app/latest.json: HTTP $code (can't tell what is live; nothing done)" ;;
+    *) die "$host/v1.app.latest.json: HTTP $code (can't tell what is live; nothing done)" ;;
   esac
 }
 
@@ -183,7 +160,7 @@ if [[ $refresh == 1 ]]; then
   if [[ $dry == 0 ]]; then work="$(mktemp -d)"; else work=""; fi
   d="${work:-<work>}"
   if [[ $dry == 1 ]]; then
-    echo "+ unwrap $host/v1/app/latest.json > $d/live-feed.json $d/live.sig"
+    echo "+ unwrap $host/v1.app.latest.json > $d/live-feed.json $d/live.sig"
   else
     F="$scratch/live.json" O="$d/live-feed.json" G="$d/live.sig" node -e 'const fs=require("fs"),{F,O,G}=process.env,e=JSON.parse(fs.readFileSync(F));fs.writeFileSync(O,Buffer.from(e.feed,"base64"));fs.writeFileSync(G,Buffer.from(e.signature,"base64"))'
     cp "$scratch/live.json" "$d/live.json"
@@ -194,24 +171,23 @@ if [[ $refresh == 1 ]]; then
   run_to "$d/feed.json" node scripts/app/feed.mjs --unwrap "$d/live.json" --expires-days 30
   with_key bash scripts/app/sign-feed.sh "$d/feed.json" "$d/latest.json"
   say "upload latest.json and check"
-  with_r2 rclone copyto "$d/latest.json" "qrtzr2:${R2_BUCKET:-qrtz-modules}/v1/app/latest.json" --ignore-times \
-    --header-upload "Cache-Control: public, max-age=60" --header-upload "Content-Type: application/json" -v
+  run bash scripts/release/gh-store.sh upload-feed "$d/latest.json"
   if [[ $dry == 1 ]]; then
-    echo "+ curl $host/v1/app/latest.json until it is $d/latest.json (20 tries, 15 s apart)"
+    echo "+ curl $host/v1.app.latest.json until it is $d/latest.json (20 tries, 15 s apart)"
     exit 0
   fi
   want="$(sha "$d/latest.json")"
   for i in $(seq 1 20); do
-    if curl -fsS -H 'Cache-Control: no-cache' -o "$d/got" "$host/v1/app/latest.json?r=$$-$i" && [[ "$(sha "$d/got")" == "$want" ]]; then
+    if curl -fsSL -H 'Cache-Control: no-cache' -o "$d/got" "$host/v1.app.latest.json" && [[ "$(sha "$d/got")" == "$want" ]]; then
       echo "publish-local: the re-signed feed (qrtz $lv) is live"
       exit 0
     fi
     sleep 15
   done
-  die "$host/v1/app/latest.json isn't the re-signed feed"
+  die "$host/v1.app.latest.json isn't the re-signed feed"
 fi
 
-# ---- publish: app-release.yml after the build ----
+# ---- publish: release.yml after the build ----
 v="$(node scripts/app/version.mjs current)"
 [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "tauri.conf.json's version isn't x.y.z: $v"
 git rev-parse -q --verify "refs/tags/app-v$v" >/dev/null && die "app-v$v already exists: qrtz $v is released (bump: node scripts/app/version.mjs bump)"
@@ -231,11 +207,11 @@ if [[ -n "$lv" ]] && ! gt "$v" "$lv"; then
   die "the live feed already has qrtz $lv (>= $v): published objects are immutable, bump the version"
 fi
 tgzname="qrtz_${v}_aarch64.app.tar.gz"
-code="$(http -I -o /dev/null "$host/v1/app/$v/$tgzname")"
+code="$(http -I -L -o /dev/null "$host/v1.app.$v.$tgzname")"
 case "$code" in
   404) ;;
   200) die "v1/app/$v/$tgzname is already up (an earlier, partial publish?): objects are immutable, bump the version" ;;
-  *) die "$host/v1/app/$v/$tgzname: HTTP $code (can't tell what is live; nothing done)" ;;
+  *) die "$host/v1.app.$v.$tgzname: HTTP $code (can't tell what is live; nothing done)" ;;
 esac
 
 if [[ -z "$app" ]]; then
@@ -264,7 +240,7 @@ else
   codesign --verify --strict -R='anchor apple generic and identifier "ai.qrtz.echo" and certificate leaf[subject.OU] = "MR26CCZ496"' "$app/Contents/MacOS/qrtz-echo"
   codesign --verify --deep --strict -R='anchor apple generic and identifier "ai.qrtz.desktop" and certificate leaf[subject.OU] = "MR26CCZ496" and notarized' "$app"
 fi
-# The release gate shared with release:mac and app-release.yml: every helper's launch requirement, entitlements,
+# The release gate shared with release:mac and release.yml: every helper's launch requirement, entitlements,
 # notarization and staple (the 0.2.4 candidate shipped tauri build's signatures and the app refused to start echo).
 run bash "$repo/scripts/release/verify-bundle.sh" "$app"
 
@@ -298,9 +274,9 @@ with_key bash scripts/app/sign-feed.sh "$out/feed.json" "$out/latest.json"
 
 say "source archives (qrtz at HEAD, the exact FluidAudio pin, the build scripts)"
 run bash "$repo/scripts/release/source-archives.sh" "$v" "$out" HEAD
-say "upload to modules.qrtz.ai (R2 v1/app/, latest.json last)"
-with_r2 env VERSION="$v" bash scripts/app/upload.sh "$out" "$dmg"
-say "what modules.qrtz.ai serves is what was signed"
+say "upload to the index GitHub release (v1.app.*, latest.json last)"
+run env VERSION="$v" bash scripts/release/gh-store.sh upload-app "$out" "$dmg"
+say "what the index release serves is what was signed"
 run env VERSION="$v" QRTZ_APP_HOST="$host" bash scripts/app/verify-live.sh "$out" "$dmg"
 if [[ $tag == 1 ]]; then
   say "tag app-v$v"
