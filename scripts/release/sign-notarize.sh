@@ -66,6 +66,24 @@ case "$QRTZ_SIGN_ID" in
   *) die "QRTZ_SIGN_ID doesn't name team $QRTZ_TEAM_ID" ;;
 esac
 
+# The speech module source is baked in at build time (docs/release.md). The five QRTZ_SPEECH_* vars are all or none:
+# none set builds without a speech module; only some set is a misconfigured release and stops before anything runs.
+# Only names are printed, never values. Not checked with --app (that build already has its source baked in).
+SPEECH_VARS=(QRTZ_SPEECH_URL QRTZ_SPEECH_KEY_ID QRTZ_SPEECH_KEY QRTZ_SPEECH_ROOT_KEY_ID QRTZ_SPEECH_ROOT_KEY)
+if [ -z "$APP" ]; then
+  speech_set=(); speech_missing=()
+  for v in "${SPEECH_VARS[@]}"; do
+    if [ -n "${!v:-}" ]; then speech_set+=("$v"); else speech_missing+=("$v"); fi
+  done
+  if [ "${#speech_set[@]}" -eq 0 ]; then
+    echo "sign-notarize: no QRTZ_SPEECH_* set: building without a speech module" >&2
+  elif [ "${#speech_missing[@]}" -gt 0 ]; then
+    die "QRTZ_SPEECH_* are all or none; set: ${speech_set[*]}; missing: ${speech_missing[*]}"
+  else
+    echo "sign-notarize: speech module source: all ${#SPEECH_VARS[@]} QRTZ_SPEECH_* set" >&2
+  fi
+fi
+
 if [ "$DRY" != 1 ]; then
   [ "$(uname -s)" = Darwin ] || die "signing needs macOS"
   for t in codesign xcrun spctl shasum bun; do command -v "$t" >/dev/null || die "missing $t"; done
