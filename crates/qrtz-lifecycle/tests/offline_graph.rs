@@ -1990,6 +1990,47 @@ fn network_role_crates_are_separate_processes_with_only_their_declared_network_c
     }
 }
 
+/// A network role's `devOnly` exception, checked hard: exactly one `src/<name>.rs` file, the cfg must be exactly
+/// `all(debug_assertions, feature = "dev-local")`, lib.rs must declare that module once and directly under that cfg,
+/// and its egress may only be the plain-http loopback origin. Returns (repo-relative path, dev egress).
+fn dev_only_file(r: &Path, c: &str, rule: &Value) -> Option<(String, Vec<String>)> {
+    let d = rule.get("devOnly")?;
+    let file = d["file"].as_str().expect("devOnly.file");
+    let cfg = d["cfg"].as_str().expect("devOnly.cfg");
+    assert_eq!(
+        cfg, r#"all(debug_assertions, feature = "dev-local")"#,
+        "{c}: devOnly cfg"
+    );
+    let name = file
+        .strip_prefix("src/")
+        .and_then(|f| f.strip_suffix(".rs"))
+        .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+        .unwrap_or_else(|| panic!("{c}: devOnly.file must be src/<name>.rs, got {file}"));
+    let lib = std::fs::read_to_string(r.join("crates").join(c).join("src/lib.rs")).unwrap();
+    let decl = format!("#[cfg({cfg})]\npub mod {name};");
+    assert_eq!(
+        lib.matches(&decl).count(),
+        1,
+        "{c}: lib.rs must declare `{name}` once, directly under #[cfg({cfg})]"
+    );
+    assert_eq!(
+        lib.matches(&format!("mod {name};")).count(),
+        1,
+        "{c}: `{name}` declared more than once"
+    );
+    let egress: Vec<String> = d["egress"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    assert!(
+        egress.iter().all(|e| e == "http://127.0.0.1:"),
+        "{c}: devOnly egress may only be the loopback origin: {egress:?}"
+    );
+    Some((format!("crates/{c}/{file}"), egress))
+}
+
 #[test]
 fn network_role_crate_sources_name_no_url_outside_their_egress() {
     let r = root();
@@ -2004,19 +2045,26 @@ fn network_role_crate_sources_name_no_url_outside_their_egress() {
             egress.iter().all(|e| e.starts_with("https://")),
             "{c}: egress must be https: {egress:?}"
         );
+        // The one exception (docs/dash-local.md): `devOnly` names ONE file that lib.rs compiles only under the
+        // debug + dev-local cfg; that file alone may name its own (loopback) egress. Nothing else is relaxed.
+        let dev_only = dev_only_file(&r, &c, &rule);
         let mut files = vec![];
         rust_sources(&r.join("crates").join(&c).join("src"), &mut files);
         assert!(!files.is_empty(), "{c}: no sources");
         let mut bad = vec![];
         for f in &files {
             let rel = f.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/");
+            let allowed: Vec<String> = match &dev_only {
+                Some((path, dev_egress)) if *path == rel => dev_egress.clone(),
+                _ => egress.clone(),
+            };
             for (n, l) in code(f) {
                 for (i, _) in l.match_indices("://") {
                     let start = l[..i]
                         .rfind(|ch: char| !ch.is_ascii_alphanumeric())
                         .map_or(0, |x| x + 1);
                     let url = &l[start..];
-                    if !egress.iter().any(|e| url.starts_with(e.as_str())) {
+                    if !allowed.iter().any(|e| url.starts_with(e.as_str())) {
                         bad.push(format!("{rel}:{n}: {}", l.trim()));
                     }
                 }

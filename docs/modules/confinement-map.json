@@ -38,6 +38,12 @@
         "adr": "0231",
         "why": "Agent Dash's dashboard API: dash:* calls (dash.read, dash.manage) relayed over stdio to https://dash.qrtz.ai, with the owner key kept in this helper's own Keychain item.",
         "egress": ["https://dash.qrtz.ai"],
+        "devOnly": {
+          "why": "docs/dash-local.md: local wrangler dev only. This one file, compiled only under the cfg below, may name the loopback origin; release builds never contain it.",
+          "file": "src/dev_origin.rs",
+          "cfg": "all(debug_assertions, feature = \"dev-local\")",
+          "egress": ["http://127.0.0.1:"]
+        },
         "netCrates": ["reqwest"],
         "entitlements": {
           "file": "crates/qrtz-dash-net/entitlements/ai.qrtz.dash-net.entitlements",
