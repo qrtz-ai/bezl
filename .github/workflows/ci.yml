@@ -124,6 +124,25 @@ jobs:
       - name: qrtz-dash-net release tests (fail closed, no dev override)
         run: cargo test -p qrtz-dash-net --release --test fail_closed --test dev_origin
 
+  # QRT-288: dependency policy. cargo-deny checks advisories, licenses (AGPL-compatible list), bans and sources
+  # against deny.toml; cargo audit is a second RustSec check over Cargo.lock. Reads only the lockfile: no build,
+  # no secrets, read-only token (workflow `permissions: contents: read`).
+  deps:
+    name: cargo deny · cargo audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && cargo --version
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2,cargo-audit@0.22.2
+      - run: cargo deny --locked check
+      # Fails on a vulnerability; unmaintained/unsound notices on transitive crates are reported, not fatal
+      # (the same split as deny.toml's `unmaintained = "workspace"`).
+      - run: cargo audit
+
   macos:
     name: macOS · swift test · cargo test · cargo check desktop
     runs-on: macos-26
