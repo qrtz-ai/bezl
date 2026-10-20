@@ -89,7 +89,9 @@ pub fn parse_range(h: &str, len: u64) -> Range {
 pub const MAX_CHUNK: u64 = 4 * 1024 * 1024;
 
 fn status(code: StatusCode) -> Response<Vec<u8>> {
-    Response::builder().status(code).body(Vec::new()).unwrap()
+    let mut r = Response::new(Vec::new());
+    *r.status_mut() = code;
+    r
 }
 
 /// Request threads: WebKit fires several ranges per seek; more just wait their turn.
@@ -98,6 +100,11 @@ pub const WORKERS: usize = 4;
 type Job = Box<dyn FnOnce() + Send>;
 
 /// Runs `job` on the media pool ([`WORKERS`] threads, started on first use).
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "thread spawn only fails when the OS is out of threads at startup"
+)]
 pub fn spawn(job: impl FnOnce() + Send + 'static) {
     static POOL: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
     let tx = POOL.get_or_init(|| {
@@ -173,7 +180,7 @@ fn serve_file(f: &mut std::fs::File, len: u64, req: &Request<Vec<u8>>, chunk: u6
             .status(StatusCode::RANGE_NOT_SATISFIABLE)
             .header(header::CONTENT_RANGE, format!("bytes */{len}"))
             .body(Vec::new())
-            .unwrap(),
+            .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),
         Some(Some((s, e))) => {
             let e = e.min(s + chunk - 1);
             let mut buf = vec![0; (e - s + 1) as usize];
@@ -187,7 +194,7 @@ fn serve_file(f: &mut std::fs::File, len: u64, req: &Request<Vec<u8>>, chunk: u6
                 .header(header::CONTENT_RANGE, format!("bytes {s}-{e}/{len}"))
                 .header(header::CONTENT_LENGTH, buf.len())
                 .body(buf)
-                .unwrap()
+                .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR))
         }
         None => {
             let mut buf = Vec::with_capacity(len as usize);
@@ -197,7 +204,7 @@ fn serve_file(f: &mut std::fs::File, len: u64, req: &Request<Vec<u8>>, chunk: u6
             b.status(StatusCode::OK)
                 .header(header::CONTENT_LENGTH, buf.len())
                 .body(buf)
-                .unwrap()
+                .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR))
         }
     }
 }

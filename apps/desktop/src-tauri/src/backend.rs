@@ -388,7 +388,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         tauri::async_runtime::spawn(async move { setup.speech.resume_pending() });
     }
     // Startup recovery (R1–R3 + audio retention): finish what a crash left behind. start() waits for it.
-    let runtime = built.runtime.clone();
+    let runtime = built.runtime;
     let svc = service.clone();
     tauri::async_runtime::spawn(async move {
         match runtime.recover().await {
