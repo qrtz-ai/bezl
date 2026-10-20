@@ -20,6 +20,16 @@ async fn main() {
         );
         std::process::exit(2);
     }
+    // QRT-286: remove owner-key items saved before origin tagging (untagged only; attributes only; idempotent).
+    // A failure is reported and the helper runs on: the store never reads an untagged item anyway.
+    match qrtz_dash_net::legacy_sweep::platform_sweep() {
+        Ok(r) if r.deleted > 0 || r.skipped > 0 => eprintln!(
+            "qrtz-dash-net: legacy keychain sweep: deleted {} untagged item(s), skipped {}",
+            r.deleted, r.skipped
+        ),
+        Ok(_) => {}
+        Err(e) => eprintln!("qrtz-dash-net: legacy keychain sweep stopped: {e}"),
+    }
     let Ok(https) = Https::new() else {
         std::process::exit(1);
     };
