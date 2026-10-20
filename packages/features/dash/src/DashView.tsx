@@ -17,7 +17,6 @@ import {
   Text,
 } from '@qrtz/ui';
 import {
-  DASH_ORIGIN,
   type DashAgent,
   type DashDelete,
   type DashView as DashViewData,
@@ -43,9 +42,7 @@ const ago = (ms: number) => {
 export default function DashView() {
   const qrtz = useQrtz();
   const [view, setView] = useState<DashViewData | null>(null);
-  const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(
-    null,
-  );
+  const [copied, setCopied] = useState(false);
   const [confirmDash, setConfirmDash] = useState(false);
   const [setupToken, setSetupToken] = useState('');
   const [serverError, setServerError] = useState<string | null>(null);
@@ -69,8 +66,18 @@ export default function DashView() {
       (r) => r.opened,
       () => false,
     );
-  const issue = () =>
-    void qrtz.invoke('dash:issue-code').then(setCode, () => setCode(null));
+  // QRT-298: rust issues the code, builds the prompt for the connected origin and copies it; we never see the code.
+  const origin = view?.origin || null;
+  useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(id);
+  }, [copied]);
+  const copyPrompt = () =>
+    void qrtz.invoke('dash:copy-prompt').then(
+      (r) => setCopied(r.copied),
+      () => setCopied(false),
+    );
 
   // ADR 0231: the setup token is sent once and dropped; the owner key it buys stays in the keychain (rust side).
   const connect = () =>
@@ -106,15 +113,27 @@ export default function DashView() {
             what your agents are doing, read-only
           </Text>
           {view && !view.deleted ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="download"
-              onClick={issue}
-              data-testid="dash-add-agent"
-            >
-              add an agent
-            </Button>
+            <>
+              {!origin ? (
+                <Text variant="caption" muted data-testid="dash-not-connected">
+                  not connected
+                </Text>
+              ) : copied ? (
+                <Text variant="caption" muted data-testid="dash-copied">
+                  copied
+                </Text>
+              ) : null}
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="copy"
+                onClick={copyPrompt}
+                disabled={!origin}
+                data-testid="dash-copy-prompt"
+              >
+                copy prompt
+              </Button>
+            </>
           ) : null}
         </>
       }
@@ -122,25 +141,6 @@ export default function DashView() {
       {view?.deleted ? (
         <Callout tone="info" title="this dashboard was deleted">
           agents writing to it are told to stop.
-        </Callout>
-      ) : null}
-      {code ? (
-        <Callout
-          tone="info"
-          title="enrollment code"
-          data-testid="dash-code"
-          action={
-            <Button size="sm" variant="ghost" onClick={() => setCode(null)}>
-              done
-            </Button>
-          }
-        >
-          <Stack gap={1}>
-            <Mono>{code.code}</Mono>
-            <Text variant="caption" muted>
-              {`give it to one agent with ${DASH_ORIGIN}/v1/readme. works once, for 15 minutes. it isn't shown again.`}
-            </Text>
-          </Stack>
         </Callout>
       ) : null}
       {pending.map((a) => (

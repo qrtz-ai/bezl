@@ -927,6 +927,14 @@ export const ipcContract = {
       expiresAt: z.number(),
     }),
   }),
+  /** QRT-298 (proposed, Doug's IPC `dash_copy_prompt`): issues an ENR- code, builds the agent prompt for the connected
+   * origin and writes it to the clipboard in Rust. The renderer never sees the code. */
+  'dash:copy-prompt': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.void(),
+    response: z.object({ copied: z.literal(true) }),
+  }),
   /** ADR 0228: invalidate every outstanding code (agent tokens keep working). */
   'dash:rotate-codes': defineChannel({
     version: 1,

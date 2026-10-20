@@ -12038,6 +12038,26 @@
         "additionalProperties": false
       }
     },
+    "dash:copy-prompt": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "copied": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "copied"
+        ],
+        "additionalProperties": false
+      }
+    },
     "dash:rotate-codes": {
       "version": 1,
       "capability": "dash.manage",
