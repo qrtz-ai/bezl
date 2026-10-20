@@ -15,6 +15,8 @@ import {
   TermList,
   Text,
   useToast,
+  useUserError,
+  ErrorCallout,
   SpeechRequired,
   ModuleSettingsButton,
   ModuleSettingsModal,
@@ -67,7 +69,6 @@ const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
  */
 function useEchoSwitch() {
   const qrtz = useQrtz();
-  const toast = useToast();
   const changed = useQrtzEvent('config:changed');
   const [cfg, setCfg] = useState<Config | null>(null);
   const [parakeet, setParakeet] = useState<SpeechSetupStatus | null>(null);
@@ -102,7 +103,8 @@ function useEchoSwitch() {
   const needsParakeet = parakeet
     ? !!parakeet.configured && !parakeet.installed
     : statusFailed;
-  const fail = (e: Error) => toast(e.message, 'error');
+  const switchErr = useUserError();
+  const fail = switchErr.fail('change echo');
   const download = () =>
     qrtz.invoke('speech:download', { extensions: ['echo'] });
   const setOn = (v: boolean) =>
@@ -191,6 +193,13 @@ function useEchoSwitch() {
     control,
     dialog,
     statusError,
+    switchError: (
+      <ErrorCallout
+        error={switchErr.error}
+        onDismiss={switchErr.clear}
+        data-testid="echo-error"
+      />
+    ),
     download: () => void download().then(setParakeet, fail),
     cancel: () =>
       void qrtz
@@ -206,6 +215,7 @@ export default function TalkView() {
       <Page data-testid="talk-off" title="echo" actions={echo.control}>
         {echo.notice}
         {echo.statusError}
+        {echo.switchError}
         <EmptyState title="echo is off: turn it on to dictate with fn" />
         {echo.dialog}
       </Page>
@@ -215,6 +225,7 @@ export default function TalkView() {
       switchControl={echo.control}
       dialog={echo.dialog}
       statusError={echo.statusError}
+      switchError={echo.switchError}
       notice={echo.notice}
       onDownload={echo.download}
       onCancel={echo.cancel}
@@ -226,6 +237,7 @@ function TalkOn({
   switchControl,
   dialog,
   statusError,
+  switchError,
   notice,
   onDownload,
   onCancel,
@@ -233,6 +245,7 @@ function TalkOn({
   switchControl: ReactNode;
   dialog: ReactNode;
   statusError: ReactNode;
+  switchError: ReactNode;
   notice: ReactNode;
   onDownload: () => void;
   onCancel: () => void;
@@ -251,6 +264,7 @@ function TalkOn({
   const qrtz = useQrtz();
   const speechSetup = useSpeechSetup({ check: false, extensions: ['echo'] });
   const toast = useToast();
+  const { error, fail: failed, clear } = useUserError();
   const live = useQrtzEvent('talk:state');
   const changed = useQrtzEvent('talk:history-changed');
   const [initial, setInitial] = useState<TalkState | null>(null);
@@ -275,13 +289,13 @@ function TalkOn({
   const toggle = useCallback(() => {
     void qrtz
       .invoke(listening ? 'talk:stop' : 'talk:start')
-      .catch((e: Error) => toast(e.message, 'error'));
-  }, [qrtz, listening, toast]);
+      .catch(failed(listening ? 'stop dictation' : 'start dictation'));
+  }, [qrtz, listening, failed]);
 
   const saveDict = (next: DictionaryEntry[]) =>
     void qrtz
       .invoke('talk:set-dictionary', { entries: next })
-      .then(setDict, (e: Error) => toast(e.message, 'error'));
+      .then(setDict, failed('save the dictionary'));
   const addTerm = () => {
     const t = parseTerm(draft);
     if (!t) return;
@@ -328,6 +342,8 @@ function TalkOn({
         </>
       }
     >
+      {switchError}
+      <ErrorCallout error={error} onDismiss={clear} data-testid="talk-error" />
       {optsModal}
       {dialog}
       {notice}

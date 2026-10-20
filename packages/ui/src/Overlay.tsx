@@ -87,7 +87,11 @@ export function Dialog({
   );
 }
 
-type ToastKind = 'info' | 'success' | 'error';
+/**
+ * Toasts are for non-critical confirmations only ("copied", "deleted · undo"). Errors never toast: they show
+ * inline where the action happened (ErrorCallout, QRT-303), so there is no 'error' kind.
+ */
+type ToastKind = 'info' | 'success';
 export interface ToastOptions {
   /** e.g. Undo. Clicking it runs onClick and dismisses the toast. */
   action?: { label: string; onClick: () => void };
@@ -114,6 +118,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
   const push = useCallback(
     (message: string, kind: ToastKind = 'info', opts: ToastOptions = {}) => {
+      if ((kind as string) === 'error')
+        throw new Error('toasts never carry errors; show an ErrorCallout');
       const id = ++n.current;
       setItems((xs) => [...xs, { id, kind, message, ...opts }]);
       setTimeout(() => dismiss(id), opts.durationMs ?? 3500);
@@ -123,7 +129,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dot = {
     info: t.color.textMuted,
     success: t.color.success,
-    error: t.color.danger,
   };
   return (
     <ToastContext.Provider value={push}>

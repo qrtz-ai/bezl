@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CommandPalette, isIconName, useToast } from '@qrtz/ui';
+import {
+  CommandPalette,
+  ErrorCallout,
+  isIconName,
+  useToast,
+  useUserError,
+} from '@qrtz/ui';
 import { isViewOn, requestNavigate, type SessionView } from '@qrtz/core';
 import { registry } from './subapps';
 import { shellClient } from './shellClient';
@@ -44,6 +50,7 @@ export function Palette({
   onNavigate: (id: string) => void;
 }) {
   const toast = useToast();
+  const { error, fail: failed, clear } = useUserError();
   const [q, setQ] = useState('');
   const [i, setI] = useState(0);
   const [session, setSession] = useState<SessionView | null>(null);
@@ -141,14 +148,19 @@ export function Palette({
   ];
   const pick = (c: Command | undefined) => {
     if (!c) return;
-    onClose();
-    Promise.resolve(c.run()).catch((e: Error) => toast(e.message, 'error'));
+    clear();
+    // Close on success; on failure the palette stays open and says what happened, inline.
+    Promise.resolve(c.run()).then(onClose, failed(`run "${c.title}"`));
   };
 
   return (
     <CommandPalette
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        clear();
+        onClose();
+      }}
+      notice={<ErrorCallout error={error} data-testid="palette-error" />}
       query={q}
       onQuery={(v) => {
         setQ(v);

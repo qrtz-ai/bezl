@@ -30,7 +30,11 @@ const STATUS: Record<ExtensionStatus, { label: string; tone: BadgeTone }> = {
   working: { label: 'working…', tone: 'primary' },
 };
 
+/** Healthy, expected states say nothing (QRT-303: badges only for exceptions); the row's action already implies them. */
+const QUIET = new Set<ExtensionStatus>(['installed', 'built-in', 'available']);
+
 export function ExtensionStatusBadge({ status }: { status: ExtensionStatus }) {
+  if (QUIET.has(status)) return null;
   const s = STATUS[status];
   return (
     <Badge tone={s.tone} data-testid="extension-status">

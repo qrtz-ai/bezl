@@ -322,9 +322,9 @@ function AgentSection({
                 stale
               </Badge>
             ) : a.heartbeat ? (
-              <Badge tone={a.heartbeat === 'running' ? 'success' : 'neutral'}>
+              <Text variant="caption" muted>
                 {a.heartbeat}
-              </Badge>
+              </Text>
             ) : null}
             {a.flagged ? (
               <Badge tone="danger">sent a secret, redacted</Badge>

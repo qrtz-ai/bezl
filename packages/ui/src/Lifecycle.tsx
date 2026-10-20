@@ -1,8 +1,9 @@
-import { tokens } from './tokens';
+import { tokens, typeStyle } from './tokens';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Button } from './Button';
 import { Callout } from './Callout';
+import { isReadable } from './UserError';
 import { Text, type TextTone } from './Text';
 import { Badge } from './Badge';
 import { Icon } from './Icon';
@@ -229,13 +230,23 @@ export function PipelineSteps({
             {s.status === 'failed' && s.fallback
               ? 'on-device fallback'
               : STATUS[s.status].label}
-            {s.status === 'retrying' ? ` ${s.attempts}/${s.maxAttempts}` : ''}
           </Text>
           <div style={{ flex: 1, minWidth: 0 }}>
             {s.error && (s.status === 'failed' || s.status === 'retrying') ? (
-              <Text variant="caption" muted truncate title={s.error}>
-                {s.error}
-              </Text>
+              <details data-testid={`pipeline-details-${s.id}`}>
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    color: t.color.textMuted,
+                    ...typeStyle('caption', t),
+                  }}
+                >
+                  details
+                </summary>
+                <Text variant="caption" muted>
+                  {`${s.error} · attempt ${s.attempts} of ${s.maxAttempts}`}
+                </Text>
+              </details>
             ) : null}
           </div>
           {s.status === 'failed' && onRetry ? (
@@ -281,80 +292,82 @@ export function CaptureStatus({
   error?: string | null;
   onDismiss?: () => void;
 }) {
-  const t = useTheme();
   if (!reconnecting && !degraded.length && !silent.length && !noAudio && !error)
     return null;
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: t.space[3],
-      }}
-    >
-      {reconnecting ? (
-        <Text
-          variant="caption"
-          tone="warning"
-          data-testid="lifecycle-reconnecting"
-        >
-          reconnecting · attempt {reconnecting.attempt} ·{' '}
-          {reconnecting.secondsLeft}s
-        </Text>
-      ) : null}
-      {noAudio ? (
-        <Badge tone="danger" role="alert" data-testid="capture-no-audio">
-          <Icon name="no-audio" size="sm" />
-          no audio is being recorded
-        </Badge>
-      ) : (
-        silent.map((s) => (
-          <Badge
-            key={s.source}
-            tone="warning"
-            role="status"
-            data-testid={`capture-silent-${s.source}`}
-          >
-            <Icon name="mic-off" size="sm" />
-            no audio from {SOURCE_LABEL[s.source]} since {s.since}
-          </Badge>
-        ))
-      )}
-      {degraded.map((d) => (
-        <Text
-          key={d.id}
-          variant="caption"
-          tone="warning"
-          data-testid={`degraded-${d.id}`}
-        >
-          {d.label}
-        </Text>
-      ))}
-      {error ? (
+  // One quiet callout: the most urgent line leads, plain words only; counts and codes go under details.
+  const lines: ReactNode[] = [];
+  if (error && isReadable(error))
+    lines.push(
+      <span key="error" data-testid="lifecycle-error" role="alert">
+        {error}
+      </span>,
+    );
+  if (noAudio)
+    lines.push(
+      <span key="no-audio" data-testid="capture-no-audio" role="alert">
+        no audio is being recorded
+      </span>,
+    );
+  else
+    for (const s of silent)
+      lines.push(
         <span
-          data-testid="lifecycle-error"
-          role="alert"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: t.space[2],
-          }}
+          key={s.source}
+          data-testid={`capture-silent-${s.source}`}
+          role="status"
         >
-          <Text tone="danger">{error}</Text>
-          {onDismiss ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              data-testid="lifecycle-error-dismiss"
-              onClick={onDismiss}
-            >
-              dismiss
-            </Button>
-          ) : null}
-        </span>
+          no audio from {SOURCE_LABEL[s.source]} since {s.since}
+        </span>,
+      );
+  if (reconnecting)
+    lines.push(
+      <span key="reconnecting" data-testid="lifecycle-reconnecting">
+        reconnecting to the recorder
+      </span>,
+    );
+  for (const d of degraded)
+    lines.push(
+      <span key={d.id} data-testid={`degraded-${d.id}`}>
+        {d.label}
+      </span>,
+    );
+  const technical = [
+    error && !isReadable(error) ? error : null,
+    reconnecting
+      ? `attempt ${reconnecting.attempt}, next try in ${reconnecting.secondsLeft}s`
+      : null,
+  ].filter(Boolean);
+  const title =
+    lines[0] ??
+    (error ? (
+      <span data-testid="lifecycle-error" role="alert">
+        recording hit a problem
+      </span>
+    ) : null);
+  const rest = lines[0] ? lines.slice(1) : lines;
+  return (
+    <Callout
+      tone={error || noAudio ? 'danger' : 'warning'}
+      data-testid="capture-status"
+      title={title}
+      details={technical.length ? technical.join(' · ') : undefined}
+      action={
+        error && onDismiss ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid="lifecycle-error-dismiss"
+            onClick={onDismiss}
+          >
+            dismiss
+          </Button>
+        ) : undefined
+      }
+    >
+      {rest.length ? (
+        <div style={{ display: 'grid', gap: tokens.space[0.5] }}>{rest}</div>
       ) : null}
-    </div>
+    </Callout>
   );
 }
 

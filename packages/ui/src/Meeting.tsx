@@ -643,9 +643,12 @@ export function CommandPalette({
   index,
   onIndex,
   onPick,
+  notice,
 }: {
   open: boolean;
   onClose: () => void;
+  /** An inline notice above the results, e.g. the ErrorCallout of a command that failed. */
+  notice?: ReactNode;
   query: string;
   onQuery: (q: string) => void;
   results: {
@@ -706,6 +709,7 @@ export function CommandPalette({
             outline: 'none',
           }}
         />
+        {notice ? <div style={{ padding: t.space[2] }}>{notice}</div> : null}
         <div
           id="palette-results"
           role="listbox"

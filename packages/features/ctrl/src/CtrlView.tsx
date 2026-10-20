@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AskCard,
   Button,
@@ -17,7 +17,8 @@ import {
   Stack,
   StopBar,
   Text,
-  useToast,
+  useUserError,
+  ErrorCallout,
 } from '@qrtz/ui';
 import {
   CTRL_TEXT_MAX,
@@ -47,7 +48,6 @@ export default function CtrlView() {
     if (route.path === SETTINGS_PATH) route.navigate('', { replace: true });
   };
   const qrtz = useQrtz();
-  const toast = useToast();
   const changed = useQrtzEvent('ctrl:changed');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -55,7 +55,8 @@ export default function CtrlView() {
   const [run, setRun] = useState<CtrlRunView | null>(null);
   const [model, setModel] = useState<CtrlModelState | null>(null);
 
-  const fail = useCallback((e: Error) => toast(e.message, 'error'), [toast]);
+  const { error, fail: toError, clear } = useUserError();
+  const fail = useMemo(() => toError('reach ctrl'), [toError]);
   const loadRuns = useCallback(
     () => void qrtz.invoke('ctrl:runs').then(setRuns, fail),
     [qrtz, fail],
@@ -232,6 +233,7 @@ export default function CtrlView() {
         </>
       }
     >
+      <ErrorCallout error={error} onDismiss={clear} data-testid="ctrl-error" />
       {optsModal}
       {model ? (
         <CtrlModelRequired model={model} onConsent={consent}>
