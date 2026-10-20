@@ -52,7 +52,8 @@ impl ErrorCode {
 }
 
 /// The only error that crosses the IPC boundary. Serializes exactly like `AppError.toJSON()`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[error("{}: {}", code.as_str(), message)]
 pub struct AppError {
     pub code: ErrorCode,
     pub message: String,
@@ -95,10 +96,3 @@ impl AppError {
         v
     }
 }
-
-impl std::fmt::Display for AppError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.code.as_str(), self.message)
-    }
-}
-impl std::error::Error for AppError {}

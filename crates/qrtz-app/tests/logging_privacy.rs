@@ -125,7 +125,7 @@ async fn no_transcript_dictation_note_summary_or_title_reaches_the_log() {
         json!({ "meetingId": id, "append": [{ "text": BAD_EVENT }] }),
     );
     let enc = qrtz_helper_bridge::encode_host_message(&json!({"type": "summarize", "prompt": PROMPT}));
-    assert!(!enc.unwrap_err().contains(PROMPT));
+    assert!(!enc.unwrap_err().to_string().contains(PROMPT));
     // The helper's stderr lands under the `helper` target, one event per line, cut at STDERR_LINE_MAX, escaped.
     let long = "z".repeat(qrtz_helper_bridge::process::STDERR_LINE_MAX + 500);
     let stderr = format!("[qrtz-helper] nemotron: model load failed\n{long}\nescape \u{1b}[31m red\r\n");
