@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 4 (N19): a database from a newer app is refused before anything writes to it. Mirrors
 //! apps/desktop/src/worker/db.hardening4.test.ts.
 

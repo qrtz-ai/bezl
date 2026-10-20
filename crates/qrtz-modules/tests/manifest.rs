@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0146 manifest rules: exact pins, code only as xpc-service, requirement text pinned.
 mod common;
 use common::*;
@@ -77,7 +78,7 @@ fn an_xpc_service_must_pin_bundle_id_team_and_the_exact_requirement() {
     let mut d = base.clone();
     d["teamId"] = json!("abcde12345");
     cases.push(("lowercase team".into(), d));
-    let mut d = base.clone();
+    let mut d = base;
     d["id"] = json!("model:voice");
     cases.push(("xpc with a model id".into(), d));
     for (what, d) in cases {

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N85: Unicode tag characters (U+E0000–U+E007F) are invisible in the UI but spell ASCII the model reads, so a
 //! calendar title, speaker name, note or transcript word could carry a hidden instruction. They become spaces in a
 //! prompt (two per character, keeping UTF-16 lengths). Byte parity with TS: prompts.json `n85-tag-chars`.

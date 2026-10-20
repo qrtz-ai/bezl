@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0159: qrtz snap's package. Its bundled manifest, its `qrtz.json` (what qrtz-publish packs into the index) and
 //! the lockfile agree; it is an extension qrtz knows; it uses only qrtz's Accessibility grant and no entitlement, and
 //! depends on nothing (no model, no service, no network).

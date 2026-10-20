@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Cycle 23: the push key while the previous dictation is still finishing (N110), and a tap shorter than the
 //! on-device engine's start (N111). Since `886e436` the pill hides the moment the key is released, so nothing on
 //! screen says a dictation is still finishing: a press then must not be lost, and a key that is up must never leave

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0095: high-rate events go over per-window channel streams. Same capability rule as subscriptions; a
 //! window that closes (or reloads) drops its streams and their channels, with nothing left behind.
 use qrtz_ipc::{is_stream, ErrorCode, Streams, Subscriptions};

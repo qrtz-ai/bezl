@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Real child processes: the Rust mock helper (always) and the real Swift helper (when QRTZ_HELPER_BIN or a
 //! Linux SwiftPM build exists). Also the golden protocol fixtures shared with Swift and TS.
 use qrtz_helper_bridge::*;

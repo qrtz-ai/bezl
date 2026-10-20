@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Run 31: ctrl under ADR 0146 M2.4's split layout (`QRTZ_MODULE_HELPERS=split`), where qrtz-ctrl is a process of its
 //! own. ctrl's wire (ADR 0110), the Laya warmer (ADR 0133) and `with_helper` all sit on `ModuleHelpers::ctrl`; these
 //! check that a `ctrl.*` line reaches that process and only it, that its restarts and hellos leave echo and nano

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0153/0157: the signed index format and the trust checks, without a publisher or a network.
 use ed25519_dalek::{Signer, SigningKey};
 use qrtz_modules::index::*;

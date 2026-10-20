@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/flows.spec.ts (docs/e2e-parity.md rows 6-10): delete + undo + copy Markdown, settings and
 //! the API key across restarts, the HUD (backend half), backup progress on a large recording, and a quit inside
 //! the undo window. The 500 meetings are seeded in the test (`dev.seedMany` has no Rust port).

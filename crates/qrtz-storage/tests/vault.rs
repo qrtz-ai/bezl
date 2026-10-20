@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0220 phase 1: the notes vault (files are the truth, SQLite is a rebuildable index).
 use qrtz_storage::vault::*;
 use std::fs;
@@ -28,10 +29,7 @@ fn create_list_get_save_and_search() {
     let raw = fs::read_to_string(t.path().join("notes/Interview prep.md")).unwrap();
     assert!(raw.starts_with(&format!("---\nid: {}\n---\n", b.id)), "{raw}");
     let hits = v.list(Some("apples"), None, 10).unwrap();
-    assert_eq!(
-        hits.iter().map(|d| d.id.clone()).collect::<Vec<_>>(),
-        vec![a.id.clone()]
-    );
+    assert_eq!(hits.iter().map(|d| d.id.clone()).collect::<Vec<_>>(), vec![a.id]);
     assert_eq!(v.list(Some("zzz"), None, 10).unwrap(), vec![]);
     assert_eq!(v.list(None, None, 10).unwrap().len(), 2);
 }

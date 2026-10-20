@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Cycle 22: the owner-only atomic write behind the config (N30, N33, N52, T4), and (ADR 0078, which removed the
 //! secret store) the launch cleanup of keys an older build saved. Its TS tests were deleted
 //! with Electron (apps/desktop/src/main/secret-store.hardening6.test.ts, talk-service.hardening5.test.ts); before

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N123: a meeting's cached part summaries (N114) never outlive its delete. A delete (at once or scheduled with an
 //! undo window) forgets them, a meeting pending delete never reads or writes them, and an attempt still running
 //! across a delete doesn't store them again. Over a fake model that fails the 2nd of 2 map calls: after the

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/note.spec.ts (docs/e2e-parity.md row 18): detect → record (fixture audio + ASR stream with AX
 //! speaker names) → live transcript → HUD notes → stop → extractive summary → list/search → export → restart →
 //! palette search. Key-free (no provider configured).

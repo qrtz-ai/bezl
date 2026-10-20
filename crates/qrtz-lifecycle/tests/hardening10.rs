@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 10 (N45; ADR 0037): part offsets for helper-lost / helper-restored come from a monotonic clock,
 //! so a wall jump during a reconnect cannot slide the next part's transcript while the WAV pad stays capped.
 

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 14: the extractive summary on a huge transcript (the fallback after the on-device model, ADR 0075;
 //! N53). The Q&A and the "can you" owner lookups were scans per question (quadratic) and the outputs
 //! unbounded; N54 (ADR 0048) capped them and made the lookups one backward pass. Same algorithm as TS `extractiveSummary`; the outputs are pinned by spec/vectors/llm/extractive.json.

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Run 45: ctrl's Laya path against the live signed module index on modules.qrtz.ai (ADR 0153 / 0169 / 0171).
 //!
 //! - Offline, always: the snapshot of the live timestamp + index in `spec/fixtures/ctrl-live-index/` (read

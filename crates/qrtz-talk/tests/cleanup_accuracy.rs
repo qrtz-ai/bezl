@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0101, echo accuracy (docs/echo/dictation-tuning.md §4 item 4): what the rules cleanup does to what was said.
 //! Each pair is the recogniser's raw text and the text that should be typed. Written by hand (not by the TS oracle),
 //! so a rule change that breaks one of them fails here; spec/vectors/talk/cleanup.json carries the same raws for the

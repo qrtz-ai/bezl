@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/smoke.spec.ts, e2e/shell.spec.ts (backend half), e2e/states.spec.ts "helper missing" and the
 //! backend half of e2e/large-a11y.spec.ts "cold start" (docs/e2e-parity.md rows 1, 13, 30, 31).
 mod e2e_support;

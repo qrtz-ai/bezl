@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0118: echo dictation runs on a segmented batch recogniser. The helper cuts the hold at pauses (or at the
 //! 15 s cap), decodes finished segments during the hold and only the last segment after the release, and says so
 //! on `dictation.stopped` (`asr`, `segments`, `tailDecodeMs`). Once a dictation has said so, talk's stop wait

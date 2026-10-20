@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0146 §3: the launcher starts only switched-on, unrevoked, unchanged, resolvable modules, and checks code
 //! before every launch.
 mod common;

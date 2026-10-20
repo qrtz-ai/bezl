@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Bozniak call 2: in a build without the dev override (release, or no dev-local), QRTZ_DASH_ORIGIN set at all
 //! makes the helper refuse to start with a clear error. CI runs this with --release.
 #![cfg(not(all(debug_assertions, feature = "dev-local")))]

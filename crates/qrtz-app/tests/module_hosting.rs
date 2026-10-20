@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0153/0157 end to end on loopback: `qrtz-publish` builds a signed output dir with test keys made at runtime,
 //! two local servers play `modules.qrtz.ai` and its B2 mirror (a third plays Hugging Face, where the model files come
 //! from, ADR 0171), and the shell's

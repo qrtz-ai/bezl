@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Echo cycle 73, N195 (ADR 0224): `error{dictation.mic}` may say why the mic didn't open (`reason`). A start
 //! refused because the input device isn't there (`no-device`) is mic-lost, not "microphone access denied";
 //! `denied` or no reason (an older helper) stays mic-denied with the helper's message.
@@ -36,7 +37,7 @@ async fn a_start_refused_for_no_device_is_mic_lost() {
     let r = rig(RigOpts::default());
     r.helper.key("down");
     until(|| r.view().phase == TalkPhase::Listening, 2000).await;
-    let id = r.view().id.clone().expect("an id");
+    let id = r.view().id.expect("an id");
     r.helper.deliver(
         json!({"type": "error", "code": "dictation.mic", "message": "no microphone input device",
                             "fatal": false, "id": id, "reason": "no-device"}),
@@ -61,7 +62,7 @@ async fn a_start_refused_as_failed_says_the_microphone_couldnt_start() {
     let r = rig(RigOpts::default());
     r.helper.key("down");
     until(|| r.view().phase == TalkPhase::Listening, 2000).await;
-    let id = r.view().id.clone().expect("an id");
+    let id = r.view().id.expect("an id");
     r.helper.deliver(
         json!({"type": "error", "code": "dictation.mic", "message": "microphone access denied",
                             "fatal": false, "id": id, "reason": "failed"}),

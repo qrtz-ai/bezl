@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/talk.spec.ts (docs/e2e-parity.md rows 34, 36, 38; row 35, the cleanup timeout, is retired:
 //! talk has no LLM cleanup; row 37, the cloud engine with failover, is retired with the cloud, ADR 0076: an old
 //! config that picked ElevenLabs dictates on-device). The scripted helper plays the

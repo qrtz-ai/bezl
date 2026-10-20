@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N98: while one thread creates pipes and socket pairs, a second thread keeps spawning `ls /dev/fd` through
 //! `qrtz_cloexec::spawn`; no child may ever see one of those fds. `ls` itself holds exactly one extra fd (its
 //! open of /dev/fd), so a child's listing is compared with a baseline taken before any pipe exists.

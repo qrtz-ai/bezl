@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Gate golden tests: the host's fixed rules table over (role, label, app, action), including adversarial labels.
 //! A scorer can't change any of these: rules come from the host table only (`extra` can add, never remove).
 use qrtz_ctrl::act::Action;
@@ -241,7 +242,7 @@ fn submits_confirm_by_default_and_non_empty_fields_confirm() {
         !submit_exempt(Some(&field), Some(&cmd_l), true),
         "only the focused field"
     );
-    let mut full = field.clone();
+    let mut full = field;
     full.value_tokens = vec!["x".into()];
     assert_eq!(
         rules_for(&set(false), Some(&full), "com.apple.Notes", &[], false),

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Oct 18 (Jared, the Developer ID build: "holding fn/globe does nothing"): a dictation that heard no words ended
 //! with no line in the log and nothing on screen. Now the host logs the mic level (`talk: nothing heard`) and the
 //! pill says why nothing was typed: no sound from the mic, or no words. A tap of the key says nothing.

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 27, N130 (ADR 0084): talk's stop wait was shorter than the helper's own release budget whenever
 //! the recogniser had a backlog at the release (a long dictation, system audio and a meeting's ASR sharing the
 //! Neural Engine). The helper (`DictationTail`, `QrtzEcho/Dictation.swift`) scales its drain and finalize waits

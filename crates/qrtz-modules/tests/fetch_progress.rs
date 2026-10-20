@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N177 (ADR 0165): when the next source resumes a part a failed source started, the ranges that source finished
 //! are not counted again. Echo's first Parakeet download reports this progress to the speech settings bar.
 use qrtz_modules::fetch::{fetch_blobs, Source, Transport, RANGE_BYTES};

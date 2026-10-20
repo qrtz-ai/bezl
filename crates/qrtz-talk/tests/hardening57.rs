@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADRs 0188 and 0189 (echo cycle 57): two polish rules, each only in its unambiguous form.
 //! - ADR 0188: a list of short lines (3+ lines, no blank line, each 1-3 words, no sentence mark but on the last)
 //!   gets no ".".

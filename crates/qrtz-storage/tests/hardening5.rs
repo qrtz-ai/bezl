@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 5 (N25, N26): the DB, its SQLite companions and the backup snapshot are owner-only.
 //! Mirrors `apps/desktop/src/worker/db.hardening5.test.ts`. The box (and most sessions) run with umask 022.
 #![cfg(unix)]

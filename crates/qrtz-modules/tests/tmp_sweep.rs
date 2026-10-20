@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0218 follow-up N193: `Installer::sweep` cleans `store/.tmp/` (orphan `.part` / `.done`, old `*.in-<pid>` and
 //! `*.sideload` leftovers), keeps what a download still wants, and `reclaimable()` counts exactly what `prune()` removes.
 use qrtz_modules::index::PackageKind;

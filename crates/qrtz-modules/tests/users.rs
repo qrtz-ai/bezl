@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! `QrtzLock::users`: the one "who uses this" answer the module manager, `qrtz ls` and prune's dry run share.
 use qrtz_modules::qrtz_lock::QrtzLock;
 use serde_json::json;

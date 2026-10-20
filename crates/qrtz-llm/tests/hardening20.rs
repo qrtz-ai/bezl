@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N97 (ADR 0063): a user note is one prompt line. Notes reach the summary prompt outside the transcript fence (they
 //! are the user's priorities, not data), so before this fix a pasted note could add lines that read as another
 //! section ("Capture gaps:", "Meeting:", "Transcript:") or hide tag text. Byte parity with TS: prompts.json

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 28: stress scenarios over the real `NoteRuntime` (SQLite in a temp dir, real files), each a
 //! failure Jared can hit on a Mac:
 //!
