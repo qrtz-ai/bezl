@@ -8,7 +8,7 @@ pub mod supervisor;
 pub mod suspended;
 
 pub use process::ProcessSpawn;
-pub use protocol::{encode_host_message, message_type, parse_helper_line, protocol};
+pub use protocol::{encode_host_message, message_type, parse_helper_line, protocol, ProtocolError};
 pub use supervisor::{
     backoff_delay, ChildIo, ExitInfo, HelperState, HelperStatus, Spawn, Supervisor, SupervisorOptions,
 };

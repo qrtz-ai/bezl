@@ -917,7 +917,11 @@ impl HelperModel {
             &json!({"type": "summarize", "id": id, "stage": stage.as_str(), "prompt": prompt}),
         ) {
             Ok(l) => l,
-            Err(e) => return Ok(Err(OnDeviceError::Failed(cut_utf16(&e, 120).to_string()))),
+            Err(e) => {
+                return Ok(Err(OnDeviceError::Failed(
+                    cut_utf16(&e.to_string(), 120).to_string(),
+                )))
+            }
         };
         let mut lines = sup.subscribe_lines();
         let mut status = sup.watch_status();
