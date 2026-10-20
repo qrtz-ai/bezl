@@ -13,7 +13,7 @@
   "scripts": {
     "dev:local": "bash scripts/dev/dev-local.sh",
     "release:mac": "bash scripts/release/sign-notarize.sh",
-    "lint": "bun --bun oxlint && bun --bun oxfmt --check && bun scripts/check-boundaries.mjs && bun scripts/check-typography.mjs && bun scripts/check-ui-purity.mjs && bun scripts/check-titles.mjs && bun scripts/check-swift.mjs && bun scripts/modules/qrtz-json.mjs --check",
+    "lint": "bun --bun oxlint && bun --bun oxfmt --check && bun scripts/check-boundaries.mjs && bun scripts/check-typography.mjs && bun scripts/check-ui-purity.mjs && bun scripts/check-titles.mjs && bun scripts/check-swift.mjs && bun scripts/check-notices.mjs && bun scripts/modules/qrtz-json.mjs --check",
     "lint:fix": "bun --bun oxlint --fix && bun --bun oxfmt --write",
     "typecheck": "bun --bun tsc -b && bun --bun tsc -p tsconfig.test.json",
     "check": "bun run lint && bun run typecheck && bun run test",
