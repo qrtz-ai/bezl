@@ -45,8 +45,11 @@ fn golden_invalid_fixtures_are_rejected() {
     for l in fixture("invalid-helper-to-host.jsonl") {
         assert!(parse_helper_line(&l).is_err(), "{l}");
     }
-    assert_eq!(parse_helper_line("   ").unwrap_err(), "empty");
-    assert_eq!(parse_helper_line("{nope").unwrap_err(), "invalid json");
+    assert_eq!(parse_helper_line("   ").unwrap_err().to_string(), "empty");
+    assert_eq!(
+        parse_helper_line("{nope").unwrap_err().to_string(),
+        "invalid json"
+    );
     assert!(
         encode_host_message(&json!({"type": "recording.start"})).is_err(),
         "audioPath required"

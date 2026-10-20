@@ -65,8 +65,23 @@ fn short_type(v: &Value) -> &str {
     }
 }
 
-pub fn parse_speech_line(line: &str) -> Result<Value, String> {
-    let v: Value = serde_json::from_str(line.trim()).map_err(|_| "invalid json".to_string())?;
+/// Why a speech line or host message was refused. The text never carries the message itself (ADR 0083), and is
+/// the same as the strings this used to return.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum LineError {
+    #[error("invalid json")]
+    InvalidJson,
+    /// `at` is `""` or `" at /<json path>"`.
+    #[error("type {ty} does not match the protocol{at}")]
+    Mismatch { ty: String, at: String },
+    #[error("invalid host→speech message: type {ty}")]
+    InvalidHostMessage { ty: String },
+    #[error("{0}")]
+    Encode(String),
+}
+
+pub fn parse_speech_line(line: &str) -> Result<Value, LineError> {
+    let v: Value = serde_json::from_str(line.trim()).map_err(|_| LineError::InvalidJson)?;
     let p = protocol();
     if p.speech_to_host.is_valid(&v) {
         Ok(v)
@@ -78,15 +93,20 @@ pub fn parse_speech_line(line: &str) -> Result<Value, String> {
             .next()
             .map(|e| format!(" at /{}", e.instance_path().to_string().trim_start_matches('/')))
             .unwrap_or_default();
-        Err(format!("type {} does not match the protocol{at}", short_type(&v)))
+        Err(LineError::Mismatch {
+            ty: short_type(&v).to_owned(),
+            at,
+        })
     }
 }
 
-pub fn encode_host_to_speech(msg: &Value) -> Result<String, String> {
+pub fn encode_host_to_speech(msg: &Value) -> Result<String, LineError> {
     if !protocol().host_to_speech.is_valid(msg) {
-        return Err(format!("invalid host→speech message: type {}", short_type(msg)));
+        return Err(LineError::InvalidHostMessage {
+            ty: short_type(msg).to_owned(),
+        });
     }
-    let mut s = serde_json::to_string(msg).map_err(|e| e.to_string())?;
+    let mut s = serde_json::to_string(msg).map_err(|e| LineError::Encode(e.to_string()))?;
     s.push('\n');
     Ok(s)
 }
@@ -128,7 +148,7 @@ pub fn start_message(
     if let Some(h) = &spec.language_hint {
         v["languageHint"] = h.clone().into();
     }
-    encode_host_to_speech(&v)?;
+    encode_host_to_speech(&v).map_err(|e| e.to_string())?;
     Ok(v)
 }
 
