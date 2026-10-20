@@ -40,8 +40,8 @@ const ALLOWED_DEPS = new Set([
 // Temporary: current offenders. Desktop entries move on foo/desktop-scripts (QRT-285);
 // release:mac is Doug's call.
 export const PENDING = {
-  scripts: ['start', 'make', 'e2e', 'release:mac'],
-  deps: ['@playwright/test', 'axe-core'],
+  scripts: ['release:mac'],
+  deps: [],
   cargo: [],
 };
 

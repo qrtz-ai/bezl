@@ -83,7 +83,7 @@ fi
 # 1. Build: signed by Tauri, not notarized (sign-mac.sh fixes the nested signatures first).
 NO_NOTARY=(-u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_KEY_PATH)
 if [ -z "$APP" ]; then
-  run env "${NO_NOTARY[@]}" APPLE_SIGNING_IDENTITY="$QRTZ_SIGN_ID" bun run --cwd "$ROOT" make
+  run env "${NO_NOTARY[@]}" APPLE_SIGNING_IDENTITY="$QRTZ_SIGN_ID" bun run --cwd "$ROOT/apps/desktop" make
   APP="${CARGO_TARGET_DIR:-$ROOT/target}/release/bundle/macos/qrtz.app"
   if [ "$DRY" != 1 ] && [ ! -d "$APP" ] && [ -d "$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/qrtz.app" ]; then
     APP="$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/qrtz.app"

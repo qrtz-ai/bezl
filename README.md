@@ -66,13 +66,13 @@ or summaries. Set `QRTZ_LOG=debug` for more detail.
 
 ```sh
 bun run dev:local      # build and run everything from this checkout (macOS)
-bun start              # tauri dev
-bun run make           # tauri build (.app + .dmg on macOS)
+bun run --cwd apps/desktop start  # build:helper + tauri dev
+bun run --cwd apps/desktop make   # build:helper + tauri build (.app + .dmg on macOS)
 bun run check          # lint + typecheck + vitest
 bun run lint:fix       # oxlint --fix + oxfmt --write
 bun run check:rust     # cargo fmt --check + clippy + cargo test --workspace
 bun run gen:contracts  # re-render contracts/*.json from the zod contract
-bun run e2e            # Playwright suite (needs Node for Playwright's runner)
+bun run --cwd apps/desktop e2e    # Playwright suite (needs Node for Playwright's runner)
 bun run test:helper    # Swift helper tests
 ```
 
