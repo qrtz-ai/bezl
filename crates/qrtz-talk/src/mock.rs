@@ -46,7 +46,7 @@ impl MockSpeech {
     }
     /// Install / update / remove the module. Running sessions keep their version (no swap mid-session).
     pub fn install(&self, v: Option<(u32, &str)>) {
-        let mut st = self.st.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut st = self.st.lock().unwrap_or_else(crate::poison::recover);
         let old = st.installed.take();
         st.previous = old.or(st.previous.take());
         st.installed = v.map(|(p, s)| (p, s.to_owned()));
@@ -55,7 +55,7 @@ impl MockSpeech {
     /// to the previous good version; with an expired list there is no rollback (fail closed, ADR 0046 §4b), so
     /// new sessions are refused with `Denied`. Running sessions on it end at their next safe point.
     pub fn revoke_current(&self, list_expired: bool) {
-        let mut st = self.st.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut st = self.st.lock().unwrap_or_else(crate::poison::recover);
         let Some((_, v)) = st.installed.clone() else {
             return;
         };
@@ -72,7 +72,7 @@ impl MockSpeech {
     pub fn current(&self) -> Option<String> {
         self.st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .installed
             .clone()
             .map(|(_, v)| v)
@@ -80,14 +80,14 @@ impl MockSpeech {
     pub fn started(&self) -> Vec<(String, String)> {
         self.st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .started
             .clone()
     }
     pub fn live(&self, id: &str) -> bool {
         self.st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .sessions
             .contains_key(id)
     }
@@ -95,7 +95,7 @@ impl MockSpeech {
     pub fn version_of(&self, id: &str) -> Option<String> {
         self.st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .sessions
             .get(id)
             .map(|s| s.version.clone())
@@ -103,7 +103,7 @@ impl MockSpeech {
     /// One raw module → host line for session `id` (`audio_ms` = audio written so far).
     pub fn line(&self, id: &str, line: &str, audio_ms: u64) {
         use qrtz_speech_types::validate::Verdict;
-        let mut st = self.st.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut st = self.st.lock().unwrap_or_else(crate::poison::recover);
         let Some(s) = st.sessions.get_mut(id) else { return };
         match s.validator.check(line, audio_ms, audio_ms) {
             Verdict::Event(e) => {
@@ -133,7 +133,7 @@ impl MockSpeech {
         if let Some(s) = self
             .st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .sessions
             .remove(id)
         {
@@ -163,7 +163,7 @@ impl qrtz_speech_types::SpeechSession for MockSpeechHandle {
         if let Some(s) = self
             .st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .sessions
             .remove(&self.id)
         {
@@ -175,7 +175,7 @@ impl qrtz_speech_types::SpeechSession for MockSpeechHandle {
     async fn cancel(&mut self) {
         self.st
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .sessions
             .remove(&self.id);
     }
@@ -193,7 +193,7 @@ impl qrtz_speech_types::SpeechEngine for MockSpeech {
         &self,
         spec: qrtz_speech_types::SessionSpec,
     ) -> Result<Box<dyn qrtz_speech_types::SpeechSession>, qrtz_speech_types::SpeechError> {
-        let mut st = self.st.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut st = self.st.lock().unwrap_or_else(crate::poison::recover);
         let Some((p, v)) = st.installed.clone() else {
             return Err(qrtz_speech_types::SpeechError::NotInstalled);
         };

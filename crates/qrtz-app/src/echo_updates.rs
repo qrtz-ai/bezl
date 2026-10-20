@@ -241,7 +241,7 @@ fn shared() -> std::sync::MutexGuard<'static, Shared> {
     static S: OnceLock<Mutex<Shared>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(Shared::default()))
         .lock()
-        .unwrap_or_else(|p| p.into_inner())
+        .unwrap_or_else(crate::poison::recover)
 }
 
 /// Whether the last echo launch fell back to the bundled copy (None before any launch).

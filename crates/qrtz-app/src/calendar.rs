@@ -135,10 +135,7 @@ impl NanoCalendar {
     }
 
     pub fn set_prompt(&self, f: PromptFn) {
-        *self
-            .prompt
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(f);
+        *self.prompt.lock().unwrap_or_else(crate::poison::recover) = Some(f);
     }
 
     fn settings(&self) -> CalendarSettings {
@@ -146,7 +143,7 @@ impl NanoCalendar {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(|e| e.into_inner())
+        self.state.lock().unwrap_or_else(crate::poison::recover)
     }
 
     /// One request to nano's helper and its answer (same id, a `calendar.*` type), or `None` (no helper, timeout,
@@ -260,7 +257,7 @@ impl NanoCalendar {
                     .config
                     .0
                     .lock()
-                    .unwrap_or_else(|e| e.into_inner())
+                    .unwrap_or_else(crate::poison::recover)
                     .set(&json!({"note": {"calendar": {"enabled": true}}}));
                 match r {
                     Ok(next) => self.events.emit("config:changed", next),
@@ -402,11 +399,7 @@ impl NanoCalendar {
                         let evs = s.events.clone();
                         due_prompts(&evs, now_ms(), set.chosen.as_deref(), &mut s.prompted)
                     };
-                    let f = me
-                        .prompt
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .clone();
+                    let f = me.prompt.lock().unwrap_or_else(crate::poison::recover).clone();
                     if let Some(f) = f {
                         for e in due {
                             f(detected_line(&e));

@@ -112,7 +112,7 @@ impl Throttle {
         } else {
             (done.saturating_mul(100) / total) as i64
         };
-        let mut last = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let mut last = self.0.lock().unwrap_or_else(crate::poison::recover);
         if pct != *last || done >= total {
             *last = pct;
             true
@@ -296,20 +296,14 @@ impl PackagesPort for PackagesIpc {
                 let plan = self.packages.plan(Self::op(&p)?).map_err(err)?;
                 let out = json!({"planSha256": plan.plan_sha256, "changes": changes(&plan.changes),
                                  "downloadBytes": plan.download_bytes});
-                *self
-                    .plan
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(plan);
+                *self.plan.lock().unwrap_or_else(crate::poison::recover) = Some(plan);
                 Ok(out)
             }
             "packages:apply" => {
                 let sha = p["planSha256"].as_str().unwrap_or_default();
                 let bytes = p["downloadBytes"].as_u64().unwrap_or(u64::MAX);
                 let plan = {
-                    let mut g = self
-                        .plan
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut g = self.plan.lock().unwrap_or_else(crate::poison::recover);
                     match g.as_ref() {
                         Some(pl) if pl.plan_sha256 == sha && pl.download_bytes == bytes => g.take(),
                         _ => None,

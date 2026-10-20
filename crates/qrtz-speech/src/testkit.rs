@@ -158,11 +158,11 @@ impl Server {
                     let body = s
                         .routes
                         .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .unwrap_or_else(crate::poison::recover)
                         .get(&path)
                         .cloned();
                     let (fail, cut, corrupt, over, slow) = {
-                        let mut f = s.faults.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let mut f = s.faults.lock().unwrap_or_else(crate::poison::recover);
                         *f.hits.entry(path.clone()).or_default() += 1;
                         if let Some(r) = &range {
                             f.ranges.push((path.clone(), r.clone()));
@@ -251,10 +251,7 @@ impl Server {
 
     /// Publish `b` as `latest` (and its files under `<version>/`).
     pub fn publish(&self, b: &Bundle) {
-        let mut r = self
-            .routes
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut r = self.routes.lock().unwrap_or_else(crate::poison::recover);
         r.insert("latest/manifest.json".into(), b.manifest.clone());
         r.insert("latest/manifest.sig".into(), b.sig.clone());
         for (p, bytes) in &b.files {
@@ -264,7 +261,7 @@ impl Server {
     pub fn put(&self, path: &str, bytes: Vec<u8>) {
         self.routes
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .insert(path.into(), bytes);
     }
 }

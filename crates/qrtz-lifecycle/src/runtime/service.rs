@@ -186,7 +186,7 @@ impl NoteRuntime {
         });
         sh.handles
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .push(h.abort_handle());
         NoteRuntime { sh }
     }
@@ -199,7 +199,7 @@ impl NoteRuntime {
             .sh
             .handles
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .drain(..)
         {
             h.abort();
@@ -653,7 +653,7 @@ struct Shared {
 
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, State> {
-        self.st.lock().unwrap_or_else(|p| p.into_inner())
+        self.st.lock().unwrap_or_else(crate::poison::recover)
     }
     fn killed(&self) -> bool {
         self.killed.load(Ordering::SeqCst)
@@ -706,10 +706,7 @@ impl Shared {
             return None;
         }
         let h = tokio::spawn(f);
-        let mut hs = self
-            .handles
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut hs = self.handles.lock().unwrap_or_else(crate::poison::recover);
         if hs.len() > 64 {
             hs.retain(|h| !h.is_finished());
         }
