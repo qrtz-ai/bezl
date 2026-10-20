@@ -2,6 +2,7 @@ import { tokens } from './tokens';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Button } from './Button';
+import { Callout } from './Callout';
 import { Text, type TextTone } from './Text';
 import { Badge } from './Badge';
 import { Icon } from './Icon';
@@ -366,30 +367,31 @@ export function CaptureNotice({
 }: {
   items: { id: string; text: string; detail?: string }[];
 }) {
-  const t = useTheme();
   if (!items.length) return null;
+  const [first, ...rest] = items;
   return (
-    <div
+    <Callout
+      tone="warning"
       data-testid="capture-notice"
-      style={{ display: 'flex', flexDirection: 'column', gap: t.space[1] }}
-    >
-      {items.map((i) => (
-        <span
-          key={i.id}
-          data-testid={`capture-notice-${i.id}`}
-          title={i.detail}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: t.space[2],
-          }}
-        >
-          <Icon name="alert" size="sm" tone="warning" />
-          <Text variant="caption" muted>
-            {i.text}
-          </Text>
+      title={
+        <span data-testid={`capture-notice-${first!.id}`} title={first!.detail}>
+          {first!.text}
         </span>
-      ))}
-    </div>
+      }
+    >
+      {rest.length ? (
+        <div style={{ display: 'grid', gap: tokens.space[0.5] }}>
+          {rest.map((i) => (
+            <span
+              key={i.id}
+              data-testid={`capture-notice-${i.id}`}
+              title={i.detail}
+            >
+              {i.text}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </Callout>
   );
 }

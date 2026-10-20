@@ -10,6 +10,7 @@ import { useTheme } from './theme';
 import { Text } from './Text';
 import { Icon, type IconName } from './Icon';
 import { Button } from './Button';
+import { Callout } from './Callout';
 import { Input } from './Input';
 import { Dialog } from './Overlay';
 import { IconButton } from './Layout';
@@ -439,7 +440,7 @@ export function RecordingBar({
   );
 }
 
-/** Thin banner row (detected meeting, ready, failed) with trailing actions. */
+/** Thin banner row (detected meeting, ready, failed) with trailing actions: a Callout with its content as the title. */
 export function Banner({
   children,
   actions,
@@ -451,24 +452,25 @@ export function Banner({
   tone?: 'default' | 'danger';
   'data-testid'?: string;
 }) {
-  const t = useTheme();
   return (
-    <div
-      data-testid={testId}
-      role={tone === 'danger' ? 'alert' : 'status'}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: t.space[2],
-        flexWrap: 'wrap',
-        padding: `${t.space[2]} ${t.space[3]}`,
-        border: `1px solid ${tone === 'danger' ? t.color.danger : t.color.border}`,
-        borderRadius: t.radius.md,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 120, display: 'grid' }}>{children}</div>
-      {actions}
-    </div>
+    <Callout
+      tone={tone === 'danger' ? 'danger' : 'info'}
+      title={<div style={{ display: 'grid', minWidth: 0 }}>{children}</div>}
+      action={
+        actions ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: tokens.space[2],
+            }}
+          >
+            {actions}
+          </div>
+        ) : undefined
+      }
+      {...(testId ? { 'data-testid': testId } : {})}
+    />
   );
 }
 

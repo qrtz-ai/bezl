@@ -143,32 +143,51 @@ export default function DashView() {
           </Stack>
         </Callout>
       ) : null}
-      {pending.map((a) => (
+      {pending.length ? (
         <Callout
-          key={a.id}
           tone="warning"
-          title={`new agent: ${a.name}`}
-          data-testid={`dash-pending-${a.id}`}
-          action={
-            <Stack dir="row" gap={2}>
-              <Button size="sm" onClick={() => review(a.id, true)}>
-                approve
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => review(a.id, false)}
-              >
-                reject
-              </Button>
-            </Stack>
+          title={
+            pending.length === 1
+              ? 'a new agent is waiting'
+              : `${pending.length} new agents are waiting`
           }
+          data-testid="dash-pending"
         >
-          <Text variant="caption" muted>
-            {`fingerprint ${a.fingerprint}. approve only if it matches what your agent told you.`}
-          </Text>
+          <Stack gap={2}>
+            <Text variant="caption" muted>
+              approve only if the fingerprint matches what your agent told you.
+            </Text>
+            {pending.map((a) => (
+              <Stack
+                key={a.id}
+                dir="row"
+                gap={2}
+                align="center"
+                data-testid={`dash-pending-${a.id}`}
+              >
+                <Stack gap={0} grow>
+                  <Text variant="label" truncate>
+                    {`new agent: ${a.name}`}
+                  </Text>
+                  <Text variant="caption" muted truncate>
+                    {`fingerprint ${a.fingerprint}`}
+                  </Text>
+                </Stack>
+                <Button size="sm" onClick={() => review(a.id, true)}>
+                  approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => review(a.id, false)}
+                >
+                  reject
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
         </Callout>
-      ))}
+      ) : null}
       {view && !view.deleted && !live.length && !pending.length ? (
         <EmptyState icon="grid" title="no agents yet" />
       ) : null}

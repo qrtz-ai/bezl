@@ -9,6 +9,7 @@ import { typeStyle, tokens } from './tokens';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
 import { Button } from './Button';
+import { Callout } from './Callout';
 import { Icon } from './Icon';
 
 /** ctrl (ADR 0103): the views' building blocks. Data in, handlers out; all copy lowercase. */
@@ -324,26 +325,22 @@ export function AskCard({
   onPick: (id: string) => void;
   onCancel: () => void;
 }) {
-  const t = useTheme();
   return (
-    <div
+    <Callout
+      tone="info"
       role="group"
       aria-label="ctrl needs you"
       data-testid="ctrl-ask"
-      style={{
-        display: 'grid',
-        gap: t.space[2],
-        padding: t.space[3],
-        borderRadius: t.radius.md,
-        border: `1px solid ${t.color.border}`,
-        background: t.color.accent,
-      }}
+      title={/\?\s*$/.test(question) ? question : `${question}: which one?`}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
-        <Icon name="ask" size="sm" />
-        <Text variant="label">{question}: which one?</Text>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: tokens.space[2],
+          marginTop: tokens.space[1],
+        }}
+      >
         {options.map((o) => (
           <Button
             key={o.id}
@@ -364,7 +361,7 @@ export function AskCard({
           cancel run
         </Button>
       </div>
-    </div>
+    </Callout>
   );
 }
 
@@ -386,32 +383,30 @@ export function ConfirmCard({
   onApprove: () => void;
   onDeny: () => void;
 }) {
-  const t = useTheme();
   return (
-    <div
+    <Callout
+      tone="warning"
       role="group"
       aria-label="ctrl needs your ok"
       data-testid="ctrl-confirm"
-      style={{
-        display: 'grid',
-        gap: t.space[2],
-        padding: t.space[3],
-        borderRadius: t.radius.md,
-        border: `1px solid ${t.color.border}`,
-        background: t.color.accent,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
-        <Icon name="alert" size="sm" />
-        <Text variant="label" data-testid="ctrl-confirm-action">
+      title={
+        <span data-testid="ctrl-confirm-action">
           {action}
           {app ? ` · ${app}` : ''}
-        </Text>
-      </div>
-      <Text variant="caption" muted data-testid="ctrl-confirm-rules">
+        </span>
+      }
+    >
+      <span data-testid="ctrl-confirm-rules">
         asks first because: {rules.map(ruleLabel).join(', ')}
-      </Text>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
+      </span>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: tokens.space[2],
+          marginTop: tokens.space[2],
+        }}
+      >
         <Button
           variant="primary"
           size="sm"
@@ -429,7 +424,7 @@ export function ConfirmCard({
           don't
         </Button>
       </div>
-    </div>
+    </Callout>
   );
 }
 
@@ -451,33 +446,22 @@ export function ruleLabel(rule: string): string {
  * While ctrl acts in the foreground: esc stops it at once, and so does any key, click or scroll of yours.
  */
 export function StopBar({ onStop }: { onStop: () => void }) {
-  const t = useTheme();
   return (
-    <div
-      role="status"
+    <Callout
+      tone="info"
       data-testid="ctrl-stopbar"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: t.space[2],
-        padding: t.space[2],
-        borderRadius: t.radius.md,
-        border: `1px solid ${t.color.border}`,
-      }}
-    >
-      <Text variant="caption">
-        ctrl is using your screen · press esc or touch any key to stop
-      </Text>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={onStop}
-        data-testid="ctrl-stop"
-      >
-        stop
-      </Button>
-    </div>
+      title="ctrl is using your screen · press esc or touch any key to stop"
+      action={
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onStop}
+          data-testid="ctrl-stop"
+        >
+          stop
+        </Button>
+      }
+    />
   );
 }
 

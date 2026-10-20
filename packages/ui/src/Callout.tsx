@@ -26,20 +26,31 @@ export function calloutBox(t: Theme, tone: CalloutTone = 'info') {
 }
 
 /**
- * Inline status/error banner with an optional action (e.g. Retry). Danger/warning use role="alert"
- * so screen readers announce them; info is a polite status.
+ * The one alert in qrtz (QRT-302): every notice, banner and "needs you" card is a Callout or a thin wrapper that
+ * fills its slots. Danger/warning use role="alert" so screen readers announce them; info is a polite status.
+ * `details` holds the technical reason, collapsed. `level="page"` marks the one page-level banner a screen may show.
  */
 export function Callout({
   tone = 'info',
   title,
   children,
   action,
+  details,
+  level = 'inline',
+  role,
+  'aria-label': ariaLabel,
   'data-testid': testId,
 }: {
   tone?: CalloutTone;
   title: ReactNode;
   children?: ReactNode;
   action?: ReactNode;
+  /** Technical detail behind a "details" disclosure, collapsed by default. */
+  details?: ReactNode;
+  level?: 'inline' | 'page';
+  /** Overrides the tone's role, e.g. "group" for a card that asks for a choice. */
+  role?: string;
+  'aria-label'?: string;
   'data-testid'?: string;
 }) {
   const t = useTheme();
@@ -50,10 +61,14 @@ export function Callout({
   }[tone];
   return (
     <div
-      role={tone === 'info' ? 'status' : 'alert'}
+      role={role ?? (tone === 'info' ? 'status' : 'alert')}
+      aria-label={ariaLabel}
       data-testid={testId}
+      data-callout={tone}
+      data-level={level}
       style={{
         display: 'flex',
+        flexWrap: 'wrap',
         gap: tokens.space[3],
         alignItems: 'center',
         ...calloutBox(t, tone),
@@ -69,7 +84,7 @@ export function Callout({
           flex: 'none',
         }}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: '1 1 160px', minWidth: 0 }}>
         <div
           style={{
             color: t.color.text,
@@ -89,6 +104,23 @@ export function Callout({
           >
             {children}
           </div>
+        ) : null}
+        {details ? (
+          <details
+            data-testid={testId ? `${testId}-details` : undefined}
+            style={{
+              marginTop: tokens.space[1],
+              color: t.color.textMuted,
+              ...typeStyle('caption', t),
+            }}
+          >
+            <summary style={{ cursor: 'pointer' }}>details</summary>
+            <div
+              style={{ marginTop: tokens.space[1], overflowWrap: 'anywhere' }}
+            >
+              {details}
+            </div>
+          </details>
         ) : null}
       </div>
       {action}

@@ -1,9 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import {
+  AskCard,
   Badge,
+  Banner,
   Button,
   Callout,
+  CaptureNotice,
+  ConfirmCard,
+  PermissionPrompt,
+  StopBar,
   Card,
   CardGrid,
   Code,
@@ -218,6 +224,63 @@ function CardsDemo() {
     </>
   );
 }
+/** Every notice in qrtz is a Callout (QRT-302): one outline, one dot, the same slots. */
+export const AllNotices: S = {
+  name: 'callouts: all notices',
+  render: () => (
+    <Width w={560}>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <Callout tone="info" title="saved to your notes" />
+        <Callout
+          tone="danger"
+          title="couldn't save the note"
+          action={<Button size="sm">retry</Button>}
+          details="EACCES: permission denied, open '/notes/standup.md'"
+        >
+          check that qrtz can write to your notes folder, then retry.
+        </Callout>
+        <Banner
+          actions={
+            <Button size="sm" variant="primary">
+              record
+            </Button>
+          }
+        >
+          standup with design
+        </Banner>
+        <PermissionPrompt
+          title="turn on microphone"
+          pane="microphone"
+          onOpen={() => {}}
+        />
+        <CaptureNotice
+          items={[
+            { id: 'mic', text: 'the mic is very quiet' },
+            { id: 'sys', text: 'system audio is off' },
+          ]}
+        />
+        <AskCard
+          question="which doc"
+          options={[
+            { id: 'a', label: 'q3 plan' },
+            { id: 'b', label: 'q3 review' },
+          ]}
+          onPick={() => {}}
+          onCancel={() => {}}
+        />
+        <ConfirmCard
+          action="click send"
+          app="mail"
+          rules={['label:send']}
+          onApprove={() => {}}
+          onDeny={() => {}}
+        />
+        <StopBar onStop={() => {}} />
+      </div>
+    </Width>
+  ),
+};
+
 export const Cards: S = {
   name: 'card, card grid',
   render: () => <CardsDemo />,

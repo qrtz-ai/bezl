@@ -277,6 +277,12 @@ export function ModelRequirement(p: ModelRequirementProps) {
       data-testid={testId}
       data-state={state}
       data-layout={layout}
+      {...(layout === 'banner'
+        ? {
+            'data-callout': state === 'error' ? 'danger' : 'info',
+            'data-level': 'page',
+          }
+        : {})}
       role={state === 'error' ? 'alert' : 'status'}
       aria-live="polite"
       style={
