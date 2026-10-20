@@ -1,6 +1,6 @@
 import { Children, cloneElement, isValidElement, type ReactNode } from 'react';
 import { lowerTitle } from './case';
-import { Label } from './Text';
+import { Text } from './Text';
 import { typeStyle } from './tokens';
 import {
   forwardRef,
@@ -62,8 +62,8 @@ export function Field({
 }) {
   const t = useTheme();
   return (
-    <label style={{ display: 'grid', gap: t.space[1] }}>
-      <Label>{lowerTitle(label)}</Label>
+    <label style={{ display: 'grid', gap: t.space[2], minWidth: 0 }}>
+      <Text>{lowerTitle(label)}</Text>
       {children}
     </label>
   );

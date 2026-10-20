@@ -480,6 +480,7 @@ export function IconButton({
   disabled,
   badge,
   tone = 'default',
+  variant = 'outline',
   ref,
   'data-testid': testId,
   'aria-expanded': expanded,
@@ -493,6 +494,8 @@ export function IconButton({
   disabled?: boolean;
   badge?: boolean;
   tone?: 'default' | 'record' | 'danger';
+  /** `ghost`: no border, muted until hovered (a modal's close). */
+  variant?: 'outline' | 'ghost';
   ref?: Ref<HTMLButtonElement>;
   'data-testid'?: string;
   'aria-expanded'?: boolean;
@@ -513,6 +516,7 @@ export function IconButton({
       disabled={disabled}
       data-testid={testId}
       data-badge={badge ? '' : undefined}
+      data-q-ghost={variant === 'ghost' ? '' : undefined}
       onClick={onClick}
       style={{
         all: 'unset',
@@ -526,14 +530,16 @@ export function IconButton({
         display: 'grid',
         placeItems: 'center',
         borderRadius: t.radius.md,
-        border: `1px solid ${tone === 'danger' ? t.color.danger : t.color.border}`,
+        border: `1px solid ${variant === 'ghost' ? 'transparent' : tone === 'danger' ? t.color.danger : t.color.border}`,
         background: pressed ? t.color.accent : 'transparent',
         color:
-          tone === 'record'
-            ? t.color.recording
-            : tone === 'danger'
-              ? t.color.danger
-              : t.color.text,
+          variant === 'ghost'
+            ? t.color.textMuted
+            : tone === 'record'
+              ? t.color.recording
+              : tone === 'danger'
+                ? t.color.danger
+                : t.color.text,
         ...typeStyle('caption', t),
         transition: transition('background', 'hover', t),
       }}
@@ -675,13 +681,15 @@ export function MeetingRow(p: {
   );
 }
 
-/** Settings group: a heading and its rows. */
+/** Opts group: a muted heading (and an optional one-line description), then its rows on one rhythm. */
 export function SettingsSection({
   title,
+  description,
   children,
   'data-testid': testId,
 }: {
   title: string;
+  description?: ReactNode;
   children: ReactNode;
   'data-testid'?: string;
 }) {
@@ -689,22 +697,36 @@ export function SettingsSection({
   return (
     <section
       data-testid={testId}
-      style={{ display: 'flex', flexDirection: 'column', gap: t.space[3] }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: t.space[3],
+        minWidth: 0,
+      }}
     >
-      <Text variant="label" tone="muted">
-        {lowerTitle(title)}
-      </Text>
+      <div style={{ display: 'grid', gap: t.space[1] }}>
+        <Text variant="label" tone="muted">
+          {lowerTitle(title)}
+        </Text>
+        {description ? (
+          <Text variant="caption" muted>
+            {description}
+          </Text>
+        ) : null}
+      </div>
       {children}
     </section>
   );
 }
 
-/** One setting: label on the left, control on the right. */
+/** One opt: label (and an optional muted description under it) on the left, control on the right. */
 export function SettingRow({
   label,
+  description,
   children,
 }: {
   label: string;
+  description?: ReactNode;
   children: ReactNode;
 }) {
   const t = useTheme();
@@ -716,10 +738,25 @@ export function SettingRow({
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: t.space[4],
-        minHeight: 28,
+        minHeight: 32,
+        minWidth: 0,
       }}
     >
-      <Text style={{ minWidth: 0, flex: '1 1 auto' }}>{lowerTitle(label)}</Text>
+      <span
+        style={{
+          minWidth: 0,
+          flex: '1 1 auto',
+          display: 'grid',
+          gap: 2,
+        }}
+      >
+        <Text>{lowerTitle(label)}</Text>
+        {description ? (
+          <Text variant="caption" muted>
+            {description}
+          </Text>
+        ) : null}
+      </span>
       <div
         style={{
           flex: '0 1 240px',

@@ -9,6 +9,10 @@ import {
   PermissionSetupList,
   PermissionSetupRow,
   SettingRow,
+  SettingsSection,
+  Disclosure,
+  Field,
+  Input,
   Switch,
   Text,
 } from '../src';
@@ -128,7 +132,7 @@ export const ModuleOpts: S = {
 };
 
 function OptsModalDemo() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [space, setSpace] = useState(true);
   return (
     <Frame height={360}>
@@ -140,13 +144,34 @@ function OptsModalDemo() {
         open={open}
         onClose={() => setOpen(false)}
       >
-        <SettingRow label="add a space after">
-          <Switch
-            checked={space}
-            onChange={setSpace}
-            label="add a space after"
-          />
-        </SettingRow>
+        <SettingsSection title="dictation" description="how echo listens.">
+          <SettingRow label="add a space after">
+            <Switch
+              checked={space}
+              onChange={setSpace}
+              label="add a space after"
+            />
+          </SettingRow>
+          <SettingRow
+            label="warm mic"
+            description="keeps the mic open for a faster start."
+          >
+            <Switch checked={false} onChange={noop} label="warm mic" />
+          </SettingRow>
+          <Field label="toggle shortcut">
+            <Input defaultValue="CommandOrControl+Shift+Space" />
+          </Field>
+        </SettingsSection>
+        <SettingsSection title="text">
+          <SettingRow label="clean up text">
+            <Switch checked onChange={noop} label="clean up text" />
+          </SettingRow>
+        </SettingsSection>
+        <Disclosure title="dev opts" defaultOpen>
+          <SettingRow label="snappy defaults">
+            <Switch checked onChange={noop} label="snappy defaults" />
+          </SettingRow>
+        </Disclosure>
       </ModuleSettingsModal>
     </Frame>
   );

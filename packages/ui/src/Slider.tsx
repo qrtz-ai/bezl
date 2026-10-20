@@ -112,10 +112,10 @@ export function Disclosure({
           color: t.color.textMuted,
         }}
       >
-        <Icon name={open ? 'chevron-down' : 'chevron-right'} size="sm" />
         <Text variant="label" tone="muted">
           {lowerTitle(title)}
         </Text>
+        <Icon name={open ? 'chevron-down' : 'chevron-right'} size="sm" />
       </button>
       {open ? children : null}
     </section>

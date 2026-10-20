@@ -68,10 +68,11 @@ export default function SnapSettings({
           data-testid="snap-settings-error"
         />
       ) : null}
-      <SettingsSection title="shortcuts" data-testid="snap-settings-shortcuts">
-        <Text variant="caption" muted>
-          click a shortcut, then press the new keys. it needs ⌘, ⌥ or ⌃.
-        </Text>
+      <SettingsSection
+        title="shortcuts"
+        description="click a shortcut, then press the new keys. it needs ⌘, ⌥ or ⌃."
+        data-testid="snap-settings-shortcuts"
+      >
         {SNAP_ACTIONS.map((a) => {
           const binding = effectiveBinding(snap.shortcuts, a);
           const why = status?.refused[a];
@@ -146,12 +147,9 @@ export default function SnapSettings({
       </SettingsSection>
       <SettingsSection
         title="apps snap leaves alone"
+        description="photoshop and steam are always left alone. you can also turn snap off for the front app from its menu bar item."
         data-testid="snap-settings-apps"
       >
-        <Text variant="caption" muted>
-          photoshop and steam are always left alone. you can also turn snap off
-          for the front app from its menu bar item.
-        </Text>
         {apps.map((id) => (
           <SettingRow key={id} label={id}>
             <Button

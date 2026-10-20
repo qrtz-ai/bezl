@@ -67,10 +67,8 @@ export function useModalLayer(
       }
     };
     window.addEventListener('keydown', onKey);
-    const first =
-      el.querySelector<HTMLElement>('[data-autofocus]') ??
-      el.querySelector<HTMLElement>('input, textarea, button, [tabindex]');
-    (first ?? el).focus();
+    // The dialog itself takes focus unless a control asks for it, so the close button doesn't open with a ring.
+    (el.querySelector<HTMLElement>('[data-autofocus]') ?? el).focus();
     return () => {
       window.removeEventListener('keydown', onKey);
       const i = layers.lastIndexOf(el);
@@ -141,9 +139,9 @@ export function Modal({
           display: 'flex',
           flexDirection: 'column',
           background: t.color.surface,
-          border: `1px solid ${t.color.borderStrong}`,
+          border: `1px solid ${t.color.border}`,
           borderRadius: t.radius.lg,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.24)',
           outline: 'none',
           overflow: 'hidden',
         }}
@@ -153,10 +151,8 @@ export function Modal({
             display: 'flex',
             alignItems: 'center',
             gap: t.space[2],
-            height: 40,
             flex: '0 0 auto',
-            padding: `0 ${t.space[3]} 0 ${t.space[5]}`,
-            borderBottom: `1px solid ${t.color.border}`,
+            padding: `${t.space[5]} ${t.space[4]} ${t.space[2]} ${t.space[5]}`,
             minWidth: 0,
           }}
         >
@@ -167,6 +163,7 @@ export function Modal({
           </span>
           <IconButton
             icon="close"
+            variant="ghost"
             label={closeLabel}
             onClick={onClose}
             data-testid={testId ? `${testId}-close` : undefined}
@@ -174,7 +171,7 @@ export function Modal({
         </div>
         <div
           style={{
-            padding: t.space[5],
+            padding: `${t.space[3]} ${t.space[5]} ${t.space[5]}`,
             overflowY: 'auto',
             overflowX: 'hidden',
             minHeight: 0,

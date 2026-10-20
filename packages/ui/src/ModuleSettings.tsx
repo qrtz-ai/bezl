@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { IconButton } from './Layout';
 import { Modal } from './Modal';
 import { Text } from './Text';
+import { useTheme } from './theme';
 
 /**
  * ADR 0146 M1.4: a module's own opts, in a modal over its view (echo, nano, ctrl, snap), so the view stays put
@@ -22,6 +23,7 @@ export function ModuleSettingsModal({
   width?: number;
   'data-testid'?: string;
 }) {
+  const t = useTheme();
   return (
     <Modal
       open={open}
@@ -31,7 +33,16 @@ export function ModuleSettingsModal({
       width={width}
       {...(testId ? { 'data-testid': testId } : {})}
     >
-      {children}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: t.space[6],
+          minWidth: 0,
+        }}
+      >
+        {children}
+      </div>
     </Modal>
   );
 }
