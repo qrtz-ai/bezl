@@ -13,7 +13,11 @@ busy a manual run is the way to warm them.
 | `js`    | `ubuntu-24.04` | `bun install --frozen-lockfile`, `bun run lint`, `bun run typecheck`, `bun run test`                                   |
 | `e2e`   | `ubuntu-24.04` | `bun run e2e`: the renderer Playwright suite, Chromium and WebKit, mocked backend (`QRTZ_TAURI_E2E_PORT=1420`)         |
 | `rust`  | `ubuntu-24.04` | renderer build (for `frontendDist`), `cargo fmt --check`, both clippy passes of `check:rust`, `cargo test --workspace` |
-| `macos` | `macos-26`     | `bun run test:helper` (Swift helper `swift build` + `swift test`, fails on 0 tests), `cargo check -p qrtz-desktop`     |
+| `macos` | `macos-26`     | `bun run test:helper` (Swift helper `swift build` + `swift test`, fails on 0 tests), `cargo check -p qrtz-desktop`, `cargo test --workspace` |
+| `release-unsigned` | `macos-latest` | `bun run make` with no identity, ad-hoc signed like `sign-mac.sh`, unchanged `verify-bundle.sh` (only the Developer ID / notarization / staple FAILs are tolerated), `.app` + `.dmg` artifact. No caches |
+| `workflow-changes` | `ubuntu-24.04` | push to main only: lists commits touching `.github/**` in the job summary (pre-public checklist) |
+
+The repo is public: Actions minutes are free and CI also runs on `pull_request` (never `pull_request_target`). No workflow uses a secret; signing, notarizing and publishing stay on Jared's Mac.
 
 macOS minutes count 10x on a private repo, so the macOS job only does what Linux can't: the Mac-only Swift
 (AX, capture, FluidAudio, Foundation Models) and the macOS `cfg` code in the desktop crate. Its `cargo check` uses a

@@ -1,10 +1,14 @@
-# CI for qrtz (docs/ci.md). Linux runs everything that runs on Linux; macOS (10x minutes on a private repo)
-# only runs what needs a Mac: the Swift helper tests and a cargo check of the desktop crate.
+# CI for qrtz (docs/ci.md). The repo is public, so Actions minutes (macOS included) are free: Linux and macOS both
+# run the full test suite, and macOS also builds an UNSIGNED release qrtz.app/.dmg and runs the parts of
+# scripts/release/verify-bundle.sh that don't need a Developer ID signature. No workflow here uses any secret;
+# signing, notarizing and publishing stay on Jared's Mac (bun run release:mac, scripts/app/publish-local.sh).
 name: ci
 
 on:
   push:
     branches: [main]
+  # Public repo: outside PRs get CI too. pull_request (never pull_request_target): no secrets, read-only token.
+  pull_request:
   workflow_dispatch:
 
 # A newer push cancels the older push's run. A manual run has its own group, so a busy main can't cancel it
@@ -118,7 +122,7 @@ jobs:
       - run: cargo test --workspace
 
   macos:
-    name: macOS · swift test · cargo check desktop
+    name: macOS · swift test · cargo test · cargo check desktop
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -155,3 +159,102 @@ jobs:
           printf '#!/bin/sh\nexit 1\n' > apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin
           chmod +x apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin
       - run: cargo check -p qrtz-desktop --all-targets
+      - name: cargo test (workspace)
+        run: cargo test --workspace
+
+
+  # Unsigned release build on macOS. Named "release", so no restored caches: always a cold, reproducible build.
+  release-unsigned:
+    name: macOS · unsigned release build · verify-bundle (no Developer ID)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      SWIFT_BUILD_FLAGS: --disable-keychain
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - run: bun install --frozen-lockfile
+      # Same build release:mac does (bun run make), with no signing identity and no notarization variables.
+      - name: tauri build (unsigned)
+        run: |
+          env -u APPLE_SIGNING_IDENTITY -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID \
+            -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_KEY_PATH bun run make
+      - name: locate bundle
+        id: bundle
+        run: |
+          app="$(find target apps/desktop/src-tauri/target -path '*/release/bundle/macos/qrtz.app' -maxdepth 5 -type d 2>/dev/null | head -n1)"
+          [ -n "$app" ] || { echo "no qrtz.app built" >&2; exit 1; }
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "dir=$(dirname "$(dirname "$app")")" >> "$GITHUB_OUTPUT"
+      # Ad-hoc sign (no identity, no secret) with the identifiers and entitlements sign-mac.sh uses, so verify-bundle's
+      # identifier and entitlement checks test the real layout. Ad-hoc can never pass the Developer ID checks.
+      - name: ad-hoc sign like sign-mac.sh
+        run: |
+          app="${{ steps.bundle.outputs.app }}"
+          codesign --force --options runtime --identifier ai.qrtz.cli --sign - "$app/Contents/MacOS/qrtz"
+          codesign --force --options runtime --identifier ai.qrtz.echo \
+            --entitlements native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements --sign - "$app/Contents/MacOS/qrtz-echo"
+          codesign --force --options runtime --identifier ai.qrtz.desktop \
+            --entitlements apps/desktop/src-tauri/entitlements.mac.plist --sign - "$app"
+      # verify-bundle.sh is unchanged and runs in full. Only the FAILs that need a Developer ID signature, notarization
+      # or a stapled ticket are expected here; any other FAIL (dev-local strings, entitlements, identifiers, unknown
+      # Mach-O, archives, symlinks, qrtz-dash-net) fails the job.
+      - name: verify-bundle (everything but Developer ID / notarization)
+        run: |
+          set +e
+          bash scripts/release/verify-bundle.sh "${{ steps.bundle.outputs.app }}" > vb.log 2>&1
+          set -e
+          cat vb.log
+          grep 'verify-bundle: FAIL' vb.log \
+            | grep -vE 'does not satisfy the launch requirement|codesign --verify --deep --strict failed|FAIL: spctl:|FAIL: stapler validate' \
+            > unexpected.log || true
+          {
+            echo "### verify-bundle (unsigned build)"
+            echo '```'; cat vb.log; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'no dev-local override strings' vb.log || { echo "dev-local scan did not run" >&2; exit 1; }
+          if [ -s unexpected.log ]; then echo "unexpected verify-bundle failures:" >&2; cat unexpected.log >&2; exit 1; fi
+          echo "only the Developer ID / notarization checks failed (expected for an unsigned build)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qrtz-unsigned-macos-${{ github.sha }}
+          path: |
+            ${{ steps.bundle.outputs.app }}
+            ${{ steps.bundle.outputs.dir }}/dmg/*.dmg
+          retention-days: 14
+
+  # Bozniak pre-public checklist: on a push to main, flag every commit that touches .github/**.
+  workflow-changes:
+    name: flag .github changes
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: commits touching .github/**
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$AFTER^!"
+          else
+            range="$BEFORE..$AFTER"
+          fi
+          hits="$(git log --format='%h %an: %s' "$range" -- .github)"
+          {
+            echo "### .github/** changes in this push"
+            if [ -n "$hits" ]; then
+              echo ":warning: These commits touch .github/** and need a Bozniak review:"
+              while IFS= read -r c; do echo "- $c"; git show --name-only --format= "${c%% *}" -- .github | sed 's/^/  - /'; done <<<"$hits"
+            else
+              echo "None."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ -z "$hits" ] || echo "::warning::$(wc -l <<<"$hits" | tr -d ' ') commit(s) in this push touch .github/**"
