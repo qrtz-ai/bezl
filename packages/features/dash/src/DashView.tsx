@@ -35,6 +35,14 @@ const ago = (ms: number) => {
       : `${Math.round(m / 60)} h ago`;
 };
 
+/** QRT-298: `dash:copy-prompt` refuses with `not_connected` (as the message or `details.reason`). */
+const isNotConnected = (e: unknown) => {
+  const x = e as { message?: unknown; details?: { reason?: unknown } } | null;
+  return (
+    x?.message === 'not_connected' || x?.details?.reason === 'not_connected'
+  );
+};
+
 /**
  * Agent Dash (ADR 0228): a strictly read-only view of what your agents report. The only controls that reach an
  * agent are the deletes (it sees a 410); approving a new agent is account security, not a message to it.
@@ -43,6 +51,7 @@ export default function DashView() {
   const qrtz = useQrtz();
   const [view, setView] = useState<DashViewData | null>(null);
   const [copied, setCopied] = useState(false);
+  const [refused, setRefused] = useState(false);
   const [confirmDash, setConfirmDash] = useState(false);
   const [setupToken, setSetupToken] = useState('');
   const [serverError, setServerError] = useState<string | null>(null);
@@ -68,6 +77,9 @@ export default function DashView() {
     );
   // QRT-298: rust issues the code, builds the prompt for the connected origin and copies it; we never see the code.
   const origin = view?.origin || null;
+  // no origin, or rust said not_connected: nothing can enroll until a server is connected.
+  const offline = !origin || refused;
+  useEffect(() => setRefused(false), [origin]);
   useEffect(() => {
     if (!copied) return;
     const id = setTimeout(() => setCopied(false), 2000);
@@ -76,7 +88,10 @@ export default function DashView() {
   const copyPrompt = () =>
     void qrtz.invoke('dash:copy-prompt').then(
       (r) => setCopied(r.copied),
-      () => setCopied(false),
+      (e: unknown) => {
+        setCopied(false);
+        if (isNotConnected(e)) setRefused(true);
+      },
     );
 
   // ADR 0231: the setup token is sent once and dropped; the owner key it buys stays in the keychain (rust side).
@@ -114,9 +129,9 @@ export default function DashView() {
           </Text>
           {view && !view.deleted ? (
             <>
-              {!origin ? (
+              {offline ? (
                 <Text variant="caption" muted data-testid="dash-not-connected">
-                  not connected
+                  agents can't enroll until a server is connected
                 </Text>
               ) : copied ? (
                 <Text variant="caption" muted data-testid="dash-copied">
@@ -128,7 +143,7 @@ export default function DashView() {
                 variant="secondary"
                 icon="copy"
                 onClick={copyPrompt}
-                disabled={!origin}
+                disabled={offline}
                 data-testid="dash-copy-prompt"
               >
                 copy prompt

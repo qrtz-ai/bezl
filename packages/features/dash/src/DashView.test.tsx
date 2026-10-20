@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
+  AppError,
   DashBlocks,
   isHttpsUrl,
   DashView as DashViewSchema,
@@ -68,14 +69,17 @@ const view = (): View => ({
   ],
 });
 
-function fake(over: Partial<View> = {}) {
+function fake(over: Partial<View> = {}, copyError?: unknown) {
   const calls: [string, unknown][] = [];
   const client = {
     subApp: 'dash',
     invoke: async (channel: string, p: unknown) => {
       calls.push([channel, p]);
       if (channel === 'dash:view') return { ...view(), ...over };
-      if (channel === 'dash:copy-prompt') return { copied: true };
+      if (channel === 'dash:copy-prompt') {
+        if (copyError) throw copyError;
+        return { copied: true };
+      }
       return { ok: true };
     },
     on: () => () => {},
@@ -175,9 +179,38 @@ describe('dash copy prompt (QRT-298)', () => {
     const { client, calls } = fake({ origin: '' });
     await render(client);
     expect(btn()?.disabled).toBe(true);
-    expect(q('dash-not-connected')?.textContent).toBe('not connected');
+    expect(q('dash-not-connected')?.textContent).toBe(
+      "agents can't enroll until a server is connected",
+    );
     await act(async () => btn()?.click());
     expect(calls.map(([c]) => c)).not.toContain('dash:copy-prompt');
+  });
+  it('a not_connected refusal disables enrolling the same way', async () => {
+    const { client, calls } = fake(
+      { origin: 'http://127.0.0.1:8799', connected: true },
+      new AppError('E_UNAVAILABLE', 'not_connected'),
+    );
+    await render(client);
+    await act(async () => btn()?.click());
+    await flush();
+    expect(q('dash-copied')).toBeNull();
+    expect(btn()?.disabled).toBe(true);
+    expect(q('dash-not-connected')?.textContent).toBe(
+      "agents can't enroll until a server is connected",
+    );
+    await act(async () => btn()?.click());
+    expect(calls.filter(([c]) => c === 'dash:copy-prompt')).toHaveLength(1);
+  });
+  it('other copy errors keep the button enabled', async () => {
+    const { client } = fake(
+      { origin: 'https://dash.qrtz.ai', connected: true },
+      new AppError('E_INTERNAL', 'boom'),
+    );
+    await render(client);
+    await act(async () => btn()?.click());
+    await flush();
+    expect(btn()?.disabled).toBe(false);
+    expect(q('dash-not-connected')).toBeNull();
   });
   for (const origin of ['https://dash.qrtz.ai', 'http://127.0.0.1:8799'])
     it(`copies on click and shows copied (${origin})`, async () => {
