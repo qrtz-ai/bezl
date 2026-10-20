@@ -8,4 +8,6 @@ export interface Env {
   DASH_PEPPER: string;
   /** Worker secret: the one-time bearer for POST /v1/owner/setup (creating a dashboard). */
   DASH_SETUP_TOKEN: string;
+  /** Local test mode only (src/dev.ts): "1" from `wrangler dev --var`. Never set in production. */
+  DASH_DEV_LOCAL?: string;
 }

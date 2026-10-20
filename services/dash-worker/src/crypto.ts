@@ -74,7 +74,7 @@ export const codeChars = (n: number) => {
   return out;
 };
 
-export const newCode = () => {
+export const newCode = (prefix = 'ENR-') => {
   const c = codeChars(8);
-  return `ENR-${c.slice(0, 4)}-${c.slice(4)}`;
+  return `${prefix}${c.slice(0, 4)}-${c.slice(4)}`;
 };

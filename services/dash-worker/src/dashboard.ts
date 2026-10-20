@@ -13,6 +13,7 @@ import {
 } from './blocks';
 import * as C from './constants';
 import { ctEq, hmacHex, newCode, randomHex } from './crypto';
+import { devCodes, TEST_CODE_PREFIX } from './dev';
 import {
   fail,
   gone,
@@ -634,7 +635,7 @@ export class Dashboard extends DurableObject<Env> {
   /** A single-use code, 15 minutes. Only its HMAC is stored, here and in the enroll directory. */
   private async issueCode(now: number): Promise<Out> {
     if (this.deleted) return fail(422, 'this dashboard was deleted');
-    const code = newCode();
+    const code = newCode(devCodes(this.env) ? TEST_CODE_PREFIX : 'ENR-');
     const hash = await hmacHex(this.env.DASH_PEPPER, code);
     const expiresAt = now + C.ENROLL_TTL_MS;
     this.sql.exec(
