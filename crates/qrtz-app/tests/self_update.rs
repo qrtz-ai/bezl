@@ -384,3 +384,25 @@ async fn a_failed_install_leaves_the_version_free_to_retry() {
     assert!(matches!(u.download().await, State::Failed { .. }));
     assert!(!hw2.exists());
 }
+
+/// QRT-297: on the `index` GitHub release the archive is the flat asset; the path form (or any other release) is
+/// refused there.
+#[test]
+fn on_a_github_release_the_feed_names_the_flat_asset() {
+    let gh = "https://github.com/qrtz-ai/qrtz/releases/download/index";
+    let with = |url: &str| {
+        let mut v = feed("0.3.0", &text("good-0.3.0.sig"));
+        v["platforms"][TARGET]["url"] = json!(url);
+        parse_feed(&serde_json::to_vec(&v).unwrap(), gh)
+    };
+    let r = with(&format!("{gh}/v1.app.0.3.0.qrtz_0.3.0_aarch64.app.tar.gz")).unwrap();
+    assert_eq!(r.path, "v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz");
+    for bad in [
+        format!("{gh}/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz"),
+        "https://github.com/qrtz-ai/qrtz/releases/download/v0.3.0/v1.app.0.3.0.qrtz_0.3.0_aarch64.app.tar.gz"
+            .into(),
+        format!("{gh}/v1.app.0.2.0.qrtz_0.2.0_aarch64.app.tar.gz"),
+    ] {
+        assert!(with(&bad).is_err(), "{bad}");
+    }
+}

@@ -1,6 +1,6 @@
 // ADR 0181: the Mac's qrtz.app publish (scripts/app/publish-local.sh), checked on any OS through its dry run against a
-// throwaway clone (real git, a local bare origin) with curl and security stubbed. Plus upload.sh's order (latest.json
-// last) with rclone stubbed. Nothing here signs or uploads anything.
+// throwaway clone (real git, a local bare origin) with curl and security stubbed. Plus gh-store.sh upload-app's order
+// (latest.json last) with gh stubbed (QRT-297: the index GitHub release). Nothing here signs or uploads anything.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,14 +13,13 @@ const COPY = [
   'scripts/app/feed.mjs',
   'scripts/app/version.mjs',
   'scripts/app/sign-feed.sh',
-  'scripts/app/upload.sh',
+  'scripts/release/gh-store.sh',
   'scripts/app/verify-live.sh',
   'scripts/modules/version.mjs',
-  'scripts/ci/r2-env.sh',
   'crates/qrtz-app/src/app_update_key.pub',
 ];
 const KEY = 'UNTRUSTEDSECRETKEYSENTINEL0123456789abcdef';
-const R2SECRET = 'R2SECRETSENTINEL9876543210';
+const GHTOKEN = 'GHTOKENSENTINEL9876543210';
 const V = '0.2.1';
 
 let tmp, repo, bin, log, key, target, gitEnv;
@@ -28,7 +27,7 @@ let tmp, repo, bin, log, key, target, gitEnv;
 const git = (args, cwd = repo) =>
   execFileSync('git', args, { cwd, env: gitEnv, encoding: 'utf8' }).trim();
 
-// curl: latest.json from $STUB_FEED (404 without it); v1/app/<v>/ archive 200 with STUB_ARCHIVE_LIVE=1, else 404.
+// curl: v1.app.latest.json from $STUB_FEED (404 without it); the v1.app.<v>. archive 200 with STUB_ARCHIVE_LIVE=1.
 const CURL = `#!/usr/bin/env bash
 echo "curl $*" >>"$STUB_LOG"
 out="" url="" w=""
@@ -37,8 +36,8 @@ while [[ $# -gt 0 ]]; do
 done
 code=404
 case "$url" in
-  */v1/app/latest.json*) [[ -n "\${STUB_FEED:-}" ]] && { code=200; [[ -n "$out" ]] && cp "$STUB_FEED" "$out"; } ;;
-  */v1/app/*/qrtz_*_aarch64.app.tar.gz*) [[ "\${STUB_ARCHIVE_LIVE:-}" == 1 ]] && code=200 ;;
+  */v1.app.latest.json) [[ -n "\${STUB_FEED:-}" ]] && { code=200; [[ -n "$out" ]] && cp "$STUB_FEED" "$out"; } ;;
+  */v1.app.*.qrtz_*_aarch64.app.tar.gz) [[ "\${STUB_ARCHIVE_LIVE:-}" == 1 ]] && code=200 ;;
 esac
 [[ -n "$w" ]] && printf '%s' "$code"
 exit 0
@@ -84,7 +83,7 @@ beforeEach(() => {
   );
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'curl'), CURL, { mode: 0o755 });
-  for (const t of ['security', 'rclone', 'minisign', 'codesign'])
+  for (const t of ['security', 'gh', 'minisign', 'codesign'])
     fs.writeFileSync(path.join(bin, t), LOGGER(t), { mode: 0o755 });
   fs.writeFileSync(log, '');
   key = path.join(tmp, 'keys/app-update.key');
@@ -118,13 +117,12 @@ function run(args, env = {}) {
         STUB_LOG: log,
         QRTZ_APP_UPDATE_KEY: key,
         CARGO_TARGET_DIR: target,
-        R2_ACCESS_KEY_ID: 'AKID',
-        R2_SECRET_ACCESS_KEY: R2SECRET,
+        GH_TOKEN: GHTOKEN,
         ...env,
       },
     },
   );
-  for (const s of [KEY, R2SECRET]) {
+  for (const s of [KEY, GHTOKEN]) {
     expect(r.stdout).not.toContain(s);
     expect(r.stderr).not.toContain(s);
   }
@@ -140,7 +138,7 @@ const inOrder = (lines, steps) => {
 const calls = () => fs.readFileSync(log, 'utf8');
 
 describe('publish-local.sh --dry-run', () => {
-  it("plans app-release.yml's steps in order, with the key only by path, and touches nothing", () => {
+  it("plans release.yml's steps in order, with the key only by path, and touches nothing", () => {
     const r = run(['--dry-run'], { STUB_FEED: envelope('0.2.0') });
     expect(r.status, r.stderr).toBe(0);
     const lines = plan(r);
@@ -152,7 +150,7 @@ describe('publish-local.sh --dry-run', () => {
         'release-notes.mjs 0.2.1',
         'feed.mjs --version 0.2.1',
         'sign-feed.sh',
-        'upload.sh',
+        'gh-store.sh upload-app',
         'verify-live.sh',
         'version.mjs tag --push',
       ]),
@@ -166,29 +164,24 @@ describe('publish-local.sh --dry-run', () => {
     expect(lines.find((l) => l.includes('feed.mjs --version'))).toContain(
       '--expires-days 30',
     );
-    expect(lines.find((l) => l.includes('upload.sh'))).toMatch(
-      /^\+ R2_\*=<env> env VERSION=0\.2\.1 /,
+    expect(lines.find((l) => l.includes('gh-store.sh upload-app'))).toMatch(
+      /^\+ env VERSION=0\.2\.1 /,
     );
-    expect(lines.find((l) => l.includes('upload.sh'))).toContain(
+    expect(lines.find((l) => l.includes('gh-store.sh upload-app'))).toContain(
       `qrtz_${V}_aarch64.dmg`,
     );
     expect(r.stdout).toContain('(live feed: 0.2.0)');
     expect(r.stdout).toContain('dry run, nothing done');
-    // Nothing ran: no keychain, no rclone, no signing, no tag, no file in the tree.
-    expect(calls()).not.toMatch(/^(security|rclone|minisign|codesign) /m);
+    // Nothing ran: no keychain, no gh, no signing, no tag, no file in the tree.
+    expect(calls()).not.toMatch(/^(security|gh|minisign|codesign) /m);
     expect(git(['tag', '-l'])).toBe('');
     expect(git(['status', '--porcelain'])).toBe('');
   });
 
-  it('names the keychain item when the R2 env is not set, and never reads it in a dry run', () => {
-    const r = run(['--dry-run'], {
-      R2_ACCESS_KEY_ID: '',
-      R2_SECRET_ACCESS_KEY: '',
-    });
+  it('reads no keychain item and names no Cloudflare credential (QRT-297)', () => {
+    const r = run(['--dry-run']);
     expect(r.status, r.stderr).toBe(0);
-    expect(plan(r).find((l) => l.includes('upload.sh'))).toMatch(
-      /^\+ R2_\*=<keychain qrtz-r2> /,
-    );
+    expect(r.stdout).not.toMatch(/R2_|rclone|qrtz-r2/);
     expect(calls()).not.toMatch(/^security /m);
   });
 
@@ -204,7 +197,9 @@ describe('publish-local.sh --dry-run', () => {
     expect(lines.find((l) => l.includes('tar -C'))).toContain(
       path.join(tmp, 'elsewhere'),
     );
-    expect(lines.find((l) => l.includes('upload.sh'))).toMatch(/x\.dmg$/);
+    expect(lines.find((l) => l.includes('gh-store.sh upload-app'))).toMatch(
+      /x\.dmg$/,
+    );
   });
 
   it('refuses before planning anything', () => {
@@ -279,7 +274,7 @@ describe('publish-local.sh --dry-run', () => {
     const r = run([]);
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("runs on Jared's Mac only");
-    expect(calls()).not.toMatch(/^(security|rclone) /m);
+    expect(calls()).not.toMatch(/^(security|gh) /m);
   });
 });
 
@@ -294,22 +289,21 @@ describe('publish-local.sh --refresh --dry-run', () => {
         'minisign -V',
         'feed.mjs --unwrap',
         'sign-feed.sh',
-        'rclone copyto',
+        'gh-store.sh upload-feed',
         'curl ',
       ]),
     ).toBe(true);
     expect(lines.find((l) => l.includes('feed.mjs --unwrap'))).toContain(
       '--expires-days 30',
     );
-    const up = lines.find((l) => l.includes('rclone copyto'));
-    expect(up).toContain('qrtzr2:qrtz-modules/v1/app/latest.json');
-    expect(up).toContain('max-age=60');
+    const up = lines.find((l) => l.includes('gh-store.sh upload-feed'));
+    expect(up).toContain('latest.json');
     expect(
       lines.some(
-        (l) => l.includes('upload.sh') || l.includes('version.mjs tag'),
+        (l) => l.includes('upload-app') || l.includes('version.mjs tag'),
       ),
     ).toBe(false);
-    expect(calls()).not.toMatch(/^(security|rclone|minisign) /m);
+    expect(calls()).not.toMatch(/^(security|gh|minisign) /m);
   });
 
   it('does nothing when no feed is live yet', () => {
@@ -320,7 +314,7 @@ describe('publish-local.sh --refresh --dry-run', () => {
   });
 });
 
-describe('upload.sh (what publish-local.sh runs for the upload)', () => {
+describe('gh-store.sh upload-app (what publish-local.sh runs for the upload)', () => {
   it('uploads the immutable versioned files first and latest.json last', () => {
     const dir = path.join(tmp, 'work');
     fs.mkdirSync(dir);
@@ -332,27 +326,29 @@ describe('upload.sh (what publish-local.sh runs for the upload)', () => {
     fs.writeFileSync(dmg, 'dmg');
     const r = spawnSync(
       'bash',
-      [path.join(repo, 'scripts/app/upload.sh'), dir, dmg],
+      [path.join(repo, 'scripts/release/gh-store.sh'), 'upload-app', dir, dmg],
       {
         encoding: 'utf8',
         env: {
           PATH: `${bin}:${process.env.PATH}`,
           STUB_LOG: log,
           VERSION: V,
-          R2_ACCOUNT_ID: 'acct',
-          R2_ACCESS_KEY_ID: 'AKID',
-          R2_SECRET_ACCESS_KEY: R2SECRET,
+          GH_TOKEN: GHTOKEN,
         },
       },
     );
     expect(r.status, r.stderr).toBe(0);
     const ups = calls()
       .split('\n')
-      .filter((l) => l.startsWith('rclone copyto'));
+      .filter((l) => l.startsWith('gh release upload'));
     expect(ups).toHaveLength(5);
-    for (const u of ups.slice(0, 3)) expect(u).toContain('--immutable');
-    expect(ups[3]).toContain('/v1/app/qrtz-latest.dmg');
-    expect(ups[4]).toContain('/v1/app/latest.json');
-    expect(calls()).not.toContain(R2SECRET);
+    // The versioned files are never replaced; only the stable dmg and the feed are, the feed last.
+    for (const u of ups.slice(0, 3)) expect(u).not.toContain('--clobber');
+    expect(ups[0]).toMatch(
+      /\/v1\.app\.0\.2\.1\.qrtz_0\.2\.1_aarch64\.app\.tar\.gz$/,
+    );
+    expect(ups[3]).toMatch(/\/v1\.app\.qrtz-latest\.dmg --clobber$/);
+    expect(ups[4]).toMatch(/\/v1\.app\.latest\.json --clobber$/);
+    expect(calls()).not.toContain(GHTOKEN);
   });
 });
