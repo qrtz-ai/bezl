@@ -115,6 +115,8 @@ pub struct AppService {
     /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
     echo_hello: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
+    /// `helper:status` is emitted while this lock is held, so a handler of that event must never call back into the
+    /// status getter in the same step (it would deadlock). Tauri delivers events later, so nothing does that today.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
     /// `log:write` rate limit (ADR 0083).
     renderer_log: Mutex<crate::logging::RendererGate>,
