@@ -24,10 +24,20 @@ describe('dev builds are TCC-stable (docs/dev-permissions.md)', () => {
       ['qrtz-echo', 'ai.qrtz.echo'],
     ]) {
       expect(dev).toContain(`\nsign ${name} ${id}\n`);
-      expect(rel).toMatch(
-        new RegExp(`\\n${name} ${id.replace(/\./g, '\\.')} `),
-      );
+      if (name === 'qrtz')
+        expect(rel).toMatch(
+          new RegExp(`\\n${name} ${id.replace(/\./g, '\\.')} `),
+        );
     }
+    // QRT-255: release signs bundled helpers from module.json, not a hard-coded table.
+    const echo = JSON.parse(read('modules/echo/module.json'));
+    expect(echo.launch).toMatchObject({
+      kind: 'bundled-helper',
+      entry: 'qrtz-echo',
+    });
+    expect(echo.code.bundleId).toBe('ai.qrtz.echo');
+    expect(rel).not.toContain('ai.qrtz.echo');
+    expect(rel).toContain('bundled_helpers "$repo/modules"');
     expect(dev).toContain('\nsign qrtz-app ai.qrtz.desktop.dev\n');
     // ADR 0169, ADR 0174: the only module code in the app is echo; a dev monolith signs as ai.qrtz.helper.
     expect(rel).not.toMatch(/\nqrtz-(helper|snap|nano|ctrl) /);
