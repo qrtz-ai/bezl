@@ -12,7 +12,7 @@ import {
   type BlockType,
 } from './blocks';
 import * as C from './constants';
-import { ctEq, hmacHex, newCode, randomHex } from './crypto';
+import { codeMac, ctEq, newCode, pepperOk, randomHex } from './crypto';
 import { devCodes, TEST_CODE_PREFIX } from './dev';
 import {
   fail,
@@ -81,7 +81,9 @@ export const unwire = (w: Wire): Out => ({
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS enroll_codes (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, used_at INTEGER);
+DROP TABLE IF EXISTS enroll_codes;
+CREATE TABLE IF NOT EXISTS enroll_code_macs (code_id TEXT PRIMARY KEY, secret_mac TEXT NOT NULL,
+  expires_at INTEGER NOT NULL, used_at INTEGER);
 CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, skeleton TEXT NOT NULL,
   description TEXT NOT NULL, fingerprint TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, status TEXT NOT NULL,
   heartbeat TEXT, last_seen INTEGER NOT NULL, created_at INTEGER NOT NULL, flagged INTEGER NOT NULL DEFAULT 0);
@@ -199,7 +201,8 @@ export class Dashboard extends DurableObject<Env> {
 
   // ---- RPC (answers cross as a JSON string: an Out's body is arbitrary JSON) ----
   async enroll(a: {
-    codeHash: string;
+    codeId: string;
+    secretMac: string;
     name: unknown;
     description: unknown;
     tokenHash: string;
@@ -232,7 +235,8 @@ export class Dashboard extends DurableObject<Env> {
 
   // ---- the agent's side ----
   private async enrollImpl(a: {
-    codeHash: string;
+    codeId: string;
+    secretMac: string;
     name: unknown;
     description: unknown;
     tokenHash: string;
@@ -252,14 +256,16 @@ export class Dashboard extends DurableObject<Env> {
         error: 'too many wrong codes',
         retry_after_ms: Math.max(1000, (recent.oldest ?? now) + 60_000 - now),
       });
+    // QRT-284: found by id, then the secret's HMAC compared in constant time (a dummy compare when no row).
     const code = this.sql
-      .exec<{ code_hash: string }>(
-        'SELECT code_hash FROM enroll_codes WHERE used_at IS NULL AND expires_at > ?',
+      .exec<{ code_id: string; secret_mac: string }>(
+        'SELECT code_id, secret_mac FROM enroll_code_macs WHERE code_id = ? AND used_at IS NULL AND expires_at > ?',
+        a.codeId,
         now,
       )
-      .toArray()
-      .find((c) => ctEq(c.code_hash, a.codeHash));
-    if (!code) {
+      .toArray()[0];
+    const match = ctEq(code?.secret_mac ?? '0'.repeat(64), a.secretMac);
+    if (!code || !match) {
       this.sql.exec('INSERT INTO enroll_failures (at) VALUES (?)', now);
       const total = Number(this.meta('enroll_fail_total') ?? '0') + 1;
       this.setMeta('enroll_fail_total', String(total));
@@ -271,9 +277,9 @@ export class Dashboard extends DurableObject<Env> {
     }
     // Burned before anything else is checked.
     this.sql.exec(
-      'UPDATE enroll_codes SET used_at = ? WHERE code_hash = ?',
+      'UPDATE enroll_code_macs SET used_at = ? WHERE code_id = ?',
       now,
-      code.code_hash,
+      code.code_id,
     );
     const name = cleanName(typeof a.name === 'string' ? a.name : '');
     let description = cleanName(
@@ -639,20 +645,27 @@ export class Dashboard extends DurableObject<Env> {
     return r;
   }
 
-  /** A single-use code, 15 minutes. Only its HMAC is stored, here and in the enroll directory. */
+  /**
+   * A single-use `<id>.<secret>` code, 15 minutes (QRT-284). Only HMAC(DASH_ENROLL_KEY, id.secret) is stored, here and
+   * in the enroll directory; the secret itself is only in this one response.
+   */
   private async issueCode(now: number, prefix = 'ENR-'): Promise<Out> {
     if (this.deleted) return fail(422, 'this dashboard was deleted');
-    const code = newCode(prefix);
-    const hash = await hmacHex(this.env.DASH_PEPPER, code);
+    if (!pepperOk(this.env.DASH_ENROLL_KEY))
+      return fail(503, 'server not configured');
+    const { code, id, secret } = newCode(prefix);
+    const mac = await codeMac(this.env.DASH_ENROLL_KEY, id, secret);
     const expiresAt = now + C.ENROLL_TTL_MS;
     this.sql.exec(
-      'INSERT INTO enroll_codes (code_hash, expires_at, used_at) VALUES (?, ?, NULL)',
-      hash,
+      'INSERT INTO enroll_code_macs (code_id, secret_mac, expires_at, used_at) VALUES (?, ?, ?, NULL)',
+      id,
+      mac,
       expiresAt,
     );
     this.log('code-issued', null, now);
     await this.env.ENROLL.getByName('enroll').register(
-      hash,
+      id,
+      mac,
       this.meta('dash_id') ?? '',
       expiresAt,
     );
@@ -660,7 +673,7 @@ export class Dashboard extends DurableObject<Env> {
   }
 
   private rotate(now: number) {
-    this.sql.exec('DELETE FROM enroll_codes');
+    this.sql.exec('DELETE FROM enroll_code_macs');
     this.sql.exec('DELETE FROM enroll_failures');
     this.setMeta('enroll_fail_total', '0');
     this.log('codes-rotated', null, now);
@@ -715,7 +728,7 @@ export class Dashboard extends DurableObject<Env> {
   private deleteDashboard(now: number) {
     this.ctx.storage.transactionSync(() => {
       this.setMeta('deleted', '1');
-      this.sql.exec('DELETE FROM enroll_codes');
+      this.sql.exec('DELETE FROM enroll_code_macs');
       this.sql.exec('DELETE FROM events');
       this.sql.exec('DELETE FROM widgets');
       this.sql.exec('DELETE FROM idempotency');
@@ -730,7 +743,7 @@ export class Dashboard extends DurableObject<Env> {
     this.sql.exec('DELETE FROM events WHERE at < ?', cutoff);
     this.sql.exec('DELETE FROM audit WHERE at < ?', cutoff);
     this.sql.exec(
-      'DELETE FROM enroll_codes WHERE used_at IS NOT NULL OR expires_at <= ?',
+      'DELETE FROM enroll_code_macs WHERE used_at IS NOT NULL OR expires_at <= ?',
       now,
     );
     this.sql.exec('DELETE FROM idempotency WHERE expires_at <= ?', now);
@@ -834,7 +847,7 @@ export class Dashboard extends DurableObject<Env> {
     return {
       meta: this.sql.exec('SELECT * FROM meta').toArray(),
       agents: this.sql.exec('SELECT * FROM agents').toArray(),
-      codes: this.sql.exec('SELECT * FROM enroll_codes').toArray(),
+      codes: this.sql.exec('SELECT * FROM enroll_code_macs').toArray(),
     };
   }
 }
