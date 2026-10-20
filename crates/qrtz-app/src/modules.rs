@@ -26,6 +26,11 @@ pub struct Bundled {
 }
 
 /// The manifests and lockfile shipped in this build. A broken one is a build bug: the tests parse them.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+)]
 pub fn bundled() -> &'static Bundled {
     static B: OnceLock<Bundled> = OnceLock::new();
     B.get_or_init(|| {
@@ -302,7 +307,7 @@ mod tests {
         assert!(gate(&cfg, "settings", "speech:status").is_ok());
         // ADR 0174: echo's view, while echo is off, may still read the speech status (to show Parakeet's size).
         {
-            let mut off = cfg.clone();
+            let mut off = cfg;
             off["modules"]["echo"]["enabled"] = serde_json::json!(false);
             assert!(gate(&off, "talk", "speech:status").is_ok());
             assert!(gate(&off, "talk", "talk:history").is_err());

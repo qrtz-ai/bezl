@@ -20,10 +20,13 @@ fn main() {
         eprintln!("qrtz: no data dir (set HOME or QRTZ_USER_DATA, or pass --root)");
         std::process::exit(2);
     };
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("runtime");
+    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("qrtz: can't start the async runtime: {e}");
+            std::process::exit(1);
+        }
+    };
     let mut out = std::io::stdout();
     let mut ask = |q: &str| ask_tty(q);
     let mut io = Io {

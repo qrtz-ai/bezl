@@ -497,7 +497,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         }),
         shell: b.storage_shell.clone(),
         recordings_dir: dirs.recordings.clone(),
-        pending: Some(pending.clone()),
+        pending: Some(pending),
         app_version: b.info.version.clone(),
     };
     // ADR 0216: ctrl+fn hands its words to ctrl do; the service is built below, so talk reaches it through this.
@@ -506,7 +506,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         Some(t) => t,
         None => Arc::new(crate::talk::Talk(with_notch_ticker(crate::talk::talk_service(
             crate::talk::TalkWiring {
-                helper: echo_helper.clone(),
+                helper: echo_helper,
                 events: events.clone(),
                 shell: talk_shell,
                 config: config.clone(),
@@ -580,7 +580,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         storage: Arc::new(storage),
         talk,
         shell: b.shell,
-        helper: supervisor.clone(),
+        helper: supervisor,
         events: events.clone(),
     });
     service.set_setup(setup.clone());
@@ -599,7 +599,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // ADR 0181: qrtz's own updater, over the pinned host; quiet checks start with the app (`start_app_update_checks`).
     service.set_self_update(
         crate::self_update::SelfUpdate::new(
-            service_version.clone(),
+            service_version,
             crate::self_update::pinned_key().map(str::to_owned),
             Arc::new(crate::self_update::PinnedBackend {
                 transport: crate::module_hosting::HttpTransport::pinned(),
@@ -638,7 +638,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // up. Elsewhere the helper has no ctrl backend, so a do fails with E_UNAVAILABLE.
     if let (true, Some(sup), Ok(rt)) = (
         cfg!(target_os = "macos"),
-        ctrl_helper.clone(),
+        ctrl_helper,
         tokio::runtime::Handle::try_current(),
     ) {
         let helper = Arc::new(qrtz_ctrl::helper::HelperClient::new(Box::new(
@@ -701,7 +701,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let vault = crate::vault_port::NotesVault::new(
         dirs.data.clone(),
         booted.db.clone(),
-        events.clone(),
+        events,
         b.storage_shell.clone(),
     );
     if tokio::runtime::Handle::try_current().is_ok() {
