@@ -136,8 +136,10 @@ async fn the_helper_models_download_pause_resume_verify_and_delete() {
     srv.faults.lock().unwrap().throttle.remove(&big);
     mgr.resume().unwrap();
     until("installed", || mgr.status()["installed"] == "1.0.0").await;
+    // `installed` is published a moment before the download state returns to idle (seen on macOS CI), so wait
+    // for idle instead of asserting it on the same read.
+    until("idle", || mgr.status()["download"]["state"] == "idle").await;
     let s = mgr.status();
-    assert_eq!(s["download"]["state"], "idle");
     // N121: the install hook (wiring: `models.warm`) ran once, after the pause and resume, not before.
     until("install hook", || {
         warmed.load(std::sync::atomic::Ordering::SeqCst) == 1
