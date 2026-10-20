@@ -1,14 +1,15 @@
 //! The Laya backend interface (slice 4, ADR 0106). Laya (Convai Innovations, Apache-2.0) is a small encoder that
 //! answers typed questions (choice / score / yes-no) with calibrated probabilities in one forward pass; its Core ML
-//! port runs on the Mac. ctrl uses it only when the user has downloaded it from ctrl's settings (consent,
-//! ADR 0076): there is no download here and no network ever.
+//! port runs on the Mac. QRT-293: it is ctrl's required decision model. Until the user has downloaded it from
+//! ctrl's settings (consent, ADR 0076) and it verified and loaded, ctrl decides nothing and takes no action (there is
+//! no rules fallback). There is no download here and no network ever.
 //!
 //! This module is pure and builds everywhere: the request format ([`laya_request`]) and the adapter from a runtime's
 //! probabilities to the chain's logits ([`LayaScorer`]). The runtime itself (Core ML, in the Swift helper) is
-//! behind [`LayaRuntime`] and arrives with the helper protocol in slice 5. [`select_scorer`] only ever picks Laya on
-//! macOS with the `laya` feature, a consented and installed model, and a runtime; otherwise the heuristic layer.
+//! behind [`LayaRuntime`] and arrives with the helper protocol in slice 5. [`select_scorer`] gives a scorer only on
+//! macOS with the `laya` feature, a consented and installed model, and a runtime; otherwise the [`ModelStatus`] why.
 use crate::decide::Question;
-use crate::decide::{Goal, Heuristic, ModelId, Node, Scorer};
+use crate::decide::{Goal, ModelId, ModelStatus, Node, Scorer};
 use std::path::PathBuf;
 
 /// What Laya reads for a `choice` question. In memory only: never logged, never written.
@@ -61,6 +62,9 @@ impl<R: LayaRuntime> Scorer for LayaScorer<R> {
     fn model(&self) -> ModelId {
         self.runtime.model()
     }
+    fn status(&self) -> ModelStatus {
+        ModelStatus::Ready
+    }
     fn logits(&self, q: &Question, goal: &Goal) -> Result<Vec<i64>, String> {
         let p = self.runtime.choose(&laya_request(q, goal))?;
         if p.len() != q.choices.len() || p.iter().any(|x| !x.is_finite() || *x < 0.0) {
@@ -79,41 +83,44 @@ pub struct ModelConsent {
     pub installed: Option<PathBuf>,
 }
 
-/// Whether this build can run Laya at all (macOS with the `laya` feature); elsewhere the heuristic always decides.
+/// Whether this build can run Laya at all (macOS with the `laya` feature); elsewhere ctrl never decides.
 pub const RUNTIME_BUILD: bool = cfg!(all(target_os = "macos", feature = "laya"));
 
-/// Why the heuristic layer answers instead of Laya.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fallback {
-    /// Not macOS, or built without the `laya` feature.
-    NotThisBuild,
-    NoConsent,
-    NotInstalled,
-    NoRuntime,
+/// What the host knows about the model on disk (QRT-293): its status and, only when `Ready`, the verified path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Readiness {
+    pub status: ModelStatus,
+    pub path: Option<PathBuf>,
 }
 
-/// Pick the scorer: Laya only with consent, an installed model and a runtime, on a macOS `laya` build.
+impl Readiness {
+    pub fn not(status: ModelStatus) -> Readiness {
+        Readiness { status, path: None }
+    }
+}
+
+/// The status from consent alone (no download state, no hash check): `Ready` only on a runtime build with consent
+/// and the installed model on disk.
+pub fn consent_status(consent: &ModelConsent, runtime_build: bool) -> ModelStatus {
+    if !runtime_build {
+        return ModelStatus::Unavailable;
+    }
+    match &consent.installed {
+        Some(p) if consent.consented && p.exists() => ModelStatus::Ready,
+        _ => ModelStatus::NotDownloaded,
+    }
+}
+
+/// Pick the scorer: Laya only with consent, an installed model and a runtime, on a macOS `laya` build. Otherwise
+/// the status that blocks ctrl (no scorer at all: nothing else decides).
 pub fn select_scorer(
     consent: &ModelConsent,
     runtime: Option<Box<dyn LayaRuntime>>,
-) -> (Box<dyn Scorer>, Option<Fallback>) {
-    #[cfg(all(target_os = "macos", feature = "laya"))]
-    {
-        if !consent.consented {
-            return (Box::new(Heuristic), Some(Fallback::NoConsent));
-        }
-        if !consent.installed.as_ref().is_some_and(|p| p.exists()) {
-            return (Box::new(Heuristic), Some(Fallback::NotInstalled));
-        }
-        match runtime {
-            Some(rt) => (Box::new(LayaScorer { runtime: rt }), None),
-            None => (Box::new(Heuristic), Some(Fallback::NoRuntime)),
-        }
-    }
-    #[cfg(not(all(target_os = "macos", feature = "laya")))]
-    {
-        let _ = (consent, runtime);
-        (Box::new(Heuristic), Some(Fallback::NotThisBuild))
+) -> Result<Box<dyn Scorer>, ModelStatus> {
+    match (consent_status(consent, RUNTIME_BUILD), runtime) {
+        (ModelStatus::Ready, Some(rt)) => Ok(Box::new(LayaScorer { runtime: rt })),
+        (ModelStatus::Ready, None) => Err(ModelStatus::LoadFailed),
+        (s, _) => Err(s),
     }
 }
 
@@ -128,8 +135,8 @@ impl LayaRuntime for Box<dyn LayaRuntime> {
 
 /// The Laya runtime behind the ctrl helper protocol (slice 5, ADR 0108): one `ctrl.laya` request per question, run
 /// by the helper's Core ML stack on the consented, installed model. The helper answers `laya.no_model` until the
-/// model is downloaded from ctrl's settings; [`decide::decide`](crate::decide::decide) then falls back to the
-/// heuristic layer for that question and the log says so. Selecting it still goes through [`select_scorer`].
+/// model is downloaded from ctrl's settings; [`decide::decide`](crate::decide::decide) then decides nothing and the
+/// run ends with no action. Selecting it still goes through [`select_scorer`].
 pub struct HelperLaya {
     pub helper: std::sync::Arc<crate::helper::HelperClient>,
     pub model: ModelId,
@@ -148,47 +155,84 @@ impl LayaRuntime for HelperLaya {
     }
 }
 
-/// Run 19: the scorer re-selected per question, so a model downloaded (or switched off) while the app runs takes
-/// effect at the next question instead of the next app start. Each question reads the consent (a file read, no
-/// network): with consent, an installed model on disk and a runtime build, the Laya model answers through the helper
-/// with that path; otherwise the heuristic layer does, exactly as [`select_scorer`] would have chosen at start.
+/// Run 19: the model re-checked per question, so a model downloaded (or switched off) while the app runs takes
+/// effect at the next question instead of the next app start. Each question reads the host's [`Readiness`] (file
+/// reads, no network): only `Ready` with a verified path and a runtime build asks the model, through the helper with
+/// that path. QRT-293: anything else, or a model that fails to load or answers malformed, decides nothing; a load
+/// failure is reported as [`ModelStatus::LoadFailed`] until the next command retries it.
 pub struct LiveScorer {
-    pub consent: Box<dyn Fn() -> ModelConsent + Send + Sync>,
+    pub readiness: Box<dyn Fn() -> Readiness + Send + Sync>,
     pub helper: std::sync::Arc<crate::helper::HelperClient>,
     pub model: ModelId,
     /// [`RUNTIME_BUILD`] in the app; tests set it to exercise the switch on Linux.
     pub runtime_build: bool,
+    /// The path whose load (or answer) failed, until the next command or another path.
+    pub load_failed: std::sync::Mutex<Option<PathBuf>>,
 }
 
 impl LiveScorer {
-    fn active(&self) -> Option<PathBuf> {
-        if !self.runtime_build {
-            return None;
+    pub fn new(
+        readiness: Box<dyn Fn() -> Readiness + Send + Sync>,
+        helper: std::sync::Arc<crate::helper::HelperClient>,
+        model: ModelId,
+        runtime_build: bool,
+    ) -> Self {
+        LiveScorer {
+            readiness,
+            helper,
+            model,
+            runtime_build,
+            load_failed: std::sync::Mutex::new(None),
         }
-        let c = (self.consent)();
-        c.installed.filter(|p| c.consented && p.exists())
+    }
+
+    fn current(&self) -> Readiness {
+        if !self.runtime_build {
+            return Readiness::not(ModelStatus::Unavailable);
+        }
+        let r = (self.readiness)();
+        match (&r.status, &r.path) {
+            (ModelStatus::Ready, Some(p)) if p.exists() => {
+                let failed = self.load_failed.lock().unwrap_or_else(|e| e.into_inner());
+                if failed.as_ref() == Some(p) {
+                    Readiness::not(ModelStatus::LoadFailed)
+                } else {
+                    r
+                }
+            }
+            (ModelStatus::Ready, _) => Readiness::not(ModelStatus::NotDownloaded),
+            (s, _) => Readiness::not(*s),
+        }
     }
 }
 
 impl Scorer for LiveScorer {
     fn model(&self) -> ModelId {
-        match self.active() {
-            Some(_) => self.model.clone(),
-            None => Heuristic.model(),
-        }
+        self.model.clone()
+    }
+    fn status(&self) -> ModelStatus {
+        self.current().status
+    }
+    fn retry_load(&self) {
+        *self.load_failed.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
     fn logits(&self, q: &Question, goal: &Goal) -> Result<Vec<i64>, String> {
-        match self.active() {
-            Some(path) => LayaScorer {
-                runtime: HelperLaya {
-                    helper: self.helper.clone(),
-                    model: self.model.clone(),
-                    path: Some(path),
-                },
-            }
-            .logits(q, goal),
-            None => Heuristic.logits(q, goal),
+        let r = self.current();
+        let Some(path) = r.path.filter(|_| r.status == ModelStatus::Ready) else {
+            return Err(format!("model.{}", r.status.code()));
+        };
+        let out = LayaScorer {
+            runtime: HelperLaya {
+                helper: self.helper.clone(),
+                model: self.model.clone(),
+                path: Some(path.clone()),
+            },
         }
+        .logits(q, goal);
+        if out.is_err() {
+            *self.load_failed.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
+        }
+        out
     }
 }
 

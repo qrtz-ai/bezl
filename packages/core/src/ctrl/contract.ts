@@ -158,9 +158,9 @@ export const CtrlRunView = z.object({
 export type CtrlRunView = z.infer<typeof CtrlRunView>;
 
 /**
- * ctrl's Laya decision model (ADR 0116). Downloaded only after the user says yes here; until then
- * (and whenever the model is missing or fails) the deterministic heuristic scorer decides. `unavailable`: consented,
- * but the pinned manifest is still a placeholder, so nothing can be fetched. Mirrors qrtz-app `ctrl_model`.
+ * ctrl's Laya decision model (ADR 0116). Downloaded only after the user says yes here. QRT-293: the model is
+ * required and there is no rules fallback; until `status` is `ready` ctrl takes no action. `unavailable` (state):
+ * consented, but the pinned manifest is still a placeholder, so nothing can be fetched. Mirrors qrtz-app `ctrl_model`.
  */
 export const CtrlModelState = z.object({
   consented: z.boolean(),
@@ -174,7 +174,21 @@ export const CtrlModelState = z.object({
   ]),
   sizeBytes: z.number().int().nonnegative(),
   bytesOnDisk: z.number().int().nonnegative(),
+  /** Legacy: `laya` only when `status` is `ready`; `heuristic` now means no model is deciding (ctrl acts on nothing). */
   scorer: z.enum(['heuristic', 'laya']),
+  /**
+   * QRT-293: whether ctrl can decide. `ready`: downloaded, verified, loadable. Anything else blocks ctrl (the
+   * "download to start" screen): `not_downloaded`, `downloading`, `hash_mismatch`, `load_failed`, `unavailable`
+   * (this build can't run it, or nothing to download yet).
+   */
+  status: z.enum([
+    'ready',
+    'not_downloaded',
+    'downloading',
+    'hash_mismatch',
+    'load_failed',
+    'unavailable',
+  ]),
   /** A short code when the last download failed (`laya.placeholder`, `checksum`), never content. */
   error: z.string().max(64).nullable(),
 });

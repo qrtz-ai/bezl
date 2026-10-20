@@ -1,7 +1,7 @@
 //! The ctrl do chain end to end over fixture trees (Safari, Finder, System Settings, Notes, Mail, and Slack as a
 //! poor tree), through the real helper protocol to a fake helper: pruning and grouping, act / tentative / ask,
 //! backtracking, confirm gates bound to the tree, the stop key, replay, and a scan proving no fixture text is logged.
-use qrtz_ctrl::decide::{Goal, Heuristic, ModelId, Node, Question, Scorer, MAX_OPTIONS};
+use qrtz_ctrl::decide::{Goal, ModelId, ModelStatus, Node, Question, Scorer, MAX_OPTIONS};
 use qrtz_ctrl::driver::{replay_check, Driver, Step};
 use qrtz_ctrl::gate::ConfirmAnswer;
 use qrtz_ctrl::guard::StopReason;
@@ -46,9 +46,13 @@ impl Clock for Tick {
     }
 }
 
-/// A scripted scorer: the heuristic's priors plus a boost per option id.
+/// A test stand-in for the decision model (QRT-293: ctrl ships no rules scorer): the option sources' ranks as its
+/// logits, plus a scripted boost per option id. Lives only in these tests.
 struct Scripted(BTreeMap<String, i64>);
 impl Scorer for Scripted {
+    fn status(&self) -> ModelStatus {
+        ModelStatus::Ready
+    }
     fn model(&self) -> ModelId {
         ModelId {
             id: "scripted".into(),
@@ -103,7 +107,7 @@ impl Run {
         .drive()
     }
     fn drive(&mut self) -> Step {
-        self.drive_with(&Heuristic)
+        self.drive_with(&Scripted(BTreeMap::new()))
     }
     fn push(&mut self, e: Event) {
         self.log.append(0, 0, e);

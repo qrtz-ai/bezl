@@ -1568,6 +1568,7 @@
         "sizeBytes": 0,
         "bytesOnDisk": 0,
         "scorer": "heuristic",
+        "status": "not_downloaded",
         "error": null
       }
     },
@@ -1581,6 +1582,7 @@
         "sizeBytes": 0,
         "bytesOnDisk": 0,
         "scorer": "heuristic",
+        "status": "unavailable",
         "error": "laya.placeholder"
       }
     },

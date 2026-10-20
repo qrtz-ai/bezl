@@ -3,7 +3,7 @@
 //! Face URL (never from the package host), and with no answer recorded in ctrl's settings the installed model is
 //! ctrl's yes: `CtrlLayaModel::consent()` hands the helper the read-only, store-linked `.mlmodelc` inside
 //! `packages/model.laya/<version>/` (ADR 0157 §9), with no separate download and no helper view under `models/`.
-//! A recorded "no" still wins; removing ctrl prunes the model and the scorer falls back to the heuristic.
+//! A recorded "no" still wins; removing ctrl prunes the model and ctrl then decides nothing (QRT-293).
 #![cfg(feature = "runtime")]
 use qrtz_app::ctrl_model::{CtrlLayaModel, CtrlManifest};
 use qrtz_app::local_models::LocalModels;
@@ -234,7 +234,7 @@ async fn installing_ctrl_brings_laya_from_hugging_face_and_that_is_its_yes() {
     let r = Router::new(Shared(b.service.clone())).validate_responses(true);
     let m = laya(&data);
 
-    // Before: not installed, no answer, the heuristic answers.
+    // Before: not installed, no answer, nothing decides.
     assert!(!ctrl_installed(&b));
     assert!(!m.consented());
     assert_eq!(m.consent().installed, None);
@@ -295,14 +295,14 @@ async fn installing_ctrl_brings_laya_from_hugging_face_and_that_is_its_yes() {
     std::fs::remove_file(data.join("ctrl/laya.json")).unwrap();
     assert!(m.consent().installed.is_some());
 
-    // Removing ctrl, the model's only user, prunes it: back to the heuristic.
+    // Removing ctrl, the model's only user, prunes it: nothing decides (QRT-293: no rules fallback).
     change(&r, "remove", &["ctrl"]).await.unwrap();
     assert!(!ctrl_installed(&b));
     assert!(!pkg.exists(), "model.laya pruned with ctrl");
     assert!(!m.consented());
     assert_eq!(m.consent().installed, None);
-    let (_s, why) = qrtz_ctrl::laya::select_scorer(&m.consent(), None);
-    assert!(why.is_some(), "the heuristic answers");
+    let why = qrtz_ctrl::laya::select_scorer(&m.consent(), None).err();
+    assert!(why.is_some(), "no scorer: ctrl takes no action");
     let _ = qrtz_modules::fsutil::remove_tree(tmp.path());
 }
 

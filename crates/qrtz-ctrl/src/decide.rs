@@ -1,7 +1,11 @@
 //! Scoring one question of the chain (decision-layer spec §1, §5, §13; ADR 0106, kept by ADR 0214). A question has
-//! at most [`MAX_OPTIONS`] enumerated options, the last one always "none of these". A [`Scorer`] (the deterministic
-//! [`Heuristic`], or a consented Laya model) gives a milli-logit per option; a softmax at the node's temperature
-//! gives calibrated probabilities in basis points (integers, so a record hashes the same after a JSON round trip).
+//! at most [`MAX_OPTIONS`] enumerated options, the last one always "none of these". The [`Scorer`] is ctrl's
+//! downloaded decision model (QRT-293: there is no built-in rules scorer and no fallback); it gives a milli-logit per
+//! option and a softmax at the node's temperature gives calibrated probabilities in basis points (integers, so a
+//! record hashes the same after a JSON round trip). The model only proposes: the chain's option sources bound what
+//! it can pick, and the act policy and confirm gates ([`crate::act`], [`crate::gate`]) still decide whether the
+//! picked action runs. A model that isn't [`ModelStatus::Ready`], or that fails or answers malformed, makes
+//! [`decide`] return an error and the run takes no action.
 //!
 //! - p ≥ τ_act (0.80): act.
 //! - τ_back (0.50) ≤ p < τ_act: act tentatively; the next two options are the backtrack stack (≤ 2 per decision,
@@ -105,8 +109,9 @@ impl Opt {
     }
 }
 
-/// One option with its heuristic prior (milli-logits) and its readable label (memory only: never logged; the Laya
-/// prompt and the UI read it).
+/// One option with its source rank (`prior`, milli-units) and its readable label (memory only: never logged; the Laya
+/// prompt and the UI read it). QRT-293: the rank only orders and prunes what the chain offers (≤ [`MAX_OPTIONS`]);
+/// it never decides; the model scores the options it is offered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Choice {
     pub opt: Opt,
@@ -162,7 +167,40 @@ pub struct Goal<'a> {
     pub text: &'a str,
 }
 
-/// Scores one question: a logit (milli-units) per option, same order.
+/// Whether ctrl's decision model can decide right now (QRT-293). Anything but `Ready` means ctrl takes no action;
+/// the code is what `ctrl:model`'s `status` reports for the "download to start" screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelStatus {
+    /// Downloaded, verified and loadable: ctrl decides, fully offline.
+    Ready,
+    /// No model on disk (never downloaded, consent withdrawn, or an interrupted partial download).
+    NotDownloaded,
+    /// The verified download is in flight.
+    Downloading,
+    /// The files on disk don't match the pinned sha256 (or their pinned sizes and read-only modes).
+    HashMismatch,
+    /// The files verified, but the runtime couldn't load or run the model (or answered malformed).
+    LoadFailed,
+    /// This build can't run the model (not macOS, or built without the `laya` feature), or the pinned manifest is
+    /// still a placeholder, so there is nothing to download.
+    Unavailable,
+}
+
+impl ModelStatus {
+    pub fn code(self) -> &'static str {
+        match self {
+            ModelStatus::Ready => "ready",
+            ModelStatus::NotDownloaded => "not_downloaded",
+            ModelStatus::Downloading => "downloading",
+            ModelStatus::HashMismatch => "hash_mismatch",
+            ModelStatus::LoadFailed => "load_failed",
+            ModelStatus::Unavailable => "unavailable",
+        }
+    }
+}
+
+/// Scores one question: a logit (milli-units) per option, same order. Only ever the decision model.
 pub trait Scorer: Send + Sync {
     fn model(&self) -> ModelId;
     fn logits(&self, q: &Question, goal: &Goal) -> Result<Vec<i64>, String>;
@@ -170,25 +208,29 @@ pub trait Scorer: Send + Sync {
     fn temperature_milli(&self, _node: Node) -> u32 {
         1000
     }
+    /// Whether the model can decide now. Checked before every question; not `Ready` means no decision.
+    fn status(&self) -> ModelStatus;
+    /// A new command starts: forget a load failure from an earlier run so this one tries the model again (it still
+    /// takes no action if the load fails again).
+    fn retry_load(&self) {}
 }
 
-pub const HEURISTIC_ID: &str = "qrtz-heuristic";
-/// Version 2: the ctrl-do chain (ADR 0214). Changing a prior changes replay, which the replay check reports.
-pub const HEURISTIC_VERSION: &str = "2";
+/// The scorer before a model is wired in (and on builds with no helper): never decides.
+pub struct NoModel(pub ModelStatus);
 
-/// The deterministic layer: the option sources' priors are the logits. No model, no download.
-pub struct Heuristic;
-
-impl Scorer for Heuristic {
+impl Scorer for NoModel {
     fn model(&self) -> ModelId {
         ModelId {
-            id: HEURISTIC_ID.into(),
-            version: HEURISTIC_VERSION.into(),
+            id: "none".into(),
+            version: "0".into(),
             quant: None,
         }
     }
-    fn logits(&self, q: &Question, _goal: &Goal) -> Result<Vec<i64>, String> {
-        Ok(q.choices.iter().map(|c| c.prior).collect())
+    fn logits(&self, _q: &Question, _goal: &Goal) -> Result<Vec<i64>, String> {
+        Err(format!("model.{}", self.0.code()))
+    }
+    fn status(&self) -> ModelStatus {
+        self.0
     }
 }
 
@@ -245,7 +287,9 @@ pub fn input_hash(goal: &Goal, node: Node, options: &[Opt], position: &str) -> S
     hex::encode(&h[..8])
 }
 
-/// Answer one question: score, calibrate, pick, classify. Pure except for the scorer and the clock.
+/// Answer one question: score, calibrate, pick, classify. Pure except for the scorer and the clock. `Err` (a code,
+/// never content): the model isn't ready, failed, or answered malformed; there is no fallback, so nothing is
+/// decided and the caller takes no action.
 pub fn decide(
     q: &Question,
     goal: &Goal,
@@ -253,21 +297,22 @@ pub fn decide(
     scorer: &dyn Scorer,
     clock: &dyn Clock,
     decision_id: String,
-) -> Event {
+) -> Result<Event, String> {
     let options: Vec<Opt> = q.choices.iter().map(|c| c.opt.clone()).collect();
     assert!(
         !options.is_empty() && options.len() <= HARD_CAP,
         "a question has 1..={HARD_CAP} options"
     );
+    let status = scorer.status();
+    if status != ModelStatus::Ready {
+        return Err(format!("model.{}", status.code()));
+    }
     let t0 = clock.mono_ns();
     let (logits, model, t_milli) = match scorer.logits(q, goal) {
         Ok(l) if l.len() == options.len() => (l, scorer.model(), scorer.temperature_milli(q.node)),
-        // A failing or malformed model never blocks a run: the heuristic answers and the log says so.
-        _ => (
-            Heuristic.logits(q, goal).expect("heuristic"),
-            Heuristic.model(),
-            1000,
-        ),
+        // QRT-293: a failing or malformed model decides nothing (no rules fallback).
+        Ok(_) => return Err("model.bad_output".into()),
+        Err(e) => return Err(e.chars().take(64).collect()),
     };
     let p_bp = softmax_bp(&logits, t_milli);
     let best = argmax(&p_bp);
@@ -291,7 +336,7 @@ pub fn decide(
         Vec::new()
     };
     let latency_us = clock.mono_ns().saturating_sub(t0) / 1000;
-    Event::DecisionMade {
+    Ok(Event::DecisionMade {
         decision_id,
         node: q.node,
         input_hash: input_hash(goal, q.node, &options, position),
@@ -306,7 +351,7 @@ pub fn decide(
         alternatives,
         model,
         latency_us,
-    }
+    })
 }
 
 /// The top three real options of an asked decision (what Jared picks from).
