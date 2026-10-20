@@ -2368,3 +2368,73 @@ remaining helper side. P5's p50 / p95 budget still waits on `node scripts/echo-t
    client" → "…client.".
 5. If Parakeet already ends it with "?" for you, nothing changes. If anything reads worse, `git revert bac67baa`
    (talk-only) and tell Echo the dictation.
+
+## 53. Cycle 82: a spoken title before a name is written as its abbreviation (ADR 0234, `868ac2c6`)
+
+Polish first. The recogniser writes the title both ways: on the cached LibriSpeech hypotheses on the box, 127 texts
+have "Mister" / "Missus" + a name where another decode of the same clip wrote "Mr." / "Mrs." ("Mister Wicker's" /
+"Mr. Wicker's", "Mister and Missus Vanderpool" / "Mr. and Mrs. Vanderpool"). Now, as the very last step, a whole-word
+"Mister" / "mister" / "Missus" / "missus" with one space and then a name (or "and", the partner title and a name) is
+written "Mr." / "Mrs.". A vocative "mister" (a mark after it, or a sentence starting right after it), the names
+written with the spelled-out title ("Mister Rogers", "Mister Ed", "Mister Softee", "Mister Donut") and a dictionary
+that spells "mister" / "missus" keep the words.
+
+| Run                                     | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| --------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`eb02af43`), the 168 cases | 164 / 168 | 42 chars (0.73 % of 5724)  | 0           | 0 / 413             |
+| `868ac2c6`, the 168 cases               | 164 / 168 | 42 chars (no case changes) | 0           | 0 / 413             |
+| old cleanup, 182 cases (+14 title)      | 164 / 182 | 118 chars                  | -           | 0 / 443             |
+| `868ac2c6`, 182 cases                   | 178 / 182 | 42 chars (0.66 % of 6349)  | 0           | 0 / 443             |
+
+- **Examples:** "I had a call with Mister Patel about the contract" → "I had a call with Mr. Patel about the contract.";
+  "Mister and Missus Lee are coming to dinner on Saturday" → "Mr. and Mrs. Lee are coming to dinner on Saturday.";
+  "Can you ask mister Garcia to call me back" → "Can you ask Mr. Garcia to call me back?". Kept: "Hey mister, you
+  dropped your wallet." (a mark), "Excuse me mister I think you dropped this." / "Bye mister See you tomorrow." (a
+  sentence after a vocative), "We watched Mister Rogers with the kids last night." (a kept name), "The missus wants
+  us home by six." (no name), "Mister and Mrs Smith arrived early." (the dotless partner), "Doctor Who is my
+  favorite show." (other titles stay).
+- **False-positive evidence:** 30 keep vectors against 14 positives, 42 refusals in tests/hardening82.rs plus the
+  title × name table. Old / new output on 8984 runs (the 2835 cached hypotheses with and without their final mark,
+  every polish / keep / cleanup.json raw, with and without the polish dictionary): **306 differences, all intended**:
+  254 on the 127 real hypotheses × 2 dictionaries, each only "Mister" / "mister" / "Missus" → "Mr." / "Mrs." before a
+  name or "and Mrs. / Missus <name>", and 52 on this cycle's new positive vectors. Rust and TS identical on 858 128
+  runs (350 948 texts × 4 dictionaries, without U+0085 / U+FEFF); with those two characters the twins differ on the
+  same 71 556 runs before and after (an older word-count difference, not this rule).
+- **Rejected this cycle** (details in ADR 0234): "Doctor" → "Dr." ("Doctor Who", "Dr Pepper"), "Saint" → "St.",
+  "Miss" / "Ms." / "Professor", a dot added to the recogniser's own "Mr Smith", non-ASCII / all-caps / one-letter
+  names, a name after a comma, a mark or a line break, "Mister and Mrs Smith" / "Mister and misses Smith", running
+  the rule before the terminal step.
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped (median per round, ms): 495 words 0.112 / 0.112 → 0.117 / 0.118; question 0.116 / 0.116 → 0.123 / 0.128;
+  vocative 0.124 / 0.123 → 0.131 / 0.134; tag 0.114 / 0.115 → 0.121 / 0.121; imperative 0.114 / 0.114 → 0.121 /
+  0.125; date 0.115 / 0.123 → 0.122 / 0.122; wh-contraction 0.114 / 0.115 → 0.122 / 0.122; modifier contraction
+  0.114 / 0.117 → 0.122 / 0.121; the new 504-word text with 7 titles 0.114 / 0.116 → 0.126 / 0.127. The offset on the
+  texts with no title is code layout, not work (a build whose `spoken_titles` returns at once shows the same
+  +0.003-0.011 ms); the rule itself is two substring searches on the final text, and the words around a hit only
+  when there is one. Ceiling 2 ms. Capture, segmenting, the decode schedule, the model's settings, the drain / final
+  pass, insert and the timing log are unchanged.
+- **Dictation path review since `bac67baa`:** only `eb02af43` (cycle 81's docs) landed between them; no change to
+  crates/qrtz-talk, packages/core/src/talk, native/ or the press path besides this rule. N197 (needs the Mac's
+  device-switch gap), N199 (Jared's call) and N203 stay open; nothing new.
+- **Nano quick check:** vitest src/note 130 passed in 19 files (bun's runtime loads the `node:sqlite` files this
+  cycle). No Note code changed.
+
+Next: p15 after the Mac check; N203 if real dictations show it; widen `TITLE_NOT_NAMES` only from a real dictation
+that shows a miss; then P7 (idle memory / CPU on the Mac first) or P6's remaining helper side. P5's p50 / p95 budget
+still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 82)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `868ac2c6`), then `scripts/dev/dev-local.sh` as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening82 --test polish_set -- --nocapture`: nine
+   budget medians well under 0.5 ms (box 0.12-0.13 ms), "polish set: 178/182 exact", regressions 0, all pass.
+3. Hold fn and say "I had a call with Mister Patel about the contract": it types "I had a call with Mr. Patel about
+   the contract." Then "Mister and Missus Lee are coming to dinner on Saturday" → "Mr. and Mrs. Lee are coming to
+   dinner on Saturday."; "Please send the invoice to Missus Chen by Friday" → "…to Mrs. Chen by Friday.".
+4. Left as said: "Hey mister, you dropped your wallet" keeps "mister"; "We watched Mister Rogers last night" keeps
+   "Mister Rogers".
+5. If the recogniser already types "Mr." for you, nothing changes. If you want the spelled-out title somewhere, add
+   it to the dictionary (for example "Mister Softee") and the rule stays off. If anything reads worse, `git revert
+   868ac2c6` (talk-only) and tell Echo the dictation.
