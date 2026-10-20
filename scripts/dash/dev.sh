@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# bun run dash:dev [-- --wipe]
+# bun run --cwd services/dash-worker dev:local [-- --wipe]
 # Starts the Agent Dash worker under `wrangler dev --local` on http://127.0.0.1:8799 (loopback only, local Durable
 # Objects in services/dash-worker/.wrangler/state, no Cloudflare account, never deploys). On first run it writes
 # services/dash-worker/.dev.vars (gitignored, mode 600) with throwaway DASH_PEPPER / DASH_SETUP_TOKEN and
 # DASH_DEV_LOCAL=1; the pepper must stay with the state, so later runs reuse it. --wipe deletes both first.
-# Copy the setup token for the app with:  bun run dash:token   (to the clipboard; never printed)
+# Copy the setup token for the app with:  bun run --cwd services/dash-worker token   (to the clipboard; never printed)
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 wipe=0
 for a in "$@"; do case "$a" in --wipe) wipe=1 ;; *) die "unknown flag $a" ;; esac; done
