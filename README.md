@@ -93,6 +93,7 @@ Docs: [architecture](docs/architecture.md) · [rust core api](docs/rust-core-api
 
 ## License
 
-See [LICENSE](LICENSE). Third-party components keep their own licenses; see
+qrtz is free software under the [GNU Affero General Public License v3.0 only](LICENSE) (AGPL-3.0-only), with
+the additional permission in [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md). Copyright (c) 2026 Jared Grimes. Third-party components keep their own licenses; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Speech models (Parakeet, Nemotron) are not bundled; they are
 downloaded separately and are covered by their own licenses.
