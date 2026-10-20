@@ -28,7 +28,7 @@ final class WarmupHoldTests: XCTestCase {
         let pre = out.value.compactMap { if case .dictationStarted("w1", let ms) = $0 { ms } else { nil } }.first
         XCTAssertEqual(pre, Double(fed) * 1000 / 16_000)
         XCTAssertFalse(out.value.contains { if case .log(_, let m) = $0 { m.contains("dropped") } else { false } })
-        let cap = await e.preRoll.capacity
+        let cap = await e.preRollCapacity
         XCTAssertEqual(cap, 16_000 * 300 / 1000)  // back to the configured pre-roll after the start
     }
 
