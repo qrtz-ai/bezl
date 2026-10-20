@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The ctrl do chain end to end over fixture trees (Safari, Finder, System Settings, Notes, Mail, and Slack as a
 //! poor tree), through the real helper protocol to a fake helper: pruning and grouping, act / tentative / ask,
 //! backtracking, confirm gates bound to the tree, the stop key, replay, and a scan proving no fixture text is logged.

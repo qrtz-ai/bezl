@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/states.spec.ts "LLM failure falls back to on-device summary, Retry gets the AI summary"
 //! (docs/e2e-parity.md row 32; "helper missing" is in e2e_shell.rs, "hundreds of meetings" in e2e_scale.rs).
 //! ADR 0075: the model is on-device (Apple Intelligence through the helper; here the scripted helper's mock).

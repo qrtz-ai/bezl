@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Design call (e) of Bozniak's 902bcab review: qrtz-snap follows `modules.snap.installed` (ADR 0169) through the
 //! same switch pass as nano, echo and ctrl (`apply_module_switches`). A snap that isn't installed is never spawned,
 //! so its supervisor never retries: not at launch, not on `config:set`, not when its settings change. Installing it

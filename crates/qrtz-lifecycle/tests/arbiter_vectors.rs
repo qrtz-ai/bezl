@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Runs the shared helper-arbiter vectors (spec/vectors/helper/arbiter.json + arbiter-edges.json) against the Rust
 //! port. The same files are run by vitest (packages/core/src/helper/arbiter*.test.ts) and the Swift helper tests,
 //! so passing here means the Tauri host and the helper agree on every accept/ignore/refuse, effect and degrade.

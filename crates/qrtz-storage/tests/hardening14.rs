@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 14 (N49, ADR 0047): chat retrieval for a question in Chinese, Japanese or Thai. The vectors in
 //! spec/stress/chat-cjk.json are shared with packages/core/src/note/chat.hardening14.test.ts (the TS oracle).
 

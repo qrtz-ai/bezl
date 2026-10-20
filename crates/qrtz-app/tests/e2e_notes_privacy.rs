@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/notes-privacy.spec.ts (docs/e2e-parity.md rows 22–24): live notes + privacy pause, notes in
 //! the summary, note edit, template re-run; the privacy config persists (local-only went with ADR 0076: qrtz is
 //! entirely offline), an excluded app is never detected; backup export with checksums, import into a fresh profile,

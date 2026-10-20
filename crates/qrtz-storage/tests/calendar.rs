@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0217: nano's Apple Calendar cache and the recording link.
 use qrtz_storage::calendar::{clean_meeting_url, clean_title, pick_event, EARLY_MS, EVENTS_MAX, TITLE_MAX};
 use qrtz_storage::{CalendarEvent, CalendarInfo, Db};

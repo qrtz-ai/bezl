@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0231 amendment 1: the helper's egress pin, its stdio protocol and where the owner key goes.
 use qrtz_dash_net::*;
 use serde_json::{json, Value};

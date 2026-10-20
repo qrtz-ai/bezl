@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0083, the confinement requirement: the local log never holds what the user said, dictated or wrote.
 //!
 //! The app's own logging (`qrtz_app::logging::init`: the redacting stderr + rotating file sinks) at `trace` for

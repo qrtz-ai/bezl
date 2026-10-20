@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Headless integration: the real router + AppService + config file + a real helper child process (the Rust
 //! mock helper binary from qrtz-helper-bridge), no Tauri. Covers what main/ipc.ts + config-store did in Electron.
 use qrtz_app::ports::*;

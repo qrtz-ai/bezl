@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The qrtz speech seam (`qrtz_speech::SpeechEngine`): version handshake, untrusted output, crash and update
 //! mid-session, against a mock module that validates its lines like the host's on-device engine does.
 mod common;

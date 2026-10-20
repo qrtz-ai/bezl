@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N83: the Tauri backend runs the full step chain, SummarySteps (ADR 0075: the summary on this Mac, here the mock
 //! helper's model) → CoreSteps (finalize; index is a no-op since search is full-text), end to end through
 //! `build_app` and the router with the Rust mock helper. There is no provider to call (ADR 0076: entirely offline):

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0225 (Bozniak, echo 0.2.1 blocker): echo must never type into a password field. The helper checks the focused
 //! field right at insert time and answers `insert.result{ok: false, error: "secure-field"}`; the host then keeps
 //! nothing of that dictation (no history, no clipboard, no transcript) and the pill says why.

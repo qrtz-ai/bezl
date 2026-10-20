@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N124 (ADR 0081): Jared, on a real Mac: releasing fn often cut off the last words. The helper's real final (its
 //! release tail, drained buffers and the recogniser's end-of-stream flush) carries words no partial ever showed, so
 //! talk must wait for that final, long enough for on-device ASR and scaled to the dictation's length, and never

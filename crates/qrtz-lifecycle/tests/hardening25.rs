@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 25 (N120; ADR 0080): `note:set-template` while the meeting's summary attempt is already running.
 //! That attempt read the old template before the new one was stored, and `retry_step` leaves a running step
 //! alone, so set-template used to wait for it and return the old template's summary as the new one.

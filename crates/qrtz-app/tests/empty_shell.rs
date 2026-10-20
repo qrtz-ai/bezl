@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0169 / ADR 0170 end to end on a local signed index (the dev path `bun run modules:dev` uses): qrtz starts
 //! empty; installing a module from the marketplace brings its model in the same plan (one consent, one progress,
 //! all or nothing) and links the helper's model view; the module's helper entry resolves from its installed
@@ -130,7 +131,7 @@ fn publish(dir: &Path) -> (PathBuf, String) {
     );
     let snap = extension(&src, "snap", "0.9.0", json!({}), &["snap"]);
     write(&snap.join("bin/other"), b"#!/bin/sh\necho other\n", true);
-    let mut bad = SpecPackage::fake_notarized(snap.clone());
+    let mut bad = SpecPackage::fake_notarized(snap);
     let n = bad.notarization.as_mut().unwrap();
     n.code_sha256 = sha(b"#!/bin/sh\necho other\n");
     let keys = Keys::ephemeral();

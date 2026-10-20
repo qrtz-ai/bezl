@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Per-channel speakers through the real finalize and storage (ADR 0058 §12): ids stay per channel, the mic's
 //! main voice is "me" by default, a rename sticks across another finalize, and the mic is never one person.
 #![cfg(feature = "runtime")]

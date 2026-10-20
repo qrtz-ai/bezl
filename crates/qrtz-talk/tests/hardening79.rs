@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0230 (echo cycle 79): a spoken date's day is written as a figure: "on October twenty first" → "on October
 //! 21st", the way the recogniser writes it when it writes digits ("Saturday, August 15th"). Only an ordinal day 1-31
 //! right after a capitalised month that follows a date preposition or a weekday, with its own mark, the end, or a

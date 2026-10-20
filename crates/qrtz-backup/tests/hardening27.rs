@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 27, N132 (ADR 0086): a backup export took every `*.wav` in the recordings dir that `is_file()`,
 //! which follows symlinks. A symlink planted under a recording's name (`x.wav` → `~/.ssh/id_ed25519`) put its
 //! target in the zip, and a FIFO named `x.wav` would block the export for good. Now only regular files themselves
@@ -84,7 +85,7 @@ fn write_backup_skips_a_listed_path_that_is_a_symlink() {
         &WriteBackup {
             target: &out,
             db_snapshot: &snap,
-            audio_files: &[link.clone(), own.clone()],
+            audio_files: &[link, own],
             app_version: "t",
             schema_version: 1,
             meetings: 0,

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Behaviour the cross-open fixture doesn't pin: lenient reads, corruption rules, snapshot/import, the handle.
 
 use std::collections::HashMap;

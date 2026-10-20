@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N129: a `models.warm` (ADR 0079, after a speech download) the helper couldn't take because it wasn't running is
 //! remembered and sent on the next helper `hello`, once; `speech.warmAfterDownload` is read again then. The app's
 //! helper-line tap (`wiring::helper_line_tap`) does it, and the hello still reaches the runtime and talk.

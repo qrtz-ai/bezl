@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! qrtz talk through the Tauri backend: `build_app` wires `TalkService` (crates/qrtz-talk) over the supervisor,
 //! the validated bus, the app secret store and the shell clipboard; the Rust mock helper plays the dictation
 //! (`dictation.started`, growing `dictation.asr` partials, `dictation.stopped`, `insert.result`).

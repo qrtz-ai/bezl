@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 3, storage: search across one huge meeting (N10) and atomic backup import (N11).
 //! Mirrors packages/core/src/note/hardening3.stress.test.ts and apps/desktop/src/worker/import.hardening3.test.ts.
 

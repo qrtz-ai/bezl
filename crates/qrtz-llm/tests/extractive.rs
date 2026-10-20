@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The extractive summarizer against the TS oracle (spec/vectors/llm/extractive.json, written by
 //! packages/core/src/note/llm.vectors.test.ts), and `load_sync` + `Loaded::extractive`, which qrtz-app's
 //! `SummarySteps` falls back to when the on-device model fails (ADR 0075).

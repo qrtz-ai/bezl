@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/chat.spec.ts (docs/e2e-parity.md rows 19, 20; row 21 is in e2e_scale.rs): speaker rename and
 //! merge, full-text search hiding a meeting pending delete (N90), and the "Always record" setting. The spec's chat
 //! part went with the "ask" chat (ADR 0072).

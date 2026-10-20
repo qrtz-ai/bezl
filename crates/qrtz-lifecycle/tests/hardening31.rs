@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 31: the order of `note:session` views (N155, N156, ADR 0098) over the real `NoteRuntime`.
 //!
 //! A window subscribes to `note:session`, then asks for a snapshot, and keeps whichever view has the higher `seq`
@@ -50,9 +51,7 @@ fn rig() -> Rig {
     let views = Arc::new(Views::default());
     let rt = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(InlineDb(db.0.clone()))),
-        steps: Arc::new(CoreSteps {
-            db: InlineDb(db.0.clone()),
-        }),
+        steps: Arc::new(CoreSteps { db: InlineDb(db.0) }),
         helper: Arc::new(Helper),
         events: views.clone(),
         config: Arc::new(RuntimeConfig::default),

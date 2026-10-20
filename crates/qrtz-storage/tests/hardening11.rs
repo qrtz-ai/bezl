@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 11 (N46, ADR 0038): search terms with an apostrophe or combining marks. The vectors in
 //! spec/stress/fts-queries.json are shared with packages/core/src/note/fts.hardening11.test.ts.
 

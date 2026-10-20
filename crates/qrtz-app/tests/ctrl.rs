@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ctrl do through the real router (ADR 0215): the generated contract validates requests and responses, the ctrl
 //! manifest's capabilities gate the channels, runs act through the fixture helper, and the history survives a
 //! restart.

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N176 (ADR 0159): a module host that never answers costs the first install about one round per host, not one
 //! request per range of every blob. Echo's first-run Parakeet download (21 files, 75 ranges) goes through this
 //! fetcher with `modules.qrtz.ai` and its mirror ahead of the pinned Hugging Face URL.

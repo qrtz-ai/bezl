@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/capture.spec.ts and the N29/N32 case of e2e/permissions.spec.ts (docs/e2e-parity.md rows
 //! 2, 3, 4, 28) against the Rust `qrtz-mock-helper` (QRTZ_MOCK_SILENT / QRTZ_MOCK_MIC_FAILS).
 mod e2e_support;

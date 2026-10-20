@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0235 (echo cycle 83): cleanup never leaves a doubled or stray mark where it took a filler out. A filler said
 //! as its own sentence ("Thanks. Um. Can you send it", "Um. Hello") goes with its mark, so the text reads as if the
 //! filler hadn't been said. Fails without the fix (every positive kept "..", "?.", "!." or a leading "."); the

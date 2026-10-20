@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0182: the Echo polish test set (spec/vectors/talk/polish.json), scored on every run.
 //! - `keep`: false-positive vectors. Text where a rule's pattern appears but the words must stay; the cleanup must
 //!   produce `expect` exactly (zero hits on the false-positive set). A vector with `"dict": true` runs with the file's

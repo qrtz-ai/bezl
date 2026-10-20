@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0196 (echo cycle 59): a dictation that ends with no mark gets "?" instead of "." when its last sentence can
 //! only be a question: a yes/no opening ("Do you", "Can we", "Is it", "Is there any") or a wh-opening with an
 //! auxiliary and a subject ("What time does the store close", "Where do you"), 3 to 12 words, no comma or

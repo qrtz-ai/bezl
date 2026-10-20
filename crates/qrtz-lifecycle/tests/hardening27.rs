@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 27, N126 host side (ADR 0085). Since `a4ea467` the helper says when a channel's diarizer stood
 //! down (`backlog`) or never loaded (`model-unavailable`): `diarization.unavailable {source, atMs, reason}`, after the
 //! open turn it could still send. The host ignored the line (no `HelperInput` arm), so a stood-down channel still

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 9 (H7, N44; ADR 0032): finalize pads each reconnect gap with zero PCM from the part offsets, so
 //! audio time matches transcript time. Shared cases: spec/stress/stitch-gaps.json (TS:
 //! apps/desktop/src/worker/stitch.hardening9.test.ts). Each part is filled with its own byte, so the layout is

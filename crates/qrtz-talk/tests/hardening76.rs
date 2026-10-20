@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0227 (echo cycle 76): a dictation that ends in a tag question with no mark of its own ends with "?" instead of
 //! the "." the terminal step used to add: "It's a nice day, isn't it" → "It's a nice day, isn't it?". Only ", " then a
 //! negative contraction and the pronoun it agrees with as a tag (or "don't you think" / "don't you agree" / "wouldn't

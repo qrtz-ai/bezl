@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Shared talk vectors (spec/vectors/talk/*.json), computed by the TS oracle (packages/core/src/talk/*.vectors.test.ts).
 use qrtz_talk::cleanup::{apply_dictionary, rule_cleanup};
 use qrtz_talk::store::{parse, serialize};

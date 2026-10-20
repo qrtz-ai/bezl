@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 29 (N148, ADR 0094): a meeting whose delete is pending is not readable by id. Since ADR 0091 a
 //! meeting is an address (`#/note/meetings/:id`) that a notification, the palette or the tab bar's remembered path
 //! can open, so `note:get`, `note:export` and `note:list-notes` must agree with `note:list` and playback (N133):

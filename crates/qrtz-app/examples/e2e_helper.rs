@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Test-only scripted capture helper for the phase 5 E2E port (`crates/qrtz-app/tests/e2e_*.rs`, docs/e2e-parity.md).
 //!
 //! It speaks the helper protocol like the TS mock the Electron Playwright suite runs against

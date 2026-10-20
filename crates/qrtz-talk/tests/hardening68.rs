@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0208 (echo cycle 68): after "Hey <dictionary name> did you", a closed list of plain base-form verbs also opens
 //! the question ADR 0206 punctuates: "Hey Jared did you finish the report" → "Hey Jared, did you finish the report?".
 //! "did you" + an object or complement ("did you a favor", "did you good", "did you wrong", "did you proud", "did you

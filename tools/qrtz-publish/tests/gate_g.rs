@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0144 §6 gate (g), on ADR 0157's installer: Bozniak's sideload freshness cases driven through
 //! `qrtz_modules::install::Installer` (`sideload`, `refresh`, `plan`/`apply`) on the real publisher's signed output,
 //! not the legacy `qrtz_modules::sideload::decide` (its unit cases stay in `crates/qrtz-modules/tests/gate_g.rs`).

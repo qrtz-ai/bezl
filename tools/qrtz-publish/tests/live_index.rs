@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! A (package, version) already in the live index is immutable: a build whose entry differs is refused before
 //! anything is signed (publish.sh passes the host's current index as --live-index).
 use qrtz_publish::keys::Keys;
@@ -48,9 +49,7 @@ fn build_fresh(
     let keys = Keys::ephemeral();
     let out = base.join(name);
     qrtz_publish::write_root(&out, &keys, None, 1, NOW).unwrap();
-    qrtz_publish::build_against(&out, &spec(dir), &keys, NOW, &Notarized::Unchecked, Some(live))
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    qrtz_publish::build_against(&out, &spec(dir), &keys, NOW, &Notarized::Unchecked, Some(live)).map(|_| ())
 }
 
 #[test]

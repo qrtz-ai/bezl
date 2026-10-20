@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0234 (echo cycle 82): a spoken title before a name is written as its abbreviation, the way the recogniser
 //! writes it in other decodes of the same clip: "Mister Hopkins" → "Mr. Hopkins", "missus Chen" → "Mrs. Chen",
 //! "Mister and Missus Lee" → "Mr. and Mrs. Lee". Only "Mister" / "mister" / "Missus" / "missus" as a whole word, one

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test fixture (mock helper / test kit), never shipped in the app bundle.
 //! A stand-in for the Swift qrtz-helper that speaks the same protocol, for Rust integration tests and Linux
 //! dev runs of the Tauri build. Knobs (env):
 //!   QRTZ_MOCK_HB_MS=200          heartbeat interval (0 = no heartbeats)
@@ -291,7 +292,7 @@ fn main() {
             if silent {
                 return;
             }
-            let mut o = out.lock().unwrap();
+            let mut o = out.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let _ = writeln!(o, "{}", serde_json::to_string(&v).unwrap());
             let _ = o.flush();
         }
@@ -424,9 +425,9 @@ fn main() {
                 }
             }
             "ping" => say(json!({"type": "pong", "id": msg["id"]})),
-            "permissions.check" | "permissions.request" => {
-                say(json!({"type": "permissions.status", "status": perms.lock().unwrap().clone()}))
-            }
+            "permissions.check" | "permissions.request" => say(
+                json!({"type": "permissions.status", "status": perms.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()}),
+            ),
             "recording.start" => {
                 let path = msg["audioPath"].as_str().unwrap_or_default().to_owned();
                 started = now();
@@ -505,7 +506,7 @@ fn main() {
                     if !silent {
                         let started = json!({"type": "recording.started", "audioPath": path});
                         let degraded = json!({"type": "capture.degraded", "degraded": ["no-mic"], "reason": "mock: mic device failed"});
-                        let mut o = out.lock().unwrap();
+                        let mut o = out.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         let _ = o.write_all(format!("{started}\n{degraded}\n").as_bytes());
                         let _ = o.flush();
                     }
@@ -574,14 +575,20 @@ fn main() {
                         json!({"type": "asr", "event": {"kind": "final", "utteranceId": "u1", "text": "Hello from the mock helper.", "startMs": 0, "endMs": 1200}}),
                     );
                 }
-                live_targets.lock().unwrap().insert(format!("r:{path}"));
+                live_targets
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(format!("r:{path}"));
                 audio = Some(path);
             }
             "recording.stop" => {
                 generation.fetch_add(1, Ordering::SeqCst);
                 recording.store(false, Ordering::SeqCst);
                 if let Some(p) = &audio {
-                    live_targets.lock().unwrap().remove(&format!("r:{p}"));
+                    live_targets
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&format!("r:{p}"));
                 }
                 if let Some(p) = audio.take() {
                     let d = if scenario {
@@ -600,7 +607,10 @@ fn main() {
                     generation.fetch_add(1, Ordering::SeqCst);
                     recording.store(false, Ordering::SeqCst);
                 }
-                live_targets.lock().unwrap().remove(&format!("r:{p}"));
+                live_targets
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .remove(&format!("r:{p}"));
                 say(json!({"type": "recording.aborted", "audioPath": p}));
             }
             "speech.attach" => {
@@ -663,19 +673,27 @@ fn main() {
                                 "startMs": 0, "text": words[..n].join(" ")}}),
                     );
                 });
-                *dictation_id.lock().unwrap() = Some(msg["id"].as_str().unwrap_or_default().to_owned());
+                *dictation_id
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some(msg["id"].as_str().unwrap_or_default().to_owned());
                 live_targets
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .insert(format!("d:{}", msg["id"].as_str().unwrap_or_default()));
             }
             ty @ ("dictation.stop" | "dictation.cancel") => {
                 let id = msg["id"].as_str().unwrap_or_default().to_owned();
-                let mut cur = dictation_id.lock().unwrap();
+                let mut cur = dictation_id
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if cur.as_deref() == Some(id.as_str()) {
                     dictation_gen.fetch_add(1, Ordering::SeqCst);
                     *cur = None;
-                    live_targets.lock().unwrap().remove(&format!("d:{id}"));
+                    live_targets
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&format!("d:{id}"));
                     if ty == "dictation.stop" {
                         let n = dictation_heard
                             .load(Ordering::SeqCst)
@@ -740,7 +758,7 @@ fn arm_revocations(
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(ms));
             let degraded = {
-                let mut d = denied.lock().unwrap();
+                let mut d = denied.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 if d.contains(&p) {
                     return;
                 }
@@ -750,15 +768,21 @@ fn arm_revocations(
                 d.push(p.clone());
                 deg
             };
-            perms.lock().unwrap()[p.as_str()] = json!("denied");
+            perms.lock().unwrap_or_else(std::sync::PoisonError::into_inner)[p.as_str()] = json!("denied");
             say(
                 json!({"type": "permission.revoked", "permission": p, "atMs": now(),
                 "degraded": degraded.into_iter().collect::<Vec<_>>()}),
             );
             if p == "microphone" {
-                if let Some(id) = dictation_id.lock().unwrap().take() {
+                if let Some(id) = dictation_id
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
+                {
                     dictation_gen.fetch_add(1, Ordering::SeqCst);
-                    live.lock().unwrap().remove(&format!("d:{id}"));
+                    live.lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&format!("d:{id}"));
                     let n = heard.load(Ordering::SeqCst).clamp(1, words.len() as u64) as usize;
                     say(
                         json!({"type": "dictation.stopped", "id": id, "text": words[..n].join(" "),
@@ -785,7 +809,10 @@ fn write_audio(
     let mut seen = false;
     loop {
         std::thread::sleep(Duration::from_millis(20));
-        let on = live.lock().unwrap().contains(&key);
+        let on = live
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&key);
         if on {
             seen = true;
         } else if seen || std::time::Instant::now() > deadline {
