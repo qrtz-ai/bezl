@@ -318,13 +318,14 @@ export default function MarketplaceView() {
     const view = infoFor(name).view;
     if (s === 'working')
       return (
-        <Button loading disabled>
+        <Button variant="primary" loading disabled>
           {ING[working?.verb ?? 'install']}
         </Button>
       );
     if (s === 'available')
       return (
         <Button
+          variant="primary"
           icon="download"
           disabled={busy}
           onClick={() => propose(name, 'install')}
@@ -336,6 +337,7 @@ export default function MarketplaceView() {
     if (s === 'update')
       return (
         <Button
+          variant="primary"
           icon="update"
           disabled={busy}
           onClick={() => propose(name, 'update')}
@@ -783,6 +785,7 @@ export default function MarketplaceView() {
             action={
               soon ? null : (
                 <Button
+                  variant="primary"
                   size="sm"
                   icon="refresh"
                   loading={checking}

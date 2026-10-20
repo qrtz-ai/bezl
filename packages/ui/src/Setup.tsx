@@ -155,6 +155,7 @@ export function SpeechSetupPanel({
             {size ? `speech · ${formatBytes(size)}` : 'speech'}
           </Text>
           <Button
+            variant="primary"
             icon="download"
             onClick={() => onDownload(false)}
             data-testid="speech-download"
@@ -171,6 +172,7 @@ export function SpeechSetupPanel({
             </Text>
             {update ? (
               <Button
+                variant="primary"
                 size="sm"
                 icon="download"
                 onClick={() => onDownload(false)}

@@ -419,6 +419,7 @@ export function MeetingDetail({
               ? {
                   action: (
                     <Button
+                      variant="primary"
                       size="sm"
                       onClick={retrySummary}
                       disabled={retrying}

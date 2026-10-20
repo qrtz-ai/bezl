@@ -321,6 +321,7 @@ export function Composer({
         maxLength={2000}
       />
       <Button
+        variant="primary"
         type="submit"
         disabled={busy || !value.trim()}
         data-testid={submitTestId}

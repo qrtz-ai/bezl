@@ -399,6 +399,7 @@ export function ConfirmCard({
       </Text>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
         <Button
+          variant="primary"
           size="sm"
           onClick={onApprove}
           data-testid="ctrl-confirm-approve"

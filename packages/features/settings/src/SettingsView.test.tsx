@@ -6,7 +6,7 @@ import type { QrtzClient } from '@qrtz/core';
 import { defaultConfig } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
-import { ThemeProvider } from '@qrtz/ui';
+import { primaryButtons, ThemeProvider } from '@qrtz/ui';
 import SettingsView from './SettingsView';
 
 (
@@ -117,6 +117,7 @@ describe('global settings (ADR 0146 M1.4)', () => {
     );
     const q = (id: string) =>
       el.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+    expect(primaryButtons(el)).toBeLessThanOrEqual(1);
     expect(calls.some(([c]) => c === 'packages:check-update')).toBe(false);
     await act(async () => {
       q('diagnostics-export')?.click();

@@ -23,6 +23,8 @@ Dark is the qrtz.ai brand default. Light is an opt-in palette with the same role
 | `color.accent` | `--q-color-accent` | `#262626` | `#f5f5f5` |
 | `color.ring` | `--q-color-ring` | `#d4d4d4` | `#404040` |
 | `color.danger` | `--q-color-danger` | `#ef4444` | `#b91c1c` |
+| `color.dangerSolid` | `--q-color-danger-solid` | `#dc2626` | `#b91c1c` |
+| `color.dangerSolidText` | `--q-color-danger-solid-text` | `#ffffff` | `#ffffff` |
 | `color.success` | `--q-color-success` | `#22c55e` | `#166534` |
 | `color.warning` | `--q-color-warning` | `#f59e0b` | `#92400e` |
 | `color.recording` | `--q-color-recording` | `#ef4444` | `#b91c1c` |
@@ -113,4 +115,4 @@ Feather icons only, through `<Icon name size>` (or `icon=` on `Button`/`IconButt
 | `z.toast` | `--q-z-toast` | `60` |
 | `z.tooltip` | `--q-z-tooltip` | `70` |
 
-_96 CSS variables in total._
+_98 CSS variables in total._

@@ -294,7 +294,7 @@ function Showcase({
           </Section>
 
           <Section id="buttons" title="buttons">
-            <Button>primary</Button>
+            <Button variant="primary">primary</Button>
             <Button variant="secondary">secondary</Button>
             <Button variant="ghost">ghost</Button>
             <Button variant="danger">danger</Button>

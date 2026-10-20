@@ -32,7 +32,7 @@ export const Buttons: S = {
   render: () => (
     <>
       <Row label="variants">
-        <Button>primary</Button>
+        <Button variant="primary">primary</Button>
         <Button variant="secondary">secondary</Button>
         <Button variant="ghost">ghost</Button>
         <Button variant="danger">danger</Button>
@@ -47,6 +47,11 @@ export const Buttons: S = {
       <Row label="states">
         <Button loading>loading</Button>
         <Button disabled>disabled</Button>
+      </Row>
+      <Row label="hierarchy: one primary per view, secondary by default">
+        <Button variant="primary">save</Button>
+        <Button>export</Button>
+        <Button variant="ghost">cancel</Button>
       </Row>
     </>
   ),

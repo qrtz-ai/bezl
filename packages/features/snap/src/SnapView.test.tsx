@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
-import { ThemeProvider } from '@qrtz/ui';
+import { primaryButtons, ThemeProvider } from '@qrtz/ui';
 import SnapView from './SnapView';
 
 (
@@ -68,6 +68,7 @@ describe('snap view: accessibility from inside qrtz', () => {
     const state = { trusted: false };
     const f = fake(state);
     await render(f.client);
+    expect(primaryButtons(document.body)).toBeLessThanOrEqual(1);
     const prompt = q('snap-no-ax');
     expect(prompt?.textContent).toContain('snap needs accessibility access');
     expect(prompt?.textContent).toContain('switch on qrtz');

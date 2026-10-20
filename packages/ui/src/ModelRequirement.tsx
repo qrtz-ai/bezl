@@ -153,6 +153,7 @@ export function ModelRequirement(p: ModelRequirementProps) {
     >
       {state === 'missing' && p.onDownload ? (
         <Button
+          variant="primary"
           size="sm"
           icon="download"
           onClick={p.onDownload}

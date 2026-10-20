@@ -44,7 +44,12 @@ export function Hud({
         data-testid="note-detected"
         actions={
           <>
-            <Button size="sm" onClick={onRecord} data-testid="note-record">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onRecord}
+              data-testid="note-record"
+            >
               record
             </Button>
             <Button size="sm" variant="ghost" onClick={onDismiss}>
@@ -102,6 +107,7 @@ export function Hud({
           <>
             {s.meetingId ? (
               <Button
+                variant="primary"
                 size="sm"
                 onClick={() => onOpen(s.meetingId!)}
                 data-testid="note-open"

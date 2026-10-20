@@ -10,7 +10,7 @@ import {
 } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
-import { ThemeProvider, ToastProvider } from '@qrtz/ui';
+import { primaryButtons, ThemeProvider, ToastProvider } from '@qrtz/ui';
 import { AppError } from '@qrtz/core';
 import MarketplaceView from './MarketplaceView';
 
@@ -142,6 +142,7 @@ describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
   it('lists installed apps in short rows under the shared "apps" header, without going online', async () => {
     const f = fake();
     await render(f.client);
+    expect(primaryButtons(document.body)).toBeLessThanOrEqual(1);
     const page = q('qrtz-page')!;
     expect(page.querySelector('h1')?.textContent).toBe('apps');
     // opts is its own sidebar row now: no gear on the apps page.

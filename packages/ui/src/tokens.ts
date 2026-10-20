@@ -18,6 +18,8 @@ const darkColor = {
   accent: '#262626',
   ring: '#d4d4d4',
   danger: '#ef4444',
+  dangerSolid: '#dc2626', // danger button fill, 4.8:1 with dangerSolidText (WCAG AA)
+  dangerSolidText: '#ffffff',
   success: '#22c55e',
   warning: '#f59e0b',
   recording: '#ef4444',
@@ -44,6 +46,8 @@ const lightColor: Record<keyof typeof darkColor, string> = {
   accent: '#f5f5f5',
   ring: '#404040',
   danger: '#b91c1c',
+  dangerSolid: '#b91c1c',
+  dangerSolidText: '#ffffff',
   success: '#166534',
   warning: '#92400e',
   recording: '#b91c1c',

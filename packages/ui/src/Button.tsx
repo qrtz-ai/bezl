@@ -19,7 +19,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  variant = 'primary',
+  variant = 'secondary',
   size = 'md',
   loading,
   icon,
@@ -47,9 +47,9 @@ export function Button({
       borderColor: t.color.border,
     },
     danger: {
-      background: '#dc2626', // 4.8:1 with white text (WCAG AA)
-      color: '#fff',
-      borderColor: '#dc2626',
+      background: t.color.dangerSolid,
+      color: t.color.dangerSolidText,
+      borderColor: t.color.dangerSolid,
     },
   };
   const s: Record<ButtonSize, CSSProperties> = {
@@ -63,6 +63,7 @@ export function Button({
       type="button"
       disabled={off}
       aria-busy={loading || undefined}
+      data-variant={variant}
       {...rest}
       style={
         {
@@ -96,4 +97,14 @@ export function Button({
       {lowerTitle(children)}
     </button>
   );
+}
+
+/**
+ * How many primary buttons a user can act on; a view has at most one (design principles: one primary action).
+ * Buttons under `inert` (content blocked behind a required-model banner) don't count.
+ */
+export function primaryButtons(root: ParentNode): number {
+  return [...root.querySelectorAll('button[data-variant="primary"]')].filter(
+    (b) => !b.closest('[inert]'),
+  ).length;
 }

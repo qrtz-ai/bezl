@@ -195,6 +195,7 @@ export default function NoteView() {
           </Button>
           {busy ? null : (
             <Button
+              variant="primary"
               size="sm"
               disabled={!speechReady}
               onClick={() => void act(qrtz.invoke('note:start', {}))}

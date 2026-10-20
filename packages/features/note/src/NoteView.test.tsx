@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
-import { ThemeProvider } from '@qrtz/ui';
+import { primaryButtons, ThemeProvider } from '@qrtz/ui';
 import NoteView from './NoteView';
 
 (
@@ -41,6 +41,7 @@ async function mount(calls: { channel: string; req: unknown }[] = []) {
       await new Promise((r) => setTimeout(r, 10));
     });
   await settle();
+  expect(primaryButtons(el)).toBeLessThanOrEqual(1);
   const q = (id: string) =>
     el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
   return { el, q, settle, unmount: () => root.unmount() };

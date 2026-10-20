@@ -11,7 +11,7 @@ import {
 } from '@qrtz/core';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
 import { QrtzClientProvider } from '@qrtz/core/react';
-import { ThemeProvider } from '@qrtz/ui';
+import { primaryButtons, ThemeProvider } from '@qrtz/ui';
 import DashView from './DashView';
 import { openLink } from './blocks';
 
@@ -117,6 +117,7 @@ describe('dash view (ADR 0228)', () => {
   it('shows agents read-only, with stale, pending review and no action ui', async () => {
     const { client, calls } = fake();
     await render(client);
+    expect(primaryButtons(document.body)).toBeLessThanOrEqual(1);
     expect(q('dash-agent-ag_1')?.textContent).toContain('7F3A-91C2');
     expect(q('dash-stale')).not.toBeNull();
     expect(q('dash-widget-state-farm')?.textContent).toContain(

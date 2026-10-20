@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import type { QrtzClient, SpeechSetupStatus } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
-import { ThemeProvider } from '@qrtz/ui';
+import { primaryButtons, ThemeProvider } from '@qrtz/ui';
 import TalkView from './TalkView';
 
 (
@@ -88,6 +88,7 @@ async function mount(
       await new Promise((r) => setTimeout(r, 10));
     });
   await settle();
+  expect(primaryButtons(el)).toBeLessThanOrEqual(1);
   const q = (id: string) =>
     el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
   const emit = (event: string, p: unknown) =>

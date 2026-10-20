@@ -289,6 +289,7 @@ function Steps({ onDone }: { onDone: () => void }) {
         {/* Hidden until config is read: the rows (and so "open qrtz" vs "continue") depend on it. */}
         {cfg == null ? null : (
           <Button
+            variant="primary"
             onClick={finish}
             disabled={finishing}
             data-testid="onboarding-continue"

@@ -309,7 +309,10 @@ function TalkOn({
             hold <Kbd>fn</Kbd> or <Kbd>⌘⇧Space</Kbd>
           </Text>
           <Button
-            variant={listening ? 'danger' : 'primary'}
+            // The model banner owns the one primary until speech is ready.
+            variant={
+              listening ? 'danger' : speechReady ? 'primary' : 'secondary'
+            }
             onClick={toggle}
             disabled={busy || !speechReady}
             data-testid="talk-toggle"

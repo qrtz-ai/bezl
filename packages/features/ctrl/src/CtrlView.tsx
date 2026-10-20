@@ -149,6 +149,7 @@ export default function CtrlView() {
           data-testid="ctrl-do-input"
         />
         <Button
+          variant="primary"
           type="submit"
           disabled={!text.trim() || !!busy}
           data-testid="ctrl-do-go"

@@ -112,6 +112,7 @@ function Hud() {
             </Text>
             {stopping ? (
               <Button
+                variant="primary"
                 size="sm"
                 data-testid="mini-hud-keep-recording"
                 onClick={() => {
