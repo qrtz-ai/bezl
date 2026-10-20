@@ -923,7 +923,10 @@ export const ipcContract = {
     capability: 'dash.manage',
     request: z.void(),
     response: z.object({
-      code: z.string().regex(/^ENR-[A-Z0-9]{4}-[A-Z0-9]{4}$/),
+      // QRT-284: the dash server issues `ENR-<id>.<secret>`; the in-app crate (qrtz-dash) still issues ENR-XXXX-XXXX.
+      code: z
+        .string()
+        .regex(/^ENR-(?:[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{8}\.[A-Z0-9]{17})$/),
       expiresAt: z.number(),
     }),
   }),
