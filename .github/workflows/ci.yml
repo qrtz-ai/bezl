@@ -241,6 +241,10 @@ jobs:
           [ -n "$app" ] || { echo "no qrtz.app built" >&2; exit 1; }
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "dir=$(dirname "$(dirname "$app")")" >> "$GITHUB_OUTPUT"
+      # QRT-255: a helper signed with the wrong identifier (0.2.4's qrtz-echo) fails the check sign-mac.sh and
+      # verify-bundle.sh share. Ad-hoc signed, test-only requirement, no secret.
+      - name: bundled helper identifier negative test
+        run: bash scripts/release/bundled-helpers.test.sh
       # Ad-hoc sign (no identity, no secret) with the identifiers and entitlements sign-mac.sh uses, so verify-bundle's
       # identifier and entitlement checks test the real layout. Ad-hoc can never pass the Developer ID checks.
       - name: ad-hoc sign like sign-mac.sh
