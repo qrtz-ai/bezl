@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// ADR 0181: qrtz.app's update feed, v1/app/latest.json on modules.qrtz.ai. The feed is Tauri's static-feed shape
+// ADR 0181: qrtz.app's update feed, v1/app/latest.json on the package host (QRT-297: the asset v1.app.latest.json of
+// the fixed `index` GitHub release). The feed is Tauri's static-feed shape
 // plus the archive's sha256 and size and an `expires` time (the app refuses an expired feed: a replayed old one can't
 // hide updates for long). latest.json is a signed envelope around the feed's exact bytes:
 // {"feed": <base64>, "signature": <base64 minisign, the app-update key>}; crates/qrtz-app/src/self_update.rs opens it
@@ -18,9 +19,16 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const HOST = 'https://modules.qrtz.ai';
+export const HOST = 'https://github.com/qrtz-ai/qrtz/releases/download/index';
 export const TARGET = 'darwin-aarch64';
 export const archivePath = (v) => `v1/app/${v}/qrtz_${v}_aarch64.app.tar.gz`;
+/** QRT-297 (qrtz_modules::index::layout::on_host): a GitHub release base serves layout path v1/a/b as asset v1.a.b. */
+export const isReleaseBase = (base) =>
+  /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/releases\/download\/[A-Za-z0-9._-]+$/.test(
+    base,
+  );
+export const onHost = (base, p) =>
+  isReleaseBase(base) ? p.replaceAll('/', '.') : p;
 /** The app refuses a feed whose expires is further ahead than this (self_update.rs MAX_FEED_LIFETIME). */
 export const MAX_LIFETIME_DAYS = 60;
 export const DEFAULT_LIFETIME_DAYS = 30;
@@ -86,7 +94,7 @@ export function feed({
     expires,
     platforms: {
       [TARGET]: {
-        url: `${host}/${archivePath(version)}`,
+        url: `${host}/${onHost(host, archivePath(version))}`,
         signature,
         sha256: createHash('sha256').update(bytes).digest('hex'),
         size: bytes.length,

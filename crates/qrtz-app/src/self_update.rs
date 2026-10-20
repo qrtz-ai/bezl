@@ -1,6 +1,7 @@
 //! ADR 0181: qrtz updates itself, the way the marketplace updates apps, from the same pinned host.
 //!
-//! The feed is `https://modules.qrtz.ai/v1/app/latest.json`, a signed envelope `{"feed": <base64>, "signature":
+//! The feed is `v1/app/latest.json` on the pinned package host (QRT-297: the asset `v1.app.latest.json` of the fixed
+//! `index` GitHub release), a signed envelope `{"feed": <base64>, "signature":
 //! <base64 minisign>}` ([`open_feed`]). The signature (the **app-update key**) covers the feed's exact bytes, and the
 //! feed (Tauri's static updater JSON plus `sha256`, `size` and `expires`) names one `darwin-aarch64` release whose
 //! archive is the immutable `v1/app/<version>/qrtz_<version>_aarch64.app.tar.gz` of a notarized, stapled qrtz.app.
@@ -112,7 +113,9 @@ pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
         return Err(format!("the update feed has no {TARGET} release"));
     }
     let path = archive_path(version);
-    let want = format!("{}/{path}", host.trim_end_matches('/'));
+    let host = host.trim_end_matches('/');
+    // QRT-297: on a GitHub release base the archive is the flat asset (`v1.app.<v>.qrtz_<v>_aarch64.app.tar.gz`).
+    let want = format!("{host}/{}", qrtz_modules::index::layout::on_host(host, &path));
     if p["url"].as_str() != Some(want.as_str()) {
         return Err(format!("the update feed's archive isn't {want}"));
     }
@@ -185,7 +188,7 @@ pub fn parse_utc(s: &str) -> Option<u64> {
 /// The feed is still good at `now` (unix seconds): not expired, and not claiming more than [`MAX_FEED_LIFETIME`].
 pub fn check_fresh(expires: u64, now: u64) -> Result<(), String> {
     if expires <= now {
-        return Err("the update feed has expired (modules.qrtz.ai serves an old one)".into());
+        return Err("the update feed has expired (the package host serves an old one)".into());
     }
     if expires - now > MAX_FEED_LIFETIME.as_secs() {
         return Err("the update feed claims to be good for too long".into());

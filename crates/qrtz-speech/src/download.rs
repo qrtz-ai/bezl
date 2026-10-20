@@ -64,11 +64,38 @@ pub struct Downloader {
 
 impl Downloader {
     pub fn new(base: &str) -> Self {
+        Self::build(base, reqwest::redirect::Policy::default())
+    }
+
+    /// QRT-297: a host whose answers redirect (a GitHub release download goes to its asset CDN). A redirect is
+    /// followed only to `https://<host>/…` for a host in `hosts` (exact names, at most 5 hops); any other redirect
+    /// fails the request (fail closed). The bytes are still checked against their signed hash by the caller.
+    pub fn with_redirect_hosts(base: &str, hosts: &[String]) -> Self {
+        let hosts: Vec<String> = hosts.iter().map(|h| h.to_ascii_lowercase()).collect();
+        let policy = reqwest::redirect::Policy::custom(move |a| {
+            let ok = a.previous().len() <= 5
+                && a.url().scheme() == "https"
+                && a.url().username().is_empty()
+                && a.url().password().is_none()
+                && a.url().port().is_none()
+                && a.url().host_str().is_some_and(|h| hosts.iter().any(|x| x == h));
+            if ok {
+                a.follow()
+            } else {
+                let to = a.url().host_str().unwrap_or("?").to_owned();
+                a.error(format!("redirect to {to} refused (not a pinned host)"))
+            }
+        });
+        Self::build(base, policy)
+    }
+
+    fn build(base: &str, redirect: reqwest::redirect::Policy) -> Self {
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
             .read_timeout(std::time::Duration::from_secs(60))
             // N100: plain http only to a real loopback host (not `http://127.0.0.1.example.com`).
             .https_only(!is_loopback_url(base))
+            .redirect(redirect)
             .build()
             .expect("http client");
         Self {

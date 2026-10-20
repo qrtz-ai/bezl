@@ -110,6 +110,8 @@ pub struct Faults {
     /// Range headers seen, per path.
     pub ranges: Vec<(String, String)>,
     pub hits: HashMap<String, usize>,
+    /// Paths answered `302 Found` with this `Location` (QRT-297: GitHub's release download redirects).
+    pub redirect: HashMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -154,6 +156,14 @@ impl Server {
                         let (k, v) = l.split_once(':')?;
                         k.eq_ignore_ascii_case("range").then(|| v.trim().to_string())
                     });
+                    let to = s.faults.lock().unwrap().redirect.get(&path).cloned();
+                    if let Some(to) = to {
+                        let head = format!(
+                            "HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        );
+                        let _ = c.write_all(head.as_bytes()).await;
+                        return;
+                    }
                     let body = s.routes.lock().unwrap().get(&path).cloned();
                     let (fail, cut, corrupt, over, slow) = {
                         let mut f = s.faults.lock().unwrap();

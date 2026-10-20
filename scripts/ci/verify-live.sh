@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
-# CI (ADR 0179): after an upload, check that modules.qrtz.ai serves exactly what was signed. Every object of the
+# CI (ADR 0179, QRT-297): after an upload, check that the `index` GitHub release serves exactly what was signed. Every object of the
 # output dir (qrtz-publish upload-list: root, index, blobs, timestamp pair) is fetched from the public host into a
 # fresh dir and compared by sha256 with the local copy; then `qrtz-publish verify` checks the fresh dir as a new
 # client would (pinned root, root chain, fresh timestamp, index signature, every blob's size and hash).
 #
 #   scripts/ci/verify-live.sh <out dir> [--timestamp-only]    env: QRTZ_PUBLISH_BIN (built qrtz-publish),
-#                                                             QRTZ_PRIMARY_URL (https://modules.qrtz.ai)
-# The timestamp is cached up to 5 minutes at the edge, so its pair is retried for up to ~6 minutes.
+#                                                             QRTZ_PRIMARY_URL (the index release)
+# Layout path v1/a/b is the asset v1.a.b. The timestamp pair is retried for up to ~6 minutes.
 set -euo pipefail
 out="${1:?usage: verify-live.sh <out dir> [--timestamp-only]}"
 mode="${2:-}"
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 bin="${QRTZ_PUBLISH_BIN:-${CARGO_TARGET_DIR:-$repo/target}/release/qrtz-publish}"
-host="${QRTZ_PRIMARY_URL:-https://modules.qrtz.ai}"
+host="${QRTZ_PRIMARY_URL:-https://github.com/qrtz-ai/qrtz/releases/download/index}"
 sha() { if command -v shasum >/dev/null; then shasum -a 256 "$1"; else sha256sum "$1"; fi | cut -d' ' -f1; }
 fresh="$(mktemp -d)"
 trap 'rm -rf "$fresh"' EXIT
 
-fetch() { # <key> <dest>: the public host's copy; cache-busted for the timestamp pair
-  local q=""
-  [[ "$1" == v1/timestamp.json* ]] && q="?ci=$(date +%s)$RANDOM"
-  curl -fsS --retry 3 --max-time 120 -H 'Cache-Control: no-cache' -o "$2" "$host/$1$q"
+fetch() { # <key> <dest>: the public host's copy (the flat asset, following GitHub's redirect)
+  curl -fsSL --retry 3 --max-time 120 -H 'Cache-Control: no-cache' -o "$2" "$host/${1//\//.}"
 }
 
 n=0
