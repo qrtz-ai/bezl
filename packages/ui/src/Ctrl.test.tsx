@@ -163,7 +163,7 @@ describe('DecisionModelCard (ADR 0116)', () => {
       />,
     );
     expect(html).toContain('data-state="unavailable"');
-    expect(html).toContain('nothing was downloaded');
+    expect(html).toContain('nothing downloaded');
     expect(html).toContain('data-testid="ctrl-model-off"');
   });
   it('names the on-device model only when it decides', () => {

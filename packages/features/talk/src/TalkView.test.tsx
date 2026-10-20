@@ -102,11 +102,11 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     expect(v.q('echo-switch')?.getAttribute('aria-checked')).toBe('true');
     const offer = v.q('echo-offer');
     expect(offer).not.toBeNull();
-    // The same consent text as the switch's dialog, all lowercase.
-    expect(offer!.textContent).toContain(
-      'echo needs its speech model, parakeet (628 mb). it downloads once from hugging face',
-    );
-    expect(v.q('echo-download')?.textContent).toBe('download parakeet');
+    // The standard model view: name, real size, and where it comes from (all lowercase).
+    expect(offer!.textContent).toContain('speech model');
+    expect(offer!.textContent).toContain('not downloaded · 628 mb');
+    expect(offer!.textContent).toContain('downloads once from hugging face');
+    expect(v.q('echo-download')?.textContent).toBe('download');
     await act(async () => v.q('echo-download')!.click());
     await v.settle();
     expect(
@@ -132,7 +132,7 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     await v.settle();
     // Downloading: the offer is gone and the notice is back, with the progress bar.
     expect(v.q('echo-offer')).toBeNull();
-    expect(v.q('speech-notice')?.textContent).toContain('downloading speech');
+    expect(v.q('speech-notice')?.textContent).toContain('downloading · 0%');
     v.unmount();
   });
 
@@ -147,7 +147,7 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
       async () => failed,
     );
     expect(v.q('echo-offer')?.textContent).toContain(
-      "parakeet couldn't be downloaded: network",
+      "couldn't download · network",
     );
     expect(v.q('speech-notice')).toBeNull();
     v.unmount();

@@ -6,6 +6,7 @@ import { Stack } from './Layout';
 import { Progress } from './Progress';
 import { Spinner } from './Spinner';
 import { Text } from './Text';
+import { ModelRequirement, formatBytes } from './ModelRequirement';
 
 /** Structural copy of `SpeechSetupStatus` (@qrtz/core): a version, a size and a download state, never an engine. */
 export interface SpeechSetupView {
@@ -28,14 +29,6 @@ export interface SpeechSetupView {
     total: number;
     error?: string;
   };
-}
-
-/** 1.2 gb · 340 mb · 12 kb (lowercase, brand rule). */
-export function formatBytes(n: number): string {
-  if (n <= 0) return '0 mb';
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} gb`;
-  if (n >= 1e6) return `${Math.round(n / 1e6)} mb`;
-  return `${Math.max(1, Math.round(n / 1e3))} kb`;
 }
 
 const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
@@ -240,51 +233,33 @@ export function SpeechNotice({
 }) {
   if (!status?.configured) return null;
   const d = status.download;
-  const open = (
-    <Button
-      size="sm"
-      variant="secondary"
-      icon="model"
-      onClick={onOpen}
-      data-testid="speech-notice-open"
-    >
-      models
-    </Button>
+  const busy = BUSY.has(d.state);
+  if (!busy && d.state !== 'error' && status.installed) return null;
+  return (
+    <ModelRequirement
+      name="speech model"
+      purpose="turns what you say into text, on this mac"
+      sizeBytes={status.latestBytes ?? (d.total || null)}
+      state={busy ? 'downloading' : d.state === 'error' ? 'error' : 'missing'}
+      {...(busy ? { progress: speechProgress(d) } : {})}
+      error={d.error ?? null}
+      {...(busy ? {} : { onOpen })}
+      data-testid="speech-notice"
+      testIds={{ open: 'speech-notice-open' }}
+    />
   );
-  if (BUSY.has(d.state))
-    return (
-      <Stack gap={1} data-testid="speech-notice" aria-live="polite">
-        <Text variant="caption" muted>
-          {d.state === 'paused'
-            ? 'speech download paused'
-            : d.state === 'installing'
-              ? 'installing speech…'
-              : `downloading speech · ${d.total ? Math.round((100 * d.done) / d.total) : 0}%`}
-        </Text>
-        <Progress
-          value={d.total ? d.done / d.total : 0}
-          label="speech download"
-        />
-      </Stack>
-    );
-  if (d.state === 'error')
-    return (
-      <Callout
-        tone="warning"
-        title={d.error ?? "speech couldn't be installed"}
-        action={open}
-        data-testid="speech-notice"
-      />
-    );
-  if (!status.installed)
-    return (
-      <Callout
-        title="speech isn't downloaded"
-        action={open}
-        data-testid="speech-notice"
-      />
-    );
-  return null;
+}
+
+/** A speech download's bytes and phase, for ModelRequirement. */
+function speechProgress(d: SpeechSetupView['download']) {
+  return {
+    done: d.done,
+    total: d.total,
+    phase:
+      d.state === 'idle' || d.state === 'error'
+        ? ('downloading' as const)
+        : d.state,
+  };
 }
 
 /** One of an app's model sets, and whether deleting this app's models would keep it (another app uses it). */
@@ -380,92 +355,67 @@ export function ModelsPanel({
       {error ? (
         <Callout tone="danger" title={error} data-testid={`${testId}-error`} />
       ) : null}
-      {BUSY.has(d.state) ? (
-        <Stack gap={2}>
-          <Progress
-            value={d.total ? d.done / d.total : 0}
-            label="model download"
-            data-testid={`${testId}-progress`}
-          />
-          <Stack dir="row" gap={3} align="center" justify="between">
-            <Text variant="caption" muted>
-              {d.state === 'checking'
-                ? 'checking…'
-                : d.state === 'installing'
-                  ? 'installing…'
-                  : `${d.state === 'paused' ? 'paused · ' : ''}${formatBytes(d.done)} of ${formatBytes(d.total || size || 0)}`}
-            </Text>
-            {d.state === 'paused' ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="play"
-                onClick={onResume}
-                data-testid={`${testId}-resume`}
-              >
-                resume
-              </Button>
-            ) : d.state === 'downloading' ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="pause"
-                onClick={onPause}
-                data-testid={`${testId}-pause`}
-              >
-                pause
-              </Button>
-            ) : null}
-          </Stack>
-        </Stack>
-      ) : d.state === 'error' ? (
-        <Callout
-          tone="danger"
-          title={d.error ?? "the models couldn't be downloaded"}
-          data-testid={`${testId}-download-error`}
-          action={
+      <ModelRequirement
+        layout="row"
+        name="models"
+        sizeBytes={status.installed ? status.bytes : size || null}
+        state={
+          BUSY.has(d.state)
+            ? 'downloading'
+            : d.state === 'error'
+              ? 'error'
+              : status.installed
+                ? 'ready'
+                : 'missing'
+        }
+        {...(BUSY.has(d.state) ? { progress: speechProgress(d) } : {})}
+        error={d.error ?? null}
+        onDownload={onDownload}
+        onRetry={onDownload}
+        actions={
+          d.state === 'paused' ? (
             <Button
               size="sm"
               variant="secondary"
-              icon="refresh"
-              onClick={onDownload}
-              data-testid={`${testId}-retry`}
+              icon="play"
+              onClick={onResume}
+              data-testid={`${testId}-resume`}
             >
-              retry
+              resume
             </Button>
-          }
-        />
-      ) : status.installed ? (
-        <Stack dir="row" gap={3} align="center" justify="between">
-          <Text variant="caption" muted data-testid={`${testId}-state`}>
-            {`on this mac · ${formatBytes(status.bytes)}`}
-          </Text>
-          <Button
-            size="sm"
-            variant="danger"
-            icon="trash"
-            disabled={deleteBlocked}
-            onClick={onDelete}
-            data-testid={`${testId}-delete`}
-          >
-            delete models
-          </Button>
-        </Stack>
-      ) : (
-        <Stack dir="row" gap={3} align="center" justify="between">
-          <Text variant="caption" muted data-testid={`${testId}-state`}>
-            {size ? `not downloaded · ${formatBytes(size)}` : 'not downloaded'}
-          </Text>
-          <Button
-            size="sm"
-            icon="download"
-            onClick={onDownload}
-            data-testid={`${testId}-download`}
-          >
-            download
-          </Button>
-        </Stack>
-      )}
+          ) : d.state === 'downloading' ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="pause"
+              onClick={onPause}
+              data-testid={`${testId}-pause`}
+            >
+              pause
+            </Button>
+          ) : status.installed && !BUSY.has(d.state) && d.state !== 'error' ? (
+            <Button
+              size="sm"
+              variant="danger"
+              icon="trash"
+              disabled={deleteBlocked}
+              onClick={onDelete}
+              data-testid={`${testId}-delete`}
+            >
+              delete models
+            </Button>
+          ) : null
+        }
+        data-testid={
+          d.state === 'error' ? `${testId}-download-error` : `${testId}-status`
+        }
+        testIds={{
+          download: `${testId}-download`,
+          retry: `${testId}-retry`,
+          status: `${testId}-state`,
+          progress: `${testId}-progress`,
+        }}
+      />
     </Stack>
   );
 }

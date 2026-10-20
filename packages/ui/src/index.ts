@@ -32,3 +32,4 @@ export * from './Modal';
 export * from './Menu';
 export * from './Onboarding';
 export * from './Slider';
+export * from './ModelRequirement';

@@ -99,7 +99,7 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   await expect(page.getByTestId('note-app')).toBeVisible();
   await expect(page.locator('[data-testid^="onboarding"]')).toHaveCount(0);
   await expect(page.getByTestId('speech-notice')).toContainText(
-    "speech isn't downloaded",
+    'not downloaded',
   );
   await page.waitForTimeout(300);
   // Nothing downloads, asks for a permission or looks online at launch (ADR 0078 / 0160); there is no secrets
@@ -264,7 +264,8 @@ test("note points to nano's models and echo offers its own download in place whi
 }) => {
   await page.goto('/?dev=1&mockSpeech=missing#/note');
   const notice = page.getByTestId('speech-notice');
-  await expect(notice).toContainText("speech isn't downloaded");
+  await expect(notice).toContainText('speech model');
+  await expect(notice).toContainText('not downloaded');
   // The notice opens nano's detail modal on the qrtz page, at its models (ADR 0175).
   await page.getByTestId('speech-notice-open').click();
   await expect(page).toHaveURL(/#\/qrtz\/item\/nano$/);

@@ -127,11 +127,13 @@ export const Speech: S = {
           </Width>
         </Row>
       ))}
-      <Row label="notice">
-        <Width w={360}>
-          <SpeechNotice status={STATES[2]![1]} onOpen={noop} />
-        </Width>
-      </Row>
+      {STATES.map(([label, v]) => (
+        <Row key={`notice-${label}`} label={`notice · ${label}`}>
+          <Width w={360}>
+            <SpeechNotice status={v} onOpen={noop} />
+          </Width>
+        </Row>
+      ))}
     </>
   ),
 };

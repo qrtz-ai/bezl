@@ -1,3 +1,7 @@
+import {
+  ModelRequirement,
+  type ModelRequirementState,
+} from './ModelRequirement';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 import { typeStyle } from './tokens';
@@ -475,14 +479,13 @@ export interface DecisionModelInfo {
   error: string | null;
 }
 
-const MODEL_LINE: Record<DecisionModelInfo['state'], string> = {
-  off: 'off: ctrl decides with its built-in rules and never goes online',
-  unavailable:
-    "you said yes, but the model isn't published yet; nothing was downloaded",
-  not_installed: 'you said yes; the model is not downloaded yet',
-  downloading: 'downloading and checking the model',
-  installed: 'downloaded and checked; runs on this mac only',
-  failed: 'the download failed its check; nothing was kept',
+const MODEL_STATE: Record<DecisionModelInfo['state'], ModelRequirementState> = {
+  off: 'missing',
+  not_installed: 'missing',
+  unavailable: 'unavailable',
+  downloading: 'downloading',
+  installed: 'ready',
+  failed: 'error',
 };
 
 /**
@@ -496,47 +499,36 @@ export function DecisionModelCard({
   model: DecisionModelInfo;
   onConsent: (yes: boolean) => void;
 }) {
-  const t = useTheme();
-  const mb = model.sizeBytes
-    ? ` (${Math.round(model.sizeBytes / 1e6)} mb)`
-    : '';
   return (
-    <div
+    <ModelRequirement
+      name="decision model"
+      purpose="picks ctrl's next step, on this mac"
+      sizeBytes={model.sizeBytes || null}
+      state={MODEL_STATE[model.state]}
+      error={
+        model.state === 'failed'
+          ? (model.error ?? 'failed its check, nothing was kept')
+          : null
+      }
+      fallback="ctrl decides with its built-in rules and never goes online"
+      note={
+        <span data-testid="ctrl-model-scorer">
+          {model.scorer === 'laya'
+            ? 'deciding with the on-device model'
+            : 'deciding with the built-in rules'}
+        </span>
+      }
+      {...(model.consented
+        ? { onRemove: () => onConsent(false), onCancel: () => onConsent(false) }
+        : { onDownload: () => onConsent(true) })}
+      removeLabel="turn off"
       data-testid="ctrl-model"
-      data-state={model.state}
-      style={{ display: 'grid', gap: t.space[2] }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
-        <Icon name={model.state === 'installed' ? 'check' : 'download'} />
-        <Text variant="caption" data-testid="ctrl-model-line">
-          {MODEL_LINE[model.state]}
-        </Text>
-      </div>
-      <Text variant="caption" data-testid="ctrl-model-scorer">
-        {model.scorer === 'laya'
-          ? 'deciding with the on-device model'
-          : 'deciding with the built-in rules'}
-      </Text>
-      <div style={{ display: 'flex', gap: t.space[2] }}>
-        {model.consented ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onConsent(false)}
-            data-testid="ctrl-model-off"
-          >
-            turn off and delete the model
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            onClick={() => onConsent(true)}
-            data-testid="ctrl-model-on"
-          >
-            {`download the decision model${mb}`}
-          </Button>
-        )}
-      </div>
-    </div>
+      testIds={{
+        download: 'ctrl-model-on',
+        remove: 'ctrl-model-off',
+        cancel: 'ctrl-model-off',
+        status: 'ctrl-model-line',
+      }}
+    />
   );
 }

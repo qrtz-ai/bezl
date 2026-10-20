@@ -102,14 +102,17 @@ test('ctrl: the decision model is a choice; a yes installs the pinned model, off
   const errors: string[] = [];
   const ctrl = await open(page, errors);
   const card = ctrl.getByTestId('ctrl-model');
-  await expect(card).toHaveAttribute('data-state', 'off');
+  await expect(card).toHaveAttribute('data-state', 'missing');
   await expect(card.getByTestId('ctrl-model-scorer')).toHaveText(
     'deciding with the built-in rules',
   );
-  await expect(card.getByTestId('ctrl-model-on')).toContainText('(484 mb)');
+  await expect(card.getByTestId('ctrl-model-line')).toHaveText(
+    'not downloaded · 484 mb',
+  );
+  await expect(card.getByTestId('ctrl-model-on')).toHaveText('download');
   await card.getByTestId('ctrl-model-on').click();
-  await expect(card).toHaveAttribute('data-state', 'installed');
+  await expect(card).toHaveAttribute('data-state', 'ready');
   await card.getByTestId('ctrl-model-off').click();
-  await expect(card).toHaveAttribute('data-state', 'off');
+  await expect(card).toHaveAttribute('data-state', 'missing');
   expect(errors).toEqual([]);
 });

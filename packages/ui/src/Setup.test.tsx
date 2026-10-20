@@ -1,11 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import {
-  SpeechNotice,
-  SpeechSetupPanel,
-  formatBytes,
-  type SpeechSetupView,
-} from './Setup';
+import { SpeechNotice, SpeechSetupPanel, type SpeechSetupView } from './Setup';
+import { formatBytes } from './ModelRequirement';
 
 const view = (
   download: SpeechSetupView['download'],
@@ -112,6 +108,6 @@ describe('speech setup', () => {
         onOpen={noop}
       />,
     );
-    expect(missing).toContain('speech isn&#x27;t downloaded');
+    expect(missing).toContain('not downloaded · 412 mb');
   });
 });

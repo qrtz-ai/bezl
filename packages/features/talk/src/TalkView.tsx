@@ -16,6 +16,7 @@ import {
   Text,
   useToast,
   SpeechNotice,
+  ModelRequirement,
   ModuleSettingsButton,
   ModuleSettingsModal,
   Switch,
@@ -160,28 +161,18 @@ function useEchoSwitch() {
   const failed = (live?.download.state ?? parakeet?.download.state) === 'error';
   const offer =
     on && parakeet && needsParakeet && !busy ? (
-      <Callout
-        {...(failed
-          ? {
-              tone: 'warning' as const,
-              title: `parakeet couldn't be downloaded${parakeet?.download.error ? `: ${parakeet.download.error}` : ''}`,
-            }
-          : { title: "parakeet isn't downloaded yet" })}
-        action={
-          <Button
-            size="sm"
-            variant="primary"
-            icon="download"
-            onClick={() => void download().then(setParakeet, fail)}
-            data-testid="echo-download"
-          >
-            download parakeet
-          </Button>
-        }
+      <ModelRequirement
+        name="speech model"
+        purpose="turns what you say into text, on this mac"
+        sizeBytes={parakeet?.latestBytes ?? null}
+        state={failed ? 'error' : 'missing'}
+        error={parakeet?.download.error ?? null}
+        note="parakeet downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac."
+        onDownload={() => void download().then(setParakeet, fail)}
+        onRetry={() => void download().then(setParakeet, fail)}
         data-testid="echo-offer"
-      >
-        {consent}
-      </Callout>
+        testIds={{ download: 'echo-download', retry: 'echo-download' }}
+      />
     ) : null;
   const statusError =
     statusFailed && !parakeet ? (
