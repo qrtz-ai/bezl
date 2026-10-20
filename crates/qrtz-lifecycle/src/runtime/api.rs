@@ -366,6 +366,11 @@ impl CoreEvent {
             CoreEvent::AutoStop { .. } => Some("note:auto-stop"),
         }
     }
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "serde_json on a plain derived type with string keys cannot fail"
+    )]
     pub fn payload(&self) -> Value {
         match self {
             CoreEvent::Session(v) => serde_json::to_value(v).unwrap(),

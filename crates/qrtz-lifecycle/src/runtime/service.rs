@@ -1299,9 +1299,7 @@ impl Shared {
         let ours = is_capturing(s.phase) && s.audio_parts.contains(&a);
         if !ours {
             tracing::warn!(audio_path = %a, "stopping orphaned recording");
-            let _ = self.send_helper(HelperCommand::RecordingStop {
-                audio_path: Some(a.clone()),
-            });
+            let _ = self.send_helper(HelperCommand::RecordingStop { audio_path: Some(a) });
         }
         // The start was ignored: fail it now instead of waiting out the ack timeout.
         self.lock().busy_refusals.insert(path.clone(), Refusal::Busy);
@@ -2193,7 +2191,10 @@ impl Shared {
             let id = st.prompted.identity_of(&d.key).unwrap_or(key_hash);
             st.auto_stop = Some(super::auto_stop::Watch::new(mid, &d.key, id, id != key_hash));
         }
-        f(st.auto_stop.as_mut().unwrap())
+        match st.auto_stop.as_mut() {
+            Some(w) => f(w),
+            None => super::auto_stop::Action::None,
+        }
     }
 
     fn auto_stop_apply(self: &Arc<Self>, a: super::auto_stop::Action) {

@@ -16,6 +16,11 @@ pub struct Protocol {
     host_to_helper: Validator,
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+)]
 pub fn protocol() -> &'static Protocol {
     static P: OnceLock<Protocol> = OnceLock::new();
     P.get_or_init(|| {

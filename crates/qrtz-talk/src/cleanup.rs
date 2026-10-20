@@ -10,6 +10,11 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 const W: &str = "A-Za-z0-9_";
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 fn re(s: &str) -> Regex {
     Regex::new(s).expect("static regex")
 }
@@ -1548,7 +1553,10 @@ fn comma_runs_at(t: String, dict: &[DictionaryEntry]) -> String {
 fn collapse_repeats(s: &str) -> String {
     if s.contains(['\u{17F}', '\u{212A}']) {
         return replace_all_or_keep(&REPEATS, s, |c: &fancy_regex::Captures<str>| {
-            let (all, word) = (c.get(0).unwrap(), c.get(1).unwrap());
+            // Group 0 always matches and REPEATS has a mandatory group 1; keep the text if not.
+            let (Some(all), Some(word)) = (c.get(0), c.get(1)) else {
+                return c[0].to_owned();
+            };
             if collapses(&c[1], &c[0]) || subject_stutter(s, all.start(), word.end(), all.end()) {
                 c[1].to_owned()
             } else {

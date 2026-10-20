@@ -1066,6 +1066,8 @@ impl Vault {
                     cap_bytes(&stem_of(&rel), MAX_STEM_BYTES - 40)
                 ),
             );
+            // clippy::redundant_clone false positive: `note` is written again below, so it can't be moved.
+            #[allow(clippy::redundant_clone)]
             let mut other = note.clone();
             other.id = None; // the copy is its own note (path-derived id until saved)
             write_new(&self.resolve(&crel)?, render_note(&other).as_bytes())?;

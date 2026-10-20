@@ -63,6 +63,11 @@ pub struct Downloader {
 }
 
 impl Downloader {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "reqwest's builder only fails if the TLS backend can't start; there is no safe client without it"
+    )]
     pub fn new(base: &str) -> Self {
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
