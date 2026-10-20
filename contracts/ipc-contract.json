@@ -12049,7 +12049,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "pattern": "^ENR-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+            "pattern": "^ENR-(?:[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{8}\\.[A-Z0-9]{17})$"
           },
           "expiresAt": {
             "type": "number"
