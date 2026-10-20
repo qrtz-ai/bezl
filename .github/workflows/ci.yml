@@ -164,6 +164,15 @@ jobs:
       - run: cargo check -p qrtz-desktop --all-targets
       - name: cargo test (workspace)
         run: cargo test --workspace
+      # macOS ships /bin/bash 3.2; run the dash-worker e2e under it so bash-3.2 parsing bugs fail CI.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: dash-worker e2e under /bin/bash 3.2
+        working-directory: services/dash-worker
+        run: |
+          /bin/bash --version | head -n1
+          /bin/bash scripts/e2e.sh
 
   # QRT-270: echo's warm-up race, scripted (no mic, no Accessibility, no key). Everything it runs lives in
   # native/qrtz-helper (scripts/echo-warmup-ci.sh); the model is fetched from its pinned revision and sha256s.
