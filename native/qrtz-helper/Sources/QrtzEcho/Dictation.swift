@@ -284,6 +284,7 @@ public actor DictationEngine {
     public var activeId: String? { session?.id }
     public var isMicRunning: Bool { micRunning }
     public var preRollSamples: Int { preRoll.count }
+    public var preRollCapacity: Int { preRoll.capacity }
 
     public func configure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool = true) {
         self.warmMic = warmMic; self.streamAudio = streamAudio
