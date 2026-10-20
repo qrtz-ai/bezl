@@ -82,3 +82,12 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "deny"
+# QRT-288: no panicking shortcuts in shipped code. #[test]/#[cfg(test)] code is exempt via clippy.toml;
+# integration tests, fixtures and build.rs allow it per file, and any other site needs #[allow(.., reason)].
+unwrap_used = "deny"
+expect_used = "deny"
+# QRT-288: a std lock or RefCell guard held across .await can deadlock the runtime.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+# QRT-288: avoid needless copies (nursery lint, enabled on its own).
+redundant_clone = "warn"
