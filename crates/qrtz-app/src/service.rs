@@ -998,13 +998,17 @@ impl AppService {
                 }
             }
         }
+        // Split: each helper's watcher is its own task. Read the aggregate, emit and store it under one lock, or
+        // nano's "echo still starting" can land after echo's "all running" and, with no later event, leave
+        // `helper_ready` false (CI run 39383136220). `status()` is a watch borrow, never a supervisor lock.
+        let mut delivered = self.delivered.lock().unwrap_or_else(|p| p.into_inner());
         let shown = match (src, self.module_helpers.get()) {
             (crate::module_helpers::HelperSource::Monolith, _) | (_, None) => s.clone(),
             (_, Some(h)) => h.status(),
         };
         self.events
             .emit("helper:status", serde_json::to_value(&shown).unwrap());
-        *self.delivered.lock().unwrap_or_else(|p| p.into_inner()) = Some(shown);
+        *delivered = Some(shown);
     }
 
     /// N91: the helper is running and the runtime and talk have both been told so (the runtime's initial
