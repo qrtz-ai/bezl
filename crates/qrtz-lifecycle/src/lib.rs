@@ -10,6 +10,7 @@ mod arbiter;
 pub mod fusion;
 pub(crate) mod js;
 mod pipeline;
+#[cfg(feature = "runtime")] // only the runtime locks std Mutexes (and has tracing)
 mod poison;
 #[cfg(feature = "runtime")]
 pub mod runtime;

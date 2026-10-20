@@ -75,6 +75,7 @@ mod posix {
             loop {
                 // SAFETY: zeroed siginfo_t is a valid out buffer; WNOWAIT leaves the child to the waitpid below.
                 let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+                // SAFETY: waitid on our own child's pid with a valid, writable siginfo_t out pointer.
                 let r = unsafe {
                     libc::waitid(
                         libc::P_PID,
@@ -240,6 +241,7 @@ mod posix {
         if n < 0 {
             return Err(io::Error::last_os_error());
         }
+        // SAFETY: fcntl just returned `n`, a new open fd nothing else owns.
         Ok(unsafe { OwnedFd::from_raw_fd(n) })
     }
 
