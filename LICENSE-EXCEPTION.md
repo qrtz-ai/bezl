@@ -10,7 +10,7 @@ or to license them under the AGPL. Each model stays under its own license (see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 **Scope.** This permission covers only code whose copyright is held by Jared Grimes (qrtz's own code). It does not
-apply to espeak-ng, to the espeak-ng-derived parts of FluidAudio, or to any other part of qrtz that is under the GPL
+apply to espeak-ng, to the possibly espeak-derived parts of FluidAudio (treated as GPL-3.0-or-later), or to any other part of qrtz that is under the GPL
 or another third-party license; those parts keep their own terms.
 
 You may remove this permission from your copy or modified version of qrtz, as section 7 allows.
