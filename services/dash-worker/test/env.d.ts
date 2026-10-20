@@ -8,6 +8,7 @@ declare global {
     interface Env extends DashEnv {
       TEST_VECTORS: string;
       TEST_RUST_LIB: string;
+      TEST_WRANGLER_TOML: string;
     }
   }
 }

@@ -23,6 +23,7 @@ export { Dashboard } from './dashboard';
 import { unwire } from './dashboard';
 export { EnrollDirectory } from './directory';
 import { sourceOf } from './ip';
+import { devLocal, TEST_CODE_PREFIX } from './dev';
 
 const AGENT_TOKEN = /^at_([0-9a-f]{32})_[0-9a-f]{64}$/;
 const OWNER_KEY = /^ok_([0-9a-f]{32})_[0-9a-f]{64}$/;
@@ -92,6 +93,7 @@ async function enroll(req: Request, env: Env): Promise<Out> {
     return fail(422, 'body is not json');
   }
   // Bozniak M2: no address, no attempt (never one shared 'unknown' bucket). Cloudflare always sets this header.
+  const dev = devLocal(env, req);
   const source = sourceOf(req.headers.get('cf-connecting-ip'));
   if (!source) return fail(400, 'client address missing');
   const src = {
@@ -106,6 +108,11 @@ async function enroll(req: Request, env: Env): Promise<Out> {
     .toUpperCase();
   const codeHash = await hmacHex(env.DASH_PEPPER, code);
   const dir = env.ENROLL.getByName('enroll');
+  // A test code outside local test mode: the same answer as a wrong code, and counted as one.
+  if (code.startsWith(TEST_CODE_PREFIX) && !dev) {
+    await dir.fail(src);
+    return fail(401, 'enrollment code is used, expired or wrong');
+  }
   const claim = await dir.claim(src, codeHash);
   if (!claim.ok) {
     if (claim.status === 429)
@@ -213,7 +220,11 @@ async function owner(
 
 async function route(req: Request, env: Env): Promise<Out | Response> {
   const url = new URL(req.url);
-  if (url.protocol !== 'https:') return fail(400, 'https only');
+  if (
+    url.protocol !== 'https:' &&
+    !(url.protocol === 'http:' && devLocal(env, req))
+  )
+    return fail(400, 'https only');
   if (!pepperOk(env.DASH_PEPPER)) return fail(503, 'server not configured');
   // Nothing is selected by query string, and tokens never go in URLs.
   const path = url.pathname;

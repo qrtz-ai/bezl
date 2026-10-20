@@ -18,6 +18,8 @@ export default defineConfig({
           // Read on the Node side and handed in: the shared vectors and the Rust constants (twin check).
           TEST_VECTORS: repo('contracts/dash/vectors.json'),
           TEST_RUST_LIB: repo('crates/qrtz-dash/src/lib.rs'),
+          // The production config, to check it can't turn on local test mode (test/dev.test.ts).
+          TEST_WRANGLER_TOML: repo('services/dash-worker/wrangler.toml'),
         },
       },
     }),
