@@ -20,5 +20,5 @@
   "peerDependencies": {
     "react": "^19.3.0"
   },
-  "license": "UNLICENSED"
+  "license": "AGPL-3.0-only"
 }
