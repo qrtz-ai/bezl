@@ -105,10 +105,10 @@ card as the notice.
 
 | Component                                                                                                                         | Where it runs                                                       | License                                                                                                     | Notes                                                                                                                                                                             |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [FluidAudio](https://github.com/FluidInference/FluidAudio) 0.17.x (`Package.swift`: `upToNextMinor(from: "0.17.7")`)              | The Swift helper (statically linked): ASR, diarization, VQE runtime | [Apache-2.0](https://github.com/FluidInference/FluidAudio/blob/v0.17.7/LICENSE) (verified at tag `v0.17.7`) | Its LICENSE carries no copyright line (the appendix template) and the tag has no NOTICE. Copyright FluidInference.                                                                |
+| [FluidAudio](https://github.com/FluidInference/FluidAudio) 0.17.7 (`Package.swift`: `exact: "0.17.7"`)                            | The Swift helper (statically linked): ASR, diarization, VQE runtime | [Apache-2.0](https://github.com/FluidInference/FluidAudio/blob/v0.17.7/LICENSE) (verified at tag `v0.17.7`) | Its LICENSE carries no copyright line (the appendix template) and the tag has no NOTICE. Copyright FluidInference.                                                                |
 | fastcluster (inside FluidAudio, `Sources/FastClusterWrapper`)                                                                     | The Swift helper                                                    | BSD-2-Clause                                                                                                | © 2011 Daniel Müllner; changes from 1.1.24 on © Google Inc. Notice below.                                                                                                         |
 | [text-processing-rs](https://github.com/FluidInference/text-processing-rs) v0.3.1 (FluidAudio's `NemoTextProcessing.xcframework`) | The Swift helper                                                    | Apache-2.0 (LICENSE, NOTICE and THIRD-PARTY-LICENSES.md at `v0.3.1`)                                        | Copyright 2026 FluidInference; a port of NVIDIA NeMo Text Processing (Apache-2.0, © NVIDIA CORPORATION & AFFILIATES); links rustfst and flate2 (MIT OR Apache-2.0). NOTICE below. |
-| Tauri 2, wry, tao and the Rust crates listed below                                                                                | The app, the `qrtz` command, the helpers' hosts                     | See the generated list                                                                                      | 382 crates, all permissive or weak-copyleft (MPL-2.0); none is GPL/LGPL.                                                                                                          |
+| Tauri 2, wry, tao and the Rust crates listed below                                                                                | The app, the `qrtz` command, the helpers' hosts                     | See the generated list                                                                                      | 377 crates, all permissive or weak-copyleft (MPL-2.0); none is GPL/LGPL.                                                                                                          |
 | The JavaScript packages listed below                                                                                              | The renderer (bundled by Vite)                                      | MIT / Apache-2.0                                                                                            |                                                                                                                                                                                   |
 | Geist Pixel (Square), from the `geist` npm package (vercel/geist-font)                                                            | The UI font, `packages/ui/src/fonts/GeistPixel-Square.woff2`        | SIL OFL-1.1, © 2023 Vercel with basement.studio                                                             | The license ships next to it (`packages/ui/src/fonts/OFL-GeistPixel.txt`).                                                                                                        |
 | Feather icons (`react-feather` 2.0.10, feathericons.com)                                                                          | Every icon, through `@qrtz/ui` `Icon`                               | MIT, © 2017 Carmelo Pullara (react-feather); artwork MIT, © 2013-2017 Cole Bemis (feather)                  |                                                                                                                                                                                   |
@@ -175,7 +175,7 @@ movers and default shortcuts (https://github.com/eczarny/spectacle). The notice 
 Generated with `bun scripts/third-party-rust.mjs` (the normal-dependency closure of `qrtz-desktop` for
 aarch64-apple-darwin from `cargo metadata --offline --locked`, without dev or build dependencies and without qrtz's
 own crates). The `qrtz` command and the helpers' Rust hosts use a subset.
-Counts per license: MIT OR Apache-2.0 (166), MIT (83), Apache-2.0 OR MIT (38), Unicode-3.0 (18), MIT/Apache-2.0 (13), Zlib OR Apache-2.0 OR MIT (12), Unlicense OR MIT (6), BSD-3-Clause (5), MPL-2.0 (5), MIT OR Apache-2.0 OR Zlib (4), Apache-2.0 (4), Zlib (2), Apache-2.0 OR ISC OR MIT (2), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), ISC (2), Unlicense/MIT (2), (MIT OR Apache-2.0) AND Unicode-3.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), MIT-0 (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (1), Apache-2.0 OR BSL-1.0 (1), CDLA-Permissive-2.0 (1).
+Counts per license: MIT OR Apache-2.0 (163), MIT (81), Apache-2.0 OR MIT (38), Unicode-3.0 (18), MIT/Apache-2.0 (13), Zlib OR Apache-2.0 OR MIT (12), Unlicense OR MIT (6), BSD-3-Clause (5), MPL-2.0 (5), MIT OR Apache-2.0 OR Zlib (4), Apache-2.0 (4), Zlib (2), Apache-2.0 OR ISC OR MIT (2), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), ISC (2), Unlicense/MIT (2), (MIT OR Apache-2.0) AND Unicode-3.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), MIT-0 (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (1), Apache-2.0 OR BSL-1.0 (1), CDLA-Permissive-2.0 (1).
 
 | Crate                          | Version          | License                                             |
 | ------------------------------ | ---------------- | --------------------------------------------------- |
@@ -217,7 +217,6 @@ Counts per license: MIT OR Apache-2.0 (166), MIT (83), Apache-2.0 OR MIT (38), U
 | cfg-if                         | 1.0.5            | MIT OR Apache-2.0                                   |
 | chacha20                       | 0.10.2           | MIT OR Apache-2.0                                   |
 | chrono                         | 0.4.45           | MIT OR Apache-2.0                                   |
-| chrono-tz                      | 0.10.4           | MIT OR Apache-2.0                                   |
 | const-oid                      | 0.9.6            | Apache-2.0 OR MIT                                   |
 | cookie                         | 0.18.2           | MIT OR Apache-2.0                                   |
 | core-foundation                | 0.10.1           | MIT OR Apache-2.0                                   |
@@ -265,7 +264,6 @@ Counts per license: MIT OR Apache-2.0 (166), MIT (83), Apache-2.0 OR MIT (38), U
 | errno                          | 0.3.14           | MIT OR Apache-2.0                                   |
 | fallible-iterator              | 0.3.0            | MIT/Apache-2.0                                      |
 | fallible-streaming-iterator    | 0.1.9            | MIT/Apache-2.0                                      |
-| fancy-regex                    | 0.16.2           | MIT                                                 |
 | fancy-regex                    | 0.19.2           | MIT                                                 |
 | fastrand                       | 2.5.0            | Apache-2.0 OR MIT                                   |
 | fax                            | 0.2.7            | MIT                                                 |
@@ -346,6 +344,7 @@ Counts per license: MIT OR Apache-2.0 (166), MIT (83), Apache-2.0 OR MIT (38), U
 | memchr                         | 2.8.3            | Unlicense OR MIT                                    |
 | micromap                       | 0.3.0            | MIT                                                 |
 | mime                           | 0.3.17           | MIT OR Apache-2.0                                   |
+| minisign-verify                | 0.3.0            | MIT                                                 |
 | miniz_oxide                    | 0.8.9            | MIT OR Zlib OR Apache-2.0                           |
 | miniz_oxide                    | 0.9.1            | MIT OR Zlib OR Apache-2.0                           |
 | mio                            | 1.2.4            | MIT                                                 |
@@ -382,11 +381,9 @@ Counts per license: MIT OR Apache-2.0 (166), MIT (83), Apache-2.0 OR MIT (38), U
 | parking_lot                    | 0.12.5           | MIT OR Apache-2.0                                   |
 | parking_lot_core               | 0.9.12           | MIT OR Apache-2.0                                   |
 | percent-encoding               | 2.3.2            | MIT OR Apache-2.0                                   |
-| phf                            | 0.12.1           | MIT                                                 |
 | phf                            | 0.13.1           | MIT                                                 |
 | phf_generator                  | 0.13.1           | MIT                                                 |
 | phf_macros                     | 0.13.1           | MIT                                                 |
-| phf_shared                     | 0.12.1           | MIT                                                 |
 | phf_shared                     | 0.13.1           | MIT                                                 |
 | pin-project-lite               | 0.2.17           | Apache-2.0 OR MIT                                   |
 | pkcs8                          | 0.10.2           | Apache-2.0 OR MIT                                   |
@@ -406,9 +403,7 @@ Counts per license: MIT OR Apache-2.0 (166), MIT (83), Apache-2.0 OR MIT (38), U
 | quinn-udp                      | 0.5.16           | MIT OR Apache-2.0                                   |
 | quote                          | 1.0.47           | MIT OR Apache-2.0                                   |
 | rand                           | 0.10.3           | MIT OR Apache-2.0                                   |
-| rand                           | 0.8.8            | MIT OR Apache-2.0                                   |
 | rand                           | 0.9.5            | MIT OR Apache-2.0                                   |
-| rand_chacha                    | 0.3.1            | MIT OR Apache-2.0                                   |
 | rand_chacha                    | 0.9.0            | MIT OR Apache-2.0                                   |
 | rand_core                      | 0.10.1           | MIT OR Apache-2.0                                   |
 | rand_core                      | 0.6.4            | MIT OR Apache-2.0                                   |
