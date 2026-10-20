@@ -469,6 +469,71 @@ impl Spawn for InstalledSpawn {
     }
 }
 
+/// QRT-291: what the UI may see of a refused launch. A launch error names paths and carries codesign's output; the
+/// `helper:status` the renderer gets says only which check refused it and why, in a fixed phrase. The full error
+/// goes to the log here. This only words the outcome: every check still runs, unchanged, before it.
+pub fn public_refusal(detail: &str) -> &'static str {
+    const KINDS: &[(&[&str], &str)] = &[
+        (
+            &[
+                "is missing",
+                "is not installed",
+                "isn't bundled",
+                "no bundled manifest",
+            ],
+            "missing binary: the helper isn't where qrtz expects it",
+        ),
+        (
+            &[
+                "is a link, outside its package or not a plain file",
+                "isn't an absolute path",
+                "has no parent dir",
+            ],
+            "path check failed: the helper isn't a plain file inside its package",
+        ),
+        (
+            &[
+                "requirement isn't qrtz's",
+                "pins no designated requirement",
+                "no signing identity",
+            ],
+            "signing requirement mismatch: the expected requirement isn't qrtz's Developer ID one",
+        ),
+        (
+            &[
+                "running code doesn't satisfy",
+                "no running code for pid",
+                "requirement doesn't parse",
+            ],
+            "running-code check failed: the started helper isn't signed as qrtz's",
+        ),
+        (
+            &["codesign"],
+            "signature mismatch: the helper isn't signed with qrtz's Developer ID identity",
+        ),
+        (&["need macOS"], "code checks need macOS"),
+        (&["is disabled"], "disabled: this version was turned off"),
+    ];
+    KINDS
+        .iter()
+        .find(|(needles, _)| needles.iter().any(|n| detail.contains(n)))
+        .map_or("launch refused: a launch check failed (see the log)", |(_, r)| r)
+}
+
+/// Wraps a module's spawn so a refusal reaches the supervisor (and so `helper:status`) as [`public_refusal`] only;
+/// the full error is logged here.
+pub struct PublicRefusal<S>(pub S, pub String);
+
+impl<S: Spawn> Spawn for PublicRefusal<S> {
+    fn spawn(&self) -> std::io::Result<ChildIo> {
+        self.0.spawn().map_err(|e| {
+            let detail = e.to_string();
+            tracing::warn!(module = %self.1, error = %detail, "helper launch refused");
+            std::io::Error::new(e.kind(), format!("{}: {}", self.1, public_refusal(&detail)))
+        })
+    }
+}
+
 /// Start `sp` suspended, check the running code against `requirement` (and, for a downloaded echo, its own version
 /// and entitlements, E1), then let it run (or kill it). F1: one `SecCode` for the pid serves every check. For a
 /// downloaded echo the signing information read from it carries the code's cdhash (`kSecCodeInfoUnique`), and that
@@ -790,6 +855,81 @@ mod tests {
                 "module code checks need macOS"
             );
         }
+    }
+
+    /// QRT-291: missing, symlinked, looser-requirement and unsigned (or ad hoc) binaries are all still refused, and
+    /// what the UI gets says which check refused and why, with no path and no codesign output.
+    #[test]
+    fn refusals_stay_refusals_and_the_ui_sees_only_the_reason() {
+        let tmp = tempfile::tempdir().unwrap();
+        let public = |detail: &str| {
+            let p = public_refusal(detail);
+            assert!(
+                !p.contains('/') && !p.contains(tmp.path().to_str().unwrap()),
+                "{p}"
+            );
+            p
+        };
+        let want = launch_requirement("snap").unwrap();
+        // Missing.
+        let e = installed_entry(tmp.path(), Some(want.clone()), Some("ai.qrtz.snap"));
+        std::fs::remove_file(&e.program).unwrap();
+        let err = check_launch(&e, LaunchCheck::Release).unwrap_err();
+        assert!(public(&err).starts_with("missing binary"), "{err}");
+        // Looser requirement.
+        let e = installed_entry(tmp.path(), Some("always".into()), Some("ai.qrtz.snap"));
+        let err = check_launch(&e, LaunchCheck::Release).unwrap_err();
+        assert!(public(&err).starts_with("signing requirement mismatch"), "{err}");
+        // Symlinked.
+        #[cfg(unix)]
+        {
+            let e = installed_entry(tmp.path(), Some(want.clone()), Some("ai.qrtz.snap"));
+            let real = e.dir.join("bin/real");
+            std::fs::rename(&e.program, &real).unwrap();
+            std::os::unix::fs::symlink(&real, &e.program).unwrap();
+            let err = check_launch(&e, LaunchCheck::Release).unwrap_err();
+            assert!(public(&err).starts_with("path check failed"), "{err}");
+            std::fs::remove_file(&e.program).unwrap();
+            std::fs::rename(&real, &e.program).unwrap();
+        }
+        // Unsigned (an ad hoc signature fails the same Developer ID requirement): refused by codesign on macOS,
+        // outright elsewhere.
+        let e = installed_entry(tmp.path(), Some(want), Some("ai.qrtz.snap"));
+        let err = check_launch(&e, LaunchCheck::Release).unwrap_err();
+        let p = public(&err);
+        if cfg!(target_os = "macos") {
+            assert!(p.starts_with("signature mismatch"), "{err}");
+        } else {
+            assert_eq!(p, "code checks need macOS");
+        }
+        // The error Jared's 0.2.4 log shows, and the running-code check.
+        assert!(public(&format!(
+            "codesign: {}/qrtz.app/Contents/MacOS/qrtz-echo: test-requirement: code failed to satisfy specified code requirement(s)",
+            tmp.path().display()
+        ))
+        .starts_with("signature mismatch"));
+        assert!(
+            public("the running code doesn't satisfy \"identifier x\": -67050")
+                .starts_with("running-code check failed")
+        );
+        assert!(public("something new").starts_with("launch refused"));
+    }
+
+    #[test]
+    fn a_wrapped_refusal_reaches_the_supervisor_as_the_reason_only() {
+        struct Refuse;
+        impl Spawn for Refuse {
+            fn spawn(&self) -> std::io::Result<ChildIo> {
+                Err(std::io::Error::other(
+                    "echo: /Applications/qrtz.app/Contents/MacOS/qrtz-echo is missing",
+                ))
+            }
+        }
+        let err = PublicRefusal(Refuse, "echo".into()).spawn().err().unwrap();
+        assert_eq!(
+            err.to_string(),
+            "echo: missing binary: the helper isn't where qrtz expects it"
+        );
     }
 
     #[test]
