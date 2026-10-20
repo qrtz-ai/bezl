@@ -261,3 +261,66 @@ fn the_setup_token_is_zeroed_in_place() {
     scrub_setup_token(&mut p);
     assert!(!p.to_string().contains("secret-setup"));
 }
+
+/// A store whose save fails; `keeps` says whether the new key was stored first (pending copy read back).
+struct FailingSave {
+    keeps: bool,
+    held: Mutex<Option<String>>,
+    load_err: bool,
+}
+
+impl KeyStore for FailingSave {
+    fn try_load(&self) -> Result<Option<String>, String> {
+        if self.load_err {
+            return Err("errSecInteractionNotAllowed".into());
+        }
+        Ok(self.held.lock().unwrap().clone())
+    }
+    fn save(&self, key: &str) -> Result<(), String> {
+        if self.keeps {
+            *self.held.lock().unwrap() = Some(key.into());
+        }
+        Err("errSecInteractionNotAllowed".into())
+    }
+    fn delete(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+fn failing(keeps: bool, load_err: bool) -> Helper {
+    Helper {
+        transport: Box::new(Fake(Seen::default(), 201, json!({"owner_key": KEY}))),
+        store: Box::new(FailingSave {
+            keeps,
+            held: Mutex::new(None),
+            load_err,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn a_failed_save_says_whether_the_new_key_still_loads() {
+    // QRT-264.
+    let e = failing(true, false)
+        .call("dash:connect", &json!({"setupToken": "t"}))
+        .await
+        .unwrap_err();
+    assert!(e.message.contains("still loads"), "{}", e.message);
+    assert!(!e.message.contains(&KEY[36..]));
+    let e = failing(false, false)
+        .call("dash:connect", &json!({"setupToken": "t"}))
+        .await
+        .unwrap_err();
+    assert!(e.message.contains("not connected"), "{}", e.message);
+}
+
+#[tokio::test]
+async fn a_keychain_read_error_is_reported_not_treated_as_no_key() {
+    // QRT-264.
+    let h = failing(true, true);
+    for (c, p) in [("dash:connect", json!({})), ("dash:view", Value::Null)] {
+        let e = h.call(c, &p).await.unwrap_err();
+        assert_eq!(e.code, qrtz_ipc::ErrorCode::Internal, "{c}");
+        assert!(e.message.starts_with("keychain: "), "{c}: {}", e.message);
+    }
+}

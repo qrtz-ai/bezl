@@ -63,15 +63,17 @@ fn save_load_replace_and_delete_on_a_real_keychain() {
 
 #[test]
 #[ignore = "needs a throwaway default keychain (CI keychain job)"]
-fn a_raw_add_on_an_existing_account_fails_and_keeps_the_item() {
+fn a_raw_add_on_an_existing_account_replaces_the_item() {
+    // QRT-264: `RawKeychain::add` creates or updates (the Keychain adds, then updates on a duplicate). TwoPhase
+    // deletes first, so it never depends on this; the test pins the documented behaviour.
     let s = store();
     s.delete().unwrap();
     let (a, b) = (test_key(), test_key());
     KeychainStore.add(KEYCHAIN_ACCOUNT, a.as_bytes()).unwrap();
-    assert!(KeychainStore.add(KEYCHAIN_ACCOUNT, b.as_bytes()).is_err());
+    KeychainStore.add(KEYCHAIN_ACCOUNT, b.as_bytes()).unwrap();
     assert_eq!(
         KeychainStore.get(KEYCHAIN_ACCOUNT).unwrap().as_deref(),
-        Some(a.as_bytes())
+        Some(b.as_bytes())
     );
     s.delete().unwrap();
 }

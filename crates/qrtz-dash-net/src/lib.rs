@@ -181,7 +181,13 @@ pub fn plan(channel: &str, p: &Value) -> Result<Plan, AppError> {
 
 /// Where the owner key lives: the macOS Keychain in the helper; memory in tests; nowhere elsewhere.
 pub trait KeyStore: Send + Sync {
-    fn load(&self) -> Option<String>;
+    /// The owner key, or `None`. A store error reads as `None`, never as an older key ([`KeyStore::try_load`]).
+    fn load(&self) -> Option<String> {
+        self.try_load().ok().flatten()
+    }
+    /// The owner key, `Ok(None)` if there is none, or the store's error (QRT-264: a keychain error on the pending
+    /// key is surfaced, not skipped in favour of the older main key).
+    fn try_load(&self) -> Result<Option<String>, String>;
     fn save(&self, key: &str) -> Result<(), String>;
     fn delete(&self) -> Result<(), String>;
 }
@@ -202,7 +208,9 @@ pub struct KeychainStore;
 /// One Keychain account, raw: what [`TwoPhase`] builds a safe save on (the Keychain on macOS, a fake in tests).
 pub trait RawKeychain: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<Vec<u8>>, String>;
-    /// Adds a new item; fails if `account` already holds one.
+    /// Stores `secret` under `account`: creates the item, or replaces its data if `account` already holds one
+    /// (the macOS Keychain adds, then updates on a duplicate). [`TwoPhase`] never relies on it failing: it deletes
+    /// the account first, so it only ever creates (an old item can't keep weaker attributes).
     fn add(&self, account: &str, secret: &[u8]) -> Result<(), String>;
     /// Deletes the item; a missing item is `Ok`.
     fn delete(&self, account: &str) -> Result<(), String>;
@@ -269,11 +277,13 @@ impl<R: RawKeychain> TwoPhase<R> {
 }
 
 impl<R: RawKeychain> KeyStore for TwoPhase<R> {
-    fn load(&self) -> Option<String> {
-        // Pending is never older than main, so a valid pending key wins.
-        [KEYCHAIN_PENDING_ACCOUNT, KEYCHAIN_ACCOUNT]
-            .into_iter()
-            .find_map(|a| self.0.get(a).ok().flatten().and_then(valid))
+    fn try_load(&self) -> Result<Option<String>, String> {
+        // Pending is never older than main, so a valid pending key wins. An error reading pending is returned,
+        // never skipped: falling through to main could hand back the older key (QRT-264).
+        if let Some(k) = self.0.get(KEYCHAIN_PENDING_ACCOUNT)?.and_then(valid) {
+            return Ok(Some(k));
+        }
+        Ok(self.0.get(KEYCHAIN_ACCOUNT)?.and_then(valid))
     }
     fn save(&self, key: &str) -> Result<(), String> {
         let r = &self.0;
@@ -370,8 +380,8 @@ impl RawKeychain for KeychainStore {
 pub struct NoStore;
 
 impl KeyStore for NoStore {
-    fn load(&self) -> Option<String> {
-        None
+    fn try_load(&self) -> Result<Option<String>, String> {
+        Ok(None)
     }
     fn save(&self, _: &str) -> Result<(), String> {
         Err("the dash server needs the macos keychain".into())
@@ -386,8 +396,8 @@ impl KeyStore for NoStore {
 pub struct MemoryStore(pub std::sync::Mutex<Option<String>>);
 
 impl KeyStore for MemoryStore {
-    fn load(&self) -> Option<String> {
-        self.0.lock().ok().and_then(|k| k.clone())
+    fn try_load(&self) -> Result<Option<String>, String> {
+        Ok(self.0.lock().map_err(|e| e.to_string())?.clone())
     }
     fn save(&self, key: &str) -> Result<(), String> {
         *self.0.lock().map_err(|e| e.to_string())? = Some(key.to_owned());
@@ -504,7 +514,15 @@ fn status_error(status: u16, body: &Value) -> AppError {
     }
 }
 
+fn keychain_error(e: String) -> AppError {
+    AppError::new(ErrorCode::Internal, format!("keychain: {e}")).retryable(false)
+}
+
 impl Helper {
+    fn load_key(&self) -> Result<Option<String>, AppError> {
+        self.store.try_load().map_err(keychain_error)
+    }
+
     async fn send(
         &self,
         m: Method,
@@ -542,21 +560,19 @@ impl Helper {
                     return self.connect_raw(&token).await;
                 }
                 // No token: reuse the dashboard this helper already holds a key for.
-                if self.store.load().is_some() {
+                if self.load_key()?.is_some() {
                     Ok(json!({"connected": true, "origin": ORIGIN}))
                 } else {
                     Err(AppError::new(ErrorCode::NotFound, "no dash server connected yet").retryable(false))
                 }
             }
             "dash:disconnect" => {
-                self.store.delete().map_err(|e| {
-                    AppError::new(ErrorCode::Internal, format!("keychain: {e}")).retryable(false)
-                })?;
+                self.store.delete().map_err(keychain_error)?;
                 Ok(json!({"ok": true}))
             }
             _ => {
                 let plan = plan(channel, p)?;
-                let key = self.store.load().ok_or_else(|| {
+                let key = self.load_key()?.ok_or_else(|| {
                     AppError::new(ErrorCode::NotFound, "no dash server connected").retryable(false)
                 })?;
                 let mut v = self.send(plan.method, &plan.path, &key, plan.body).await?;
@@ -583,9 +599,16 @@ impl Helper {
             .ok_or_else(|| {
                 AppError::new(ErrorCode::Provider, "the dash server sent no owner key").retryable(false)
             })?;
-        self.store
-            .save(key)
-            .map_err(|e| AppError::new(ErrorCode::Internal, format!("keychain: {e}")).retryable(false))?;
+        if let Err(e) = self.store.save(key) {
+            // QRT-264: say whether the new key still loads (it does once the pending copy is stored and read back).
+            let still_loads = matches!(self.store.try_load(), Ok(Some(k)) if k == key);
+            let next = if still_loads {
+                "the new owner key is stored and still loads, so this dashboard stays connected"
+            } else {
+                "the new owner key was not stored, so this dashboard is not connected"
+            };
+            return Err(keychain_error(format!("{e}; {next}")));
+        }
         Ok(json!({"connected": true, "origin": ORIGIN}))
     }
 

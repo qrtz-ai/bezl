@@ -15,11 +15,15 @@ struct Faulty {
     fail_add: Mutex<Vec<String>>,
     fail_delete: Mutex<Vec<String>>,
     garble_get: Mutex<Vec<String>>,
+    fail_get: Mutex<Vec<String>>,
     adds: Mutex<usize>,
 }
 
 impl RawKeychain for Faulty {
     fn get(&self, a: &str) -> Result<Option<Vec<u8>>, String> {
+        if self.fail_get.lock().unwrap().iter().any(|x| x == a) {
+            return Err("errSecInteractionNotAllowed".into());
+        }
         let v = self.items.lock().unwrap().get(a).cloned();
         if self.garble_get.lock().unwrap().iter().any(|x| x == a) {
             return Ok(v.map(|_| b"garbled".to_vec()));
@@ -260,4 +264,27 @@ fn a_stranded_key_that_does_not_read_back_from_main_stays_under_pending() {
     s.0.garble_get.lock().unwrap().clear();
     assert_eq!(accounts(&s), [KEYCHAIN_PENDING_ACCOUNT]);
     assert_eq!(s.load().as_deref(), Some(NEW));
+}
+
+#[test]
+fn a_keychain_error_on_the_pending_key_is_surfaced_not_skipped_for_the_older_main_key() {
+    // QRT-264: pending is never older than main, so a pending read error must not fall through to main.
+    let s = with_old();
+    s.0.items
+        .lock()
+        .unwrap()
+        .insert(KEYCHAIN_PENDING_ACCOUNT.into(), NEW.as_bytes().to_vec());
+    s.0.fail_get.lock().unwrap().push(KEYCHAIN_PENDING_ACCOUNT.into());
+    assert_eq!(s.try_load(), Err("errSecInteractionNotAllowed".into()));
+    assert_eq!(s.load(), None, "never the older main key");
+    s.0.fail_get.lock().unwrap().clear();
+    assert_eq!(s.try_load(), Ok(Some(NEW.into())));
+}
+
+#[test]
+fn a_keychain_error_on_the_main_key_is_surfaced() {
+    let s = with_old();
+    s.0.fail_get.lock().unwrap().push(KEYCHAIN_ACCOUNT.into());
+    assert!(s.try_load().is_err());
+    assert_eq!(s.load(), None);
 }
