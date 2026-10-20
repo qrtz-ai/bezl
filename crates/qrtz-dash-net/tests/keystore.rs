@@ -87,14 +87,91 @@ fn a_pending_key_that_does_not_read_back_keeps_the_old_key() {
 }
 
 #[test]
-fn a_failed_delete_of_the_old_item_keeps_the_old_key_readable() {
+fn a_failed_delete_of_the_old_item_keeps_the_new_key_under_pending() {
+    // Bozniak M6 round 3 (c): the setup token is one-time, so pending may hold the only copy of K2.
     let s = with_old();
     s.0.fail_delete.lock().unwrap().push(KEYCHAIN_ACCOUNT.into());
     let e = s.save(NEW).unwrap_err();
-    assert!(e.contains("old key is kept"), "{e}");
-    assert_eq!(s.load().as_deref(), Some(OLD));
-    // The new key is not stranded under pending beside the old one.
+    assert!(e.contains("could not replace the old owner key"), "{e}");
+    assert!(e.contains("kept under the pending account"), "{e}");
+    assert_eq!(
+        s.0.items.lock().unwrap().get(KEYCHAIN_PENDING_ACCOUNT).cloned(),
+        Some(NEW.as_bytes().to_vec())
+    );
+    assert_eq!(s.load().as_deref(), Some(NEW));
+    // While delete still fails, the next save keeps pending and fails again.
+    assert!(s.save(THIRD).is_err());
+    assert_eq!(s.load().as_deref(), Some(NEW));
+    // Healed: the next save moves K2 into main first, then saves.
+    s.0.fail_delete.lock().unwrap().clear();
+    s.save(THIRD).unwrap();
     assert_eq!(accounts(&s), [KEYCHAIN_ACCOUNT]);
+    assert_eq!(s.load().as_deref(), Some(THIRD));
+}
+
+#[test]
+fn a_crash_after_the_pending_read_back_loads_and_recovers_the_new_key() {
+    // Bozniak M6 round 3 (a)(b): the crash leaves main = K1, pending = K2.
+    let s = with_old();
+    s.0.items
+        .lock()
+        .unwrap()
+        .insert(KEYCHAIN_PENDING_ACCOUNT.into(), NEW.as_bytes().to_vec());
+    assert_eq!(s.load().as_deref(), Some(NEW));
+    // A save whose own pending add fails must still have moved K2 into main, not deleted it.
+    s.0.fail_add.lock().unwrap().push(KEYCHAIN_PENDING_ACCOUNT.into());
+    assert!(s.save(THIRD).is_err());
+    assert_eq!(accounts(&s), [KEYCHAIN_ACCOUNT]);
+    assert_eq!(s.load().as_deref(), Some(NEW));
+    s.0.fail_add.lock().unwrap().clear();
+    s.save(THIRD).unwrap();
+    assert_eq!(s.load().as_deref(), Some(THIRD));
+}
+
+#[test]
+fn a_crash_recovery_that_cannot_write_main_keeps_pending() {
+    let s = with_old();
+    s.0.items
+        .lock()
+        .unwrap()
+        .insert(KEYCHAIN_PENDING_ACCOUNT.into(), NEW.as_bytes().to_vec());
+    s.0.fail_add.lock().unwrap().push(KEYCHAIN_ACCOUNT.into());
+    assert!(s.save(THIRD).is_err());
+    assert_eq!(accounts(&s), [KEYCHAIN_PENDING_ACCOUNT]);
+    assert_eq!(s.load().as_deref(), Some(NEW));
+}
+
+#[test]
+fn an_invalid_main_with_a_valid_pending_key_counts_as_missing() {
+    // Bozniak M6 round 3 (d).
+    let s = TwoPhase(Faulty::default());
+    {
+        let mut m = s.0.items.lock().unwrap();
+        m.insert(KEYCHAIN_ACCOUNT.into(), b"not-a-key".to_vec());
+        m.insert(KEYCHAIN_PENDING_ACCOUNT.into(), NEW.as_bytes().to_vec());
+    }
+    assert_eq!(s.load().as_deref(), Some(NEW));
+    // Recovery replaces the invalid main with K2 before anything else.
+    s.0.fail_add.lock().unwrap().push(KEYCHAIN_PENDING_ACCOUNT.into());
+    assert!(s.save(THIRD).is_err());
+    assert_eq!(accounts(&s), [KEYCHAIN_ACCOUNT]);
+    assert_eq!(s.load().as_deref(), Some(NEW));
+    s.0.fail_add.lock().unwrap().clear();
+    s.save(THIRD).unwrap();
+    assert_eq!(accounts(&s), [KEYCHAIN_ACCOUNT]);
+    assert_eq!(s.load().as_deref(), Some(THIRD));
+}
+
+#[test]
+fn a_pending_copy_equal_to_main_is_just_cleaned_up() {
+    let s = with_old();
+    s.0.items
+        .lock()
+        .unwrap()
+        .insert(KEYCHAIN_PENDING_ACCOUNT.into(), OLD.as_bytes().to_vec());
+    s.save(NEW).unwrap();
+    assert_eq!(accounts(&s), [KEYCHAIN_ACCOUNT]);
+    assert_eq!(s.load().as_deref(), Some(NEW));
 }
 
 #[test]
