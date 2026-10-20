@@ -253,12 +253,15 @@ public actor DictationEngine {
     /// B1: the microphone's authorization (macOS: AVCaptureDevice `.audio`, through the permissions provider), read
     /// only when a mic open fails. nil: unknown.
     let micPermission: @Sendable () -> PermissionState?
+    /// QRT-270 / N137: the "asr" gate background loads (startup, push key set, models.warm) go through, so they never
+    /// compile next to a recording's loads. A press never waits for it (`start` loads directly, joining any load).
+    let loads: ModelLoads?
 
     public init(mic: MicSource?, transcribers: [StreamingTranscriber], inserter: TextInserter?, hotkeys: HotkeyMonitor?,
                 send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false,
                 speech: SpeechSinks? = nil, tail: DictationTail = DictationTail(), echo: DictationEcho? = nil,
-                micPermission: @escaping @Sendable () -> PermissionState? = { nil }) {
-        self.micPermission = micPermission
+                micPermission: @escaping @Sendable () -> PermissionState? = { nil }, loads: ModelLoads? = nil) {
+        self.micPermission = micPermission; self.loads = loads
         self.managedMic = managedMic; self.speech = speech; self.tail = tail; self.echo = echo
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
@@ -295,18 +298,24 @@ public actor DictationEngine {
 
     /// `prewarm()` when a push key is set (after the models were downloaded and warmed). `log`: say how long it took
     /// (N174: a split echo's prewarm after a download, so the first press can be checked against it).
-    public func prewarmIfKeyed(log: Bool = false) { if !pushKey.isEmpty { preload(log: log) } }
+    public func prewarmIfKeyed(log: Bool = false) { if !pushKey.isEmpty { preload(log: log, gated: true) } }
 
     /// Loads the first recogniser that can load, in the background (idempotent: a loaded one returns at once).
-    public func prewarm() { preload(log: false) }
+    public func prewarm() { preload(log: false, gated: true) }
 
     /// ADR 0087: echo's recogniser is resident for the life of the helper. Loaded when the helper starts (if the
     /// models are downloaded; only local files are read), never unloaded by the engine. A press while this runs joins
     /// the same in-flight load (the transcriber's `SharedLoad`), so there is never a second load. Logs how long it took.
     @discardableResult
-    nonisolated public func preload(log: Bool = true) -> Task<Void, Never> {
+    /// `gated`: inside the "asr" gate (when one was given).
+    nonisolated public func preload(log: Bool = true, gated: Bool = false) -> Task<Void, Never> {
         let ts = transcribers, send = self.send
+        let gate = gated ? loads : nil
         return Task.detached {
+            if let gate {
+                _ = try? await gate.load("asr") { await self.preload(log: log).value }
+                return
+            }
             for t in ts {
                 let t0 = ContinuousClock.now
                 do {
