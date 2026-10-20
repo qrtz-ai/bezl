@@ -73,12 +73,12 @@ import { ModulePermissions, usePermissions } from './ModulePermissions';
 import { AppModels } from './AppModels';
 
 type Verb = 'install' | 'update' | 'remove';
-/** The host's answer while modules.qrtz.ai isn't live (packages_ipc NOT_SET_UP: details.reason "not-set-up"). */
+/** The host's answer while the package host isn't live (packages_ipc NOT_SET_UP: details.reason "not-set-up"). */
 export const isNotSetUp = (e: unknown) =>
   (e as { options?: { details?: { reason?: string } } } | null)?.options
     ?.details?.reason === 'not-set-up';
 /**
- * The store couldn't reach modules.qrtz.ai, or the host answered 404 (an empty bucket): packages_ipc maps
+ * The store couldn't reach the package host, or it answered 404 (nothing published yet): packages_ipc maps
  * InstallError::Network ("every host failed: …") to a retryable E_UNAVAILABLE. Shown as a friendly
  * "try again" with a retry, never the raw text (which goes to the local log instead).
  */
@@ -151,7 +151,7 @@ export default function MarketplaceView() {
   /** The apps whose last install or update failed: their row shows the error and a retry. */
   const [failed, setFailed] = useState<Readonly<Record<string, Verb>>>({});
 
-  // modules.qrtz.ai isn't live yet (no root pinned in this build): a friendly "coming soon", not an error.
+  // The package host isn't live yet (no root pinned in this build): a friendly "coming soon", not an error.
   const [soon, setSoon] = useState(false);
   // Bundled echo has no index entry: its row shows the app's version ("v0.2.0 · built in").
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -504,7 +504,7 @@ export default function MarketplaceView() {
         )}
         <Text variant="caption" muted data-testid="consent-download">
           {pending.plan.downloadBytes
-            ? `downloads ${formatBytes(pending.plan.downloadBytes)} of signed packages from modules.qrtz.ai (models can come from huggingface.co). nothing else goes online, and every file is checked before it is used.`
+            ? `downloads ${formatBytes(pending.plan.downloadBytes)} of signed packages from github.com (models can come from huggingface.co). nothing else goes online, and every file is checked before it is used.`
             : 'nothing to download. this stays on this mac.'}
         </Text>
         <Stack dir="row" gap={2} justify="end">
@@ -747,7 +747,7 @@ export default function MarketplaceView() {
         <Text variant="caption" muted data-testid="marketplace-index">
           {state?.index
             ? `signed list v${state.index.version} · checked ${new Date(state.index.issuedMs).toLocaleDateString().toLowerCase()}`
-            : 'checking goes online to modules.qrtz.ai for the signed list. opening this page never does.'}
+            : 'checking goes online to github.com for the signed list. opening this page never does.'}
         </Text>
       </Toolbar>
       {soonBox}

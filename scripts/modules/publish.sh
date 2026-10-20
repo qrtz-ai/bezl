@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Publish the package index to modules.qrtz.ai (Cloudflare R2; ADR 0153, ADR 0157, ADR 0167, ADR 0171,
+# Publish the package index to the `index` GitHub release (QRT-297; ADR 0153, ADR 0157, ADR 0167, ADR 0171,
 # docs/modules/production-setup.md). Sole package host: no Backblaze B2 mirror. Runs on the release Mac, which
 # holds ~/.qrtz-keys (index + timestamp keys).
 #
-#   scripts/modules/publish.sh                          build, verify, upload (R2 via rclone), check the live host
+#   scripts/modules/publish.sh                          build, verify, upload (gh, scripts/release/gh-store.sh), check the live host
 #   scripts/modules/publish.sh --out-only               a dry run: build and verify in a scratch copy of
 #                                                       $QRTZ_PUBLISH_OUT (mktemp; the out dir is never written), log
-#                                                       what would upload, delete the copy on exit; no upload, no R2
-#                                                       token, no rclone (QRTZ_KEEP_UPLOAD_LIST=<file> keeps the list).
+#                                                       what would upload, delete the copy on exit; no upload, no
+#                                                       token, no gh (QRTZ_KEEP_UPLOAD_LIST=<file> keeps the list).
 #                                                       --no-upload = same.
 #   scripts/modules/publish.sh --timestamp              re-sign the timestamp and upload only it (at least weekly)
 #   scripts/modules/publish.sh --timestamp --out-only   re-sign it and list only the timestamp pair
@@ -24,26 +24,26 @@
 # Every package build fetches the live index from $QRTZ_PRIMARY_URL and passes it to `qrtz-publish build
 # --live-index`, which refuses a (package, version) the live index already has with other content.
 #
-# ADR 0171: modules.qrtz.ai hosts module packages, the root, the index and the timestamp only. Model files are never
+# ADR 0171: the package host serves module packages, the root, the index and the timestamp only. Model files are never
 # uploaded: the signed index lists each one's sha256, size and pinned Hugging Face URL (a commit, never `main`) and
 # the app downloads it from Hugging Face and checks it against those. To hash a model set the script uses the app's
 # downloaded copy under $QRTZ_MODELS_DIR if there is one, else downloads the set once from Hugging Face (pinned URLs,
 # resumable, each file checked against its pin) into $QRTZ_MODEL_CACHE. The model's small qrtz.json and tree are
 # published like any package. Built extension/service package dirs come from $QRTZ_PUBLISH_PACKAGES. Published
-# objects are immutable: rclone --immutable refuses to change one, nothing is ever deleted, and the timestamp goes
+# objects are immutable: gh-store.sh never replaces one, nothing is ever deleted, and the timestamp goes
 # last so a client never sees an index whose blobs aren't up yet.
 #
 # The upload list ($QRTZ_PUBLISH_OUT.upload.tsv, beside the output dir so it is never uploaded itself) has one
 # `key<TAB>size<TAB>cache-control<TAB>state` line per object in upload order, the timestamp's .sig then the
 # timestamp last; state is `new` (not served by $QRTZ_PRIMARY_URL yet) or `live` (already there, immutable: skip).
-# Upload each `new` key from $QRTZ_PUBLISH_OUT/<key> to the bucket under the same key with that Cache-Control.
+# Upload each `new` key from $QRTZ_PUBLISH_OUT/<key> as the release asset named by the key with / → . (gh-store.sh).
 #
 # Environment:
-#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   the R2 API token (Object Read & Write, bucket only;
-#                       not needed with --out-only)
+#   GH_TOKEN            a token that can write qrtz-ai/qrtz releases (in Actions: the release job's GITHUB_TOKEN;
+#                       on a Mac: `gh auth login`; not needed with --out-only)
 #   QRTZ_TEAM_ID        the Developer ID team (10 characters; the publisher team of every package, models too;
 #                       default MR26CCZ496)
-#   optional: R2_BUCKET (qrtz-modules), QRTZ_KEYS (~/.qrtz-keys),
+#   optional: QRTZ_KEYS (~/.qrtz-keys),
 #   QRTZ_PUBLISH_OUT (~/qrtz-publish-out), QRTZ_MODELS_DIR (~/Library/Application Support/ai.qrtz.desktop/models),
 #   QRTZ_MODEL_CACHE (~/qrtz-publish-models: where a set missing from QRTZ_MODELS_DIR is downloaded once to hash it),
 #   QRTZ_PUBLISH_MODELS (space-separated package names; default: every pinned model whose dir exists; name one to
@@ -53,10 +53,8 @@
 #   QRTZ_NOTARY_PROFILE (the notarytool keychain profile, default qrtz-notary),
 #   QRTZ_ROOT1_SHA256 (default: the pin in crates/qrtz-app/src/module_hosts.json, else $QRTZ_PUBLISH_OUT/ROOT1_SHA256),
 #   QRTZ_PUBLISH_BIN (a built qrtz-publish; default: cargo build --release -p qrtz-publish),
-#   QRTZ_PRIMARY_URL (https://modules.qrtz.ai) for the live check.
-# Secrets are read from the environment only (e.g. `export R2_SECRET_ACCESS_KEY=$(security find-generic-password
-# -s qrtz-r2 -w)`); nothing here writes them to disk or prints them. rclone gets them as RCLONE_CONFIG_* variables,
-# so there is no rclone.conf with keys in it.
+#   QRTZ_PRIMARY_URL (https://github.com/qrtz-ai/qrtz/releases/download/index) for the live check.
+# Secrets come from the environment or $QRTZ_KEYS only; nothing here writes them to disk or prints them.
 set -euo pipefail
 
 die() {
@@ -110,11 +108,10 @@ keys="${QRTZ_KEYS:-$HOME/.qrtz-keys}"
 out="${QRTZ_PUBLISH_OUT:-$HOME/qrtz-publish-out}"
 models_dir="${QRTZ_MODELS_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/models}"
 hosts_json="$repo/crates/qrtz-app/src/module_hosts.json"
-r2_bucket="${R2_BUCKET:-qrtz-modules}"
 
-# The persistent out dir must always mirror what modules.qrtz.ai serves (timestamp-job.sh skips itself otherwise).
+# The persistent out dir must always mirror what the index release serves (release.yml re-hydrates it on every run).
 # --out-only is a dry run: it works on a scratch copy (mktemp) and never writes to $out; its upload list sits beside
-# the scratch dir. A real run re-hydrates $out from the bucket first (scripts/ci/hydrate-out.sh into a fresh dir; the
+# the scratch dir. A real run re-hydrates $out from the index release first (scripts/ci/hydrate-out.sh into a fresh dir; the
 # previous dir is kept as $out.prev until the next real run), so a stale or dry-run-touched out can't leak into a publish.
 # The scratch copy, its upload list and its model-blobs are deleted on exit (EXIT trap; the --release dry run's trap
 # calls this too). QRTZ_KEEP_UPLOAD_LIST=<file> copies the upload list there first (the log says so).
@@ -133,14 +130,14 @@ if [[ "$out_only" == 1 ]]; then
   out="$scratch"
 else
   fresh="$(mktemp -d "$out.hydrate.XXXXXX")"
-  bash "$repo/scripts/ci/hydrate-out.sh" "$fresh" || { rm -rf "$fresh"; die "couldn't re-hydrate $out from the bucket"; }
+  bash "$repo/scripts/ci/hydrate-out.sh" "$fresh" || { rm -rf "$fresh"; die "couldn't re-hydrate $out from the index release"; }
   [[ -f "$out/ROOT1_SHA256" ]] && cp -p "$out/ROOT1_SHA256" "$fresh/ROOT1_SHA256"
   if [[ -e "$out" ]]; then
     rm -rf "$out.prev"
     mv "$out" "$out.prev"
   fi
   mv "$fresh" "$out"
-  echo "publish: re-hydrated $out from the bucket"
+  echo "publish: re-hydrated $out from the index release"
 fi
 
 [[ -f "$keys/timestamp.key" ]] || die "$keys: no timestamp key (run scripts/modules/release-keys.sh first)"
@@ -333,14 +330,14 @@ else
   # qrtz-publish re-reads each package's cdhash (codesign) and asks notarytool for the submission's log before it
   # signs the records into the index (902bcab review, design call (c)).
   # The live index: a (package, version) it already has must not change (qrtz-publish build --live-index).
-  primary="${QRTZ_PRIMARY_URL:-https://modules.qrtz.ai}"
+  primary="${QRTZ_PRIMARY_URL:-https://github.com/qrtz-ai/qrtz/releases/download/index}"
   live=()
-  live_ts="$(curl -fsS --max-time 20 "$primary/v1/timestamp.json?nocache=$RANDOM" 2>/dev/null || true)"
+  live_ts="$(curl -fsSL --max-time 20 "$primary/v1.timestamp.json" 2>/dev/null || true)"
   if [[ -n "$live_ts" ]]; then
     live_sha="$(grep -o '"sha256": *"[0-9a-f]\{64\}"' <<<"$live_ts" | grep -o '[0-9a-f]\{64\}' | head -1)"
-    [[ -n "$live_sha" ]] || die "$primary/v1/timestamp.json: no index sha256"
+    [[ -n "$live_sha" ]] || die "$primary/v1.timestamp.json: no index sha256"
     live_file="$(dirname "$spec")/live-index.json"
-    curl -fsS --max-time 60 -o "$live_file" "$primary/v1/index/$live_sha.json" || die "couldn't fetch the live index $live_sha"
+    curl -fsSL --max-time 60 -o "$live_file" "$primary/v1.index.$live_sha.json" || die "couldn't fetch the live index $live_sha"
     got="$(shasum -a 256 "$live_file" 2>/dev/null | cut -d' ' -f1 || sha256sum "$live_file" | cut -d' ' -f1)"
     [[ "$got" == "$live_sha" ]] || die "the live index doesn't hash to $live_sha"
     live=(--live-index "$live_file")
@@ -352,10 +349,10 @@ else
 fi
 "$bin" verify --out "$out" --root-sha256 "$pin"
 
-primary="${QRTZ_PRIMARY_URL:-https://modules.qrtz.ai}"
+primary="${QRTZ_PRIMARY_URL:-https://github.com/qrtz-ai/qrtz/releases/download/index}"
 
 if [[ "$out_only" == 1 ]]; then
-  # No upload, no rclone, no R2 token: the list of what to upload, in order (ADR 0171).
+  # No upload, no gh, no token: the list of what to upload, in order (ADR 0171).
   list="$out.upload.tsv"
   ts_only=()
   [[ "$mode" == timestamp ]] && ts_only=(--timestamp-only)
@@ -364,7 +361,7 @@ if [[ "$out_only" == 1 ]]; then
   bytes=0
   while IFS=$'\t' read -r key size cc; do
     state=new
-    if [[ "$cc" == *immutable* ]] && curl -fsSI -o /dev/null --max-time 10 "$primary/$key" 2>/dev/null; then
+    if [[ "$cc" == *immutable* ]] && curl -fsSIL -o /dev/null --max-time 10 "$primary/${key//\//.}" 2>/dev/null; then
       state=live
     else
       new=$((new + 1))
@@ -383,38 +380,22 @@ if [[ "$out_only" == 1 ]]; then
   exit 0
 fi
 
-command -v rclone >/dev/null || die "rclone not found (brew install rclone)"
-for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
-  [[ -n "${!v:-}" ]] || die "$v is not set"
-done
-# rclone remotes from the environment only (no config file with secrets).
-export RCLONE_CONFIG_QRTZR2_TYPE=s3 RCLONE_CONFIG_QRTZR2_PROVIDER=Cloudflare
-export RCLONE_CONFIG_QRTZR2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" RCLONE_CONFIG_QRTZR2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
-export RCLONE_CONFIG_QRTZR2_ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-export RCLONE_CONFIG_QRTZR2_NO_CHECK_BUCKET=true RCLONE_CONFIG_QRTZR2_ACL=private
-
-# ADR 0171: out never holds model files (qrtz-publish keeps them in $out.model-blobs for offline packs, and verify
-# refuses an out that has one); only v1/ is uploaded.
-upload() { # <remote:bucket>
-  if [[ "$mode" != timestamp ]]; then
-    # Everything but the timestamp: immutable, cached for a year.
-    # --checksum: an object already up with the same bytes (e.g. root 1, uploaded another way) is not "modified".
-    # ADR 0181: never v1/app/ (qrtz.app's own update, app-release.yml; its latest.json changes on every release).
-    rclone copy "$out/v1" "$1/v1" --immutable --checksum --exclude "timestamp.json*" --exclude "app/**" \
-      --header-upload "Cache-Control: public, max-age=31536000, immutable" --transfers 4 --s3-chunk-size 64M -v
-  fi
-  # The timestamp last (its .sig first is fine: the client fetches the pair), cached 5 minutes.
-  rclone copy "$out/v1" "$1/v1" --include "timestamp.json*" --header-upload "Cache-Control: public, max-age=300" --ignore-times -v
-}
-upload "qrtzr2:$r2_bucket"
+# QRT-297: the package host is the `index` GitHub release (scripts/release/gh-store.sh; gh with GH_TOKEN, no other
+# credential). ADR 0171: out never holds model files (qrtz-publish keeps them in $out.model-blobs for offline packs,
+# and verify refuses an out that has one); only $out/v1 is uploaded, never v1/app/ (qrtz.app's own update), and the
+# timestamp pair goes last.
+command -v gh >/dev/null || die "gh not found (brew install gh)"
+ts_flag=()
+[[ "$mode" == timestamp ]] && ts_flag=(--timestamp-only)
+bash "$repo/scripts/release/gh-store.sh" upload "$out" "${ts_flag[@]+"${ts_flag[@]}"}"
 
 # The live check: what the host serves is what was signed.
 want="$(shasum -a 256 "$out/v1/timestamp.json" 2>/dev/null | cut -d' ' -f1 || sha256sum "$out/v1/timestamp.json" | cut -d' ' -f1)"
-got="$(curl -fsS -H 'Cache-Control: no-cache' "$primary/v1/timestamp.json?nocache=$RANDOM" | (shasum -a 256 2>/dev/null || sha256sum) | cut -d' ' -f1 || true)"
+got="$(curl -fsSL -H 'Cache-Control: no-cache' "$primary/v1.timestamp.json" | (shasum -a 256 2>/dev/null || sha256sum) | cut -d' ' -f1 || true)"
 if [[ "$got" == "$want" ]]; then
   echo "publish: $primary serves the new timestamp"
 else
-  echo "publish: WARNING: $primary doesn't serve the new timestamp yet (cache or DNS); check $primary/v1/timestamp.json in a few minutes" >&2
+  echo "publish: WARNING: $primary doesn't serve the new timestamp yet (cache or DNS); check $primary/v1.timestamp.json in a few minutes" >&2
 fi
 if [[ "$release" == 1 ]]; then
   [[ "$got" == "$want" ]] || die "not tagging: the host doesn't serve the new timestamp yet; tag later with version.mjs tag --push $mods"
