@@ -1037,6 +1037,90 @@
       "category": "question",
       "raw": "What time’s the game on Sunday",
       "ideal": "What time’s the game on Sunday?"
+    },
+    {
+      "id": "p169",
+      "category": "itn-title",
+      "raw": "I had a call with Mister Patel about the contract",
+      "ideal": "I had a call with Mr. Patel about the contract."
+    },
+    {
+      "id": "p170",
+      "category": "itn-title",
+      "raw": "Please send the invoice to Missus Chen by Friday",
+      "ideal": "Please send the invoice to Mrs. Chen by Friday."
+    },
+    {
+      "id": "p171",
+      "category": "itn-title",
+      "raw": "Mister Thompson will join the meeting at noon",
+      "ideal": "Mr. Thompson will join the meeting at noon."
+    },
+    {
+      "id": "p172",
+      "category": "itn-title",
+      "raw": "Can you ask mister Garcia to call me back",
+      "ideal": "Can you ask Mr. Garcia to call me back?"
+    },
+    {
+      "id": "p173",
+      "category": "itn-title",
+      "raw": "Dear Mister Johnson, thank you for your patience.",
+      "ideal": "Dear Mr. Johnson, thank you for your patience."
+    },
+    {
+      "id": "p174",
+      "category": "itn-title",
+      "raw": "Mister and Missus Lee are coming to dinner on Saturday",
+      "ideal": "Mr. and Mrs. Lee are coming to dinner on Saturday."
+    },
+    {
+      "id": "p175",
+      "category": "itn-title",
+      "raw": "We got a lovely card from Mister and Mrs. Walker.",
+      "ideal": "We got a lovely card from Mr. and Mrs. Walker."
+    },
+    {
+      "id": "p176",
+      "category": "itn-title",
+      "raw": "Thank you, Mister President.",
+      "ideal": "Thank you, Mr. President."
+    },
+    {
+      "id": "p177",
+      "category": "itn-title",
+      "raw": "I left a message for Mister O'Brien at the front desk",
+      "ideal": "I left a message for Mr. O'Brien at the front desk."
+    },
+    {
+      "id": "p178",
+      "category": "itn-title",
+      "raw": "Mister Kim's flight lands at six tonight",
+      "ideal": "Mr. Kim's flight lands at six tonight."
+    },
+    {
+      "id": "p179",
+      "category": "itn-title",
+      "raw": "The package is for Missus Rodriguez-Lopez in apartment four",
+      "ideal": "The package is for Mrs. Rodriguez-Lopez in apartment four."
+    },
+    {
+      "id": "p180",
+      "category": "itn-title",
+      "raw": "Hi Mister Brown, just following up on the quote from last week",
+      "ideal": "Hi Mr. Brown, just following up on the quote from last week."
+    },
+    {
+      "id": "p181",
+      "category": "itn-title",
+      "raw": "My kids really loved Missus Nguyen as a teacher",
+      "ideal": "My kids really loved Mrs. Nguyen as a teacher."
+    },
+    {
+      "id": "p182",
+      "category": "itn-title",
+      "raw": "Attendees new line Mister Hall new line Missus Grant",
+      "ideal": "Attendees\nMr. Hall\nMrs. Grant"
     }
   ],
   "keep": [
@@ -3551,6 +3635,186 @@
       "rule": "question-modifier-contraction",
       "raw": "How long's the flight to Denver!",
       "expect": "How long's the flight to Denver!"
+    },
+    {
+      "id": "k415",
+      "rule": "title",
+      "raw": "Hey mister, you dropped your wallet.",
+      "expect": "Hey mister, you dropped your wallet."
+    },
+    {
+      "id": "k416",
+      "rule": "title",
+      "raw": "Thanks mister. That was really kind of you.",
+      "expect": "Thanks mister. That was really kind of you."
+    },
+    {
+      "id": "k417",
+      "rule": "title",
+      "raw": "Excuse me mister I think you dropped this.",
+      "expect": "Excuse me mister I think you dropped this."
+    },
+    {
+      "id": "k418",
+      "rule": "title",
+      "raw": "Listen mister I'm not going to ask you again.",
+      "expect": "Listen mister I'm not going to ask you again."
+    },
+    {
+      "id": "k419",
+      "rule": "title",
+      "raw": "Sorry mister It's not for sale.",
+      "expect": "Sorry mister It's not for sale."
+    },
+    {
+      "id": "k420",
+      "rule": "title",
+      "raw": "Thank you mister The car is ready out front.",
+      "expect": "Thank you mister The car is ready out front."
+    },
+    {
+      "id": "k421",
+      "rule": "title",
+      "raw": "Bye mister See you tomorrow.",
+      "expect": "Bye mister See you tomorrow."
+    },
+    {
+      "id": "k422",
+      "rule": "title",
+      "raw": "Good morning mister What can I get you?",
+      "expect": "Good morning mister What can I get you?"
+    },
+    {
+      "id": "k423",
+      "rule": "title",
+      "raw": "We watched Mister Rogers with the kids last night.",
+      "expect": "We watched Mister Rogers with the kids last night."
+    },
+    {
+      "id": "k424",
+      "rule": "title",
+      "raw": "The Mister Softee truck came by again today.",
+      "expect": "The Mister Softee truck came by again today."
+    },
+    {
+      "id": "k425",
+      "rule": "title",
+      "raw": "Grandpa loved watching Mister Ed reruns.",
+      "expect": "Grandpa loved watching Mister Ed reruns."
+    },
+    {
+      "id": "k426",
+      "rule": "title",
+      "raw": "There is a Mister Donut right by the station.",
+      "expect": "There is a Mister Donut right by the station."
+    },
+    {
+      "id": "k427",
+      "rule": "title",
+      "raw": "She called him a little mister all day long.",
+      "expect": "She called him a little mister all day long."
+    },
+    {
+      "id": "k428",
+      "rule": "title",
+      "raw": "The missus wants us home by six.",
+      "expect": "The missus wants us home by six."
+    },
+    {
+      "id": "k429",
+      "rule": "title",
+      "raw": "Doctor Who is my favorite show.",
+      "expect": "Doctor Who is my favorite show."
+    },
+    {
+      "id": "k430",
+      "rule": "title",
+      "raw": "Saint Paul is a lovely city in the summer.",
+      "expect": "Saint Paul is a lovely city in the summer."
+    },
+    {
+      "id": "k431",
+      "rule": "title",
+      "raw": "Miss Daisy will see you now.",
+      "expect": "Miss Daisy will see you now."
+    },
+    {
+      "id": "k432",
+      "rule": "title",
+      "raw": "MISTER SMITH IS HERE.",
+      "expect": "MISTER SMITH IS HERE."
+    },
+    {
+      "id": "k433",
+      "rule": "title",
+      "raw": "Talk to mister\nSmith tomorrow.",
+      "expect": "Talk to mister\nSmith tomorrow."
+    },
+    {
+      "id": "k434",
+      "rule": "title",
+      "raw": "Yes, mister, right away.",
+      "expect": "Yes, mister, right away."
+    },
+    {
+      "id": "k435",
+      "rule": "title",
+      "raw": "Mister and Mrs Smith arrived early.",
+      "expect": "Mister and Mrs Smith arrived early."
+    },
+    {
+      "id": "k436",
+      "rule": "title",
+      "raw": "Mister and misses Smith arrived early.",
+      "expect": "Mister and misses Smith arrived early."
+    },
+    {
+      "id": "k437",
+      "rule": "title",
+      "raw": "Mrs Smith and Mr Jones are both here.",
+      "expect": "Mrs Smith and Mr Jones are both here."
+    },
+    {
+      "id": "k438",
+      "rule": "title",
+      "raw": "Mr. Smith is already in the lobby.",
+      "expect": "Mr. Smith is already in the lobby."
+    },
+    {
+      "id": "k439",
+      "rule": "title",
+      "raw": "Mister, Smith is here to see you.",
+      "expect": "Mister, Smith is here to see you."
+    },
+    {
+      "id": "k440",
+      "rule": "title",
+      "raw": "Thanks mister Nobody else stopped to help.",
+      "expect": "Thanks mister Nobody else stopped to help."
+    },
+    {
+      "id": "k441",
+      "rule": "title",
+      "raw": "We met Mister on the train, or so he called himself.",
+      "expect": "We met Mister on the train, or so he called himself."
+    },
+    {
+      "id": "k442",
+      "rule": "title",
+      "raw": "Mister Mister was a band in the eighties.",
+      "expect": "Mister Mister was a band in the eighties."
+    },
+    {
+      "id": "k443",
+      "rule": "title",
+      "raw": "Thanks mister May I ask your name?",
+      "expect": "Thanks mister May I ask your name?"
+    },
+    {
+      "id": "k444",
+      "rule": "title",
+      "raw": "Hey Mister, Sam says hi.",
+      "expect": "Hey Mister, Sam says hi."
     }
   ]
 }

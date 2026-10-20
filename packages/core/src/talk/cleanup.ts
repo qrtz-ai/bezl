@@ -1888,6 +1888,114 @@ function spokenDates(t: string, dict: readonly DictionaryEntry[]): string {
   return out;
 }
 
+/** ADR 0234: spoken titles the recogniser writes out ("Mister Hopkins", "Missus Poyser") and their abbreviations. */
+export const SPOKEN_TITLES = new Map([
+  ['Mister', 'Mr.'],
+  ['mister', 'Mr.'],
+  ['Missus', 'Mrs.'],
+  ['missus', 'Mrs.'],
+]);
+/** ADR 0234: "Mister and Mrs. Lee" / "Missus and Mr. Lee": the title's partner after "and" (then a name). */
+const TITLE_PARTNERS = new Map([
+  ['Mr.', new Set(['Missus', 'missus', 'Mrs.'])],
+  ['Mrs.', new Set(['Mister', 'mister', 'Mr.'])],
+]);
+/** ADR 0234: capitalised words that are not a name after a title. Same list as cleanup.rs `TITLE_NOT_NAMES`. */
+export const TITLE_NOT_NAMES = new Set(
+  (
+    'The An This That These Those There Here Then Than Thanks Thank Please Sorry Yes Yeah Yep Yup No Nope Not Now ' +
+    'Okay Ok Oh Hey Hi Hello Bye Goodbye Well So And But Or Nor Yet If When While Where What Why Who Whom Whose ' +
+    'Which How Because Since Although Though Unless Until After Before As At In On Of To For From With Without By ' +
+    'About Into Over Under Up Down Out Off Is Are Was Were Be Been Am Do Does Did Done Can Could Will Would Shall ' +
+    'Should May Might Must Have Has Had Get Got Go Let Lets It Its We You Your Yours They Them Their He Him His ' +
+    'She Her Hers Me My Mine Us Our Ours Some Any All Every Each Both Either Neither None Nothing Nobody Everyone ' +
+    'Everybody Someone Somebody Anyone Anybody Just Also Maybe Perhaps Really Very Actually Sure Right Like Look ' +
+    'Listen Wait Stop Come See Take Hold Keep Give Tell Ask Make Try Call Send Put Bring Turn Watch Check Hurry ' +
+    'Move Leave Sit Stand Follow Help Enjoy Hope Need Want Think Know Guess Mind Excuse Pardon Remember Forget ' +
+    'Good Great Nice Sir Madam Mister Missus Miss Mr Mrs Ms Dr'
+  ).split(' '),
+);
+/** ADR 0234: names written with the spelled-out title ("Mister Rogers", "Mister Ed"): the title stays. */
+export const TITLE_KEPT = new Set(['Rogers', 'Ed', 'Softee', 'Donut']);
+
+/** ADR 0234: a name right after a title. Same rule as cleanup.rs `title_name`. */
+function titleName(w: string): boolean {
+  const body = w.replace(DATE_MARKS, '');
+  let base = body;
+  if (body.endsWith("'s") || body.endsWith('\u2019s')) base = body.slice(0, -2);
+  else if (/s['\u2019]$/.test(body)) base = body.slice(0, -1);
+  const c = Array.from(base);
+  if (c.length < 2 || !/^[A-Z]$/.test(c[0])) return false;
+  let start: number;
+  if (/^[a-z]$/.test(c[1])) start = 2;
+  else if (/^['\u2019]$/.test(c[1]) && c.length > 3 && /^[A-Z]$/.test(c[2]))
+    start = 3;
+  else return false;
+  for (let i = start; i < c.length; i++) {
+    const ok =
+      /^[A-Za-z]$/.test(c[i]) ||
+      (c[i] === '-' && i + 1 < c.length && /^[A-Z]$/.test(c[i + 1]));
+    if (!ok) return false;
+  }
+  return !(
+    TITLE_NOT_NAMES.has(base) ||
+    DATE_MONTHS.has(base) ||
+    DATE_WEEKDAYS.has(base) ||
+    TITLE_KEPT.has(base)
+  );
+}
+
+/** ADR 0234: a spoken title before a name written as its abbreviation ("Mister Hopkins" → "Mr. Hopkins"). Same
+ * rule as cleanup.rs `spoken_titles`; runs last, after the dates. */
+function spokenTitles(t: string, dict: readonly DictionaryEntry[]): string {
+  if (!(t.includes('ister ') || t.includes('issus '))) return t;
+  const spelled = (s: string) => {
+    const l = asciiLower(s);
+    return l.includes('mister') || l.includes('missus');
+  };
+  if (dict.some((d) => spelled(d.term) || d.aliases.some(spelled))) return t;
+  // Only the words around each "ister " / "issus " are read. Words end at ASCII whitespace, as in cleanup.rs.
+  const space = /[\t\n\f\r ]/;
+  const wordEnd = (s: number) => {
+    let i = s;
+    while (i < t.length && !space.test(t[i])) i++;
+    return i;
+  };
+  // The word after the one ending at `e`, when exactly one space separates them.
+  const after = (e: number): [number, number] | null =>
+    t[e] === ' ' && e + 1 < t.length && !space.test(t[e + 1])
+      ? [e + 1, wordEnd(e + 1)]
+      : null;
+  const edits: [number, number, string][] = [];
+  for (const needle of ['ister ', 'issus '])
+    for (let i = t.indexOf(needle); i >= 0; i = t.indexOf(needle, i + 1)) {
+      // The title is a whole word: "M" / "m" right before, then the text's start or ASCII whitespace.
+      if (i === 0 || (t[i - 1] !== 'M' && t[i - 1] !== 'm')) continue;
+      const [s, e] = [i - 1, i + 5];
+      if (s > 0 && !space.test(t[s - 1])) continue;
+      const abbr = SPOKEN_TITLES.get(t.slice(s, e));
+      if (abbr === undefined) continue;
+      const n1 = after(e);
+      if (n1 === null) continue;
+      let named = titleName(t.slice(n1[0], n1[1]));
+      if (!named && t.slice(n1[0], n1[1]) === 'and') {
+        const p = after(n1[1]);
+        const n = p === null ? null : after(p[1]);
+        named =
+          p !== null &&
+          n !== null &&
+          (TITLE_PARTNERS.get(abbr)?.has(t.slice(p[0], p[1])) ?? false) &&
+          titleName(t.slice(n[0], n[1]));
+      }
+      if (named) edits.push([s, e, abbr]);
+    }
+  edits.sort((x, y) => x[0] - y[0]);
+  let out = t;
+  for (const [a, b, text] of edits.reverse())
+    out = out.slice(0, a) + text + out.slice(b);
+  return out;
+}
+
 export function ruleCleanup(
   raw: string,
   dict: readonly DictionaryEntry[] = [],
@@ -1947,5 +2055,8 @@ export function ruleCleanup(
   // "i" before a dot only at a sentence end, not the "i" of "i.e." (ADR 0101, N160).
   t = t.replace(/\bi\b(?=[\s,!?']|\.(?![A-Za-z])|$)/g, 'I');
   t = applyDictionary(t, dict);
-  return spokenDates(spokenAmounts(terminalPunctuation(t, dict)), dict);
+  return spokenTitles(
+    spokenDates(spokenAmounts(terminalPunctuation(t, dict)), dict),
+    dict,
+  );
 }

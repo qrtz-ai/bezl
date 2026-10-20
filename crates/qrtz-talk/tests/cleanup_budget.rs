@@ -150,4 +150,13 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("What time's the meeting tomorrow?"));
     assert_fits_budget(&text, " ending in a modifier-contraction question");
+    // ADR 0234: spoken titles throughout ("Mister and Missus Smith" in every repeat of the dictation) and at its end,
+    // so the title scan reads every word of the text and fires on each.
+    let text = format!(
+        "{}Thanks. I spoke with Mister Patel about the lease",
+        long_dictation().replace("Mr. and Mrs. Smith", "Mister and Missus Smith")
+    );
+    let out = cleanup_dictation(&text, &dictionary(), true).text;
+    assert!(out.ends_with("I spoke with Mr. Patel about the lease.") && !out.contains("Mister"));
+    assert_fits_budget(&text, " with spoken titles");
 }

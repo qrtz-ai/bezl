@@ -4071,6 +4071,586 @@
       "raw": "How long'm I supposed to wait here",
       "dict": false,
       "expect": "How long'm I supposed to wait here."
+    },
+    {
+      "raw": "I had a call with Mister Patel about the contract",
+      "dict": false,
+      "expect": "I had a call with Mr. Patel about the contract."
+    },
+    {
+      "raw": "I had a call with Mister Patel about the contract",
+      "dict": true,
+      "expect": "I had a call with Mr. Patel about the contract."
+    },
+    {
+      "raw": "Please send the invoice to Missus Chen by Friday",
+      "dict": false,
+      "expect": "Please send the invoice to Mrs. Chen by Friday."
+    },
+    {
+      "raw": "Please send the invoice to Missus Chen by Friday",
+      "dict": true,
+      "expect": "Please send the invoice to Mrs. Chen by Friday."
+    },
+    {
+      "raw": "Mister Thompson will join the meeting at noon",
+      "dict": false,
+      "expect": "Mr. Thompson will join the meeting at noon."
+    },
+    {
+      "raw": "Mister Thompson will join the meeting at noon",
+      "dict": true,
+      "expect": "Mr. Thompson will join the meeting at noon."
+    },
+    {
+      "raw": "Can you ask mister Garcia to call me back",
+      "dict": false,
+      "expect": "Can you ask Mr. Garcia to call me back?"
+    },
+    {
+      "raw": "Can you ask mister Garcia to call me back",
+      "dict": true,
+      "expect": "Can you ask Mr. Garcia to call me back?"
+    },
+    {
+      "raw": "Dear Mister Johnson, thank you for your patience.",
+      "dict": false,
+      "expect": "Dear Mr. Johnson, thank you for your patience."
+    },
+    {
+      "raw": "Dear Mister Johnson, thank you for your patience.",
+      "dict": true,
+      "expect": "Dear Mr. Johnson, thank you for your patience."
+    },
+    {
+      "raw": "Mister and Missus Lee are coming to dinner on Saturday",
+      "dict": false,
+      "expect": "Mr. and Mrs. Lee are coming to dinner on Saturday."
+    },
+    {
+      "raw": "Mister and Missus Lee are coming to dinner on Saturday",
+      "dict": true,
+      "expect": "Mr. and Mrs. Lee are coming to dinner on Saturday."
+    },
+    {
+      "raw": "We got a lovely card from Mister and Mrs. Walker.",
+      "dict": false,
+      "expect": "We got a lovely card from Mr. and Mrs. Walker."
+    },
+    {
+      "raw": "We got a lovely card from Mister and Mrs. Walker.",
+      "dict": true,
+      "expect": "We got a lovely card from Mr. and Mrs. Walker."
+    },
+    {
+      "raw": "Thank you, Mister President.",
+      "dict": false,
+      "expect": "Thank you, Mr. President."
+    },
+    {
+      "raw": "Thank you, Mister President.",
+      "dict": true,
+      "expect": "Thank you, Mr. President."
+    },
+    {
+      "raw": "I left a message for Mister O'Brien at the front desk",
+      "dict": false,
+      "expect": "I left a message for Mr. O'Brien at the front desk."
+    },
+    {
+      "raw": "I left a message for Mister O'Brien at the front desk",
+      "dict": true,
+      "expect": "I left a message for Mr. O'Brien at the front desk."
+    },
+    {
+      "raw": "Mister Kim's flight lands at six tonight",
+      "dict": false,
+      "expect": "Mr. Kim's flight lands at six tonight."
+    },
+    {
+      "raw": "Mister Kim's flight lands at six tonight",
+      "dict": true,
+      "expect": "Mr. Kim's flight lands at six tonight."
+    },
+    {
+      "raw": "The package is for Missus Rodriguez-Lopez in apartment four",
+      "dict": false,
+      "expect": "The package is for Mrs. Rodriguez-Lopez in apartment four."
+    },
+    {
+      "raw": "The package is for Missus Rodriguez-Lopez in apartment four",
+      "dict": true,
+      "expect": "The package is for Mrs. Rodriguez-Lopez in apartment four."
+    },
+    {
+      "raw": "Hi Mister Brown, just following up on the quote from last week",
+      "dict": false,
+      "expect": "Hi Mr. Brown, just following up on the quote from last week."
+    },
+    {
+      "raw": "Hi Mister Brown, just following up on the quote from last week",
+      "dict": true,
+      "expect": "Hi Mr. Brown, just following up on the quote from last week."
+    },
+    {
+      "raw": "My kids really loved Missus Nguyen as a teacher",
+      "dict": false,
+      "expect": "My kids really loved Mrs. Nguyen as a teacher."
+    },
+    {
+      "raw": "My kids really loved Missus Nguyen as a teacher",
+      "dict": true,
+      "expect": "My kids really loved Mrs. Nguyen as a teacher."
+    },
+    {
+      "raw": "Attendees new line Mister Hall new line Missus Grant",
+      "dict": false,
+      "expect": "Attendees\nMr. Hall\nMrs. Grant"
+    },
+    {
+      "raw": "Attendees new line Mister Hall new line Missus Grant",
+      "dict": true,
+      "expect": "Attendees\nMr. Hall\nMrs. Grant"
+    },
+    {
+      "raw": "Hey mister, you dropped your wallet.",
+      "dict": false,
+      "expect": "Hey mister, you dropped your wallet."
+    },
+    {
+      "raw": "Hey mister, you dropped your wallet.",
+      "dict": true,
+      "expect": "Hey mister, you dropped your wallet."
+    },
+    {
+      "raw": "Thanks mister. That was really kind of you.",
+      "dict": false,
+      "expect": "Thanks mister. That was really kind of you."
+    },
+    {
+      "raw": "Thanks mister. That was really kind of you.",
+      "dict": true,
+      "expect": "Thanks mister. That was really kind of you."
+    },
+    {
+      "raw": "Excuse me mister I think you dropped this.",
+      "dict": false,
+      "expect": "Excuse me mister I think you dropped this."
+    },
+    {
+      "raw": "Excuse me mister I think you dropped this.",
+      "dict": true,
+      "expect": "Excuse me mister I think you dropped this."
+    },
+    {
+      "raw": "Listen mister I'm not going to ask you again.",
+      "dict": false,
+      "expect": "Listen mister I'm not going to ask you again."
+    },
+    {
+      "raw": "Listen mister I'm not going to ask you again.",
+      "dict": true,
+      "expect": "Listen mister I'm not going to ask you again."
+    },
+    {
+      "raw": "Sorry mister It's not for sale.",
+      "dict": false,
+      "expect": "Sorry mister It's not for sale."
+    },
+    {
+      "raw": "Sorry mister It's not for sale.",
+      "dict": true,
+      "expect": "Sorry mister It's not for sale."
+    },
+    {
+      "raw": "Thank you mister The car is ready out front.",
+      "dict": false,
+      "expect": "Thank you mister The car is ready out front."
+    },
+    {
+      "raw": "Thank you mister The car is ready out front.",
+      "dict": true,
+      "expect": "Thank you mister The car is ready out front."
+    },
+    {
+      "raw": "Bye mister See you tomorrow.",
+      "dict": false,
+      "expect": "Bye mister See you tomorrow."
+    },
+    {
+      "raw": "Bye mister See you tomorrow.",
+      "dict": true,
+      "expect": "Bye mister See you tomorrow."
+    },
+    {
+      "raw": "Good morning mister What can I get you?",
+      "dict": false,
+      "expect": "Good morning mister What can I get you?"
+    },
+    {
+      "raw": "Good morning mister What can I get you?",
+      "dict": true,
+      "expect": "Good morning mister What can I get you?"
+    },
+    {
+      "raw": "We watched Mister Rogers with the kids last night.",
+      "dict": false,
+      "expect": "We watched Mister Rogers with the kids last night."
+    },
+    {
+      "raw": "We watched Mister Rogers with the kids last night.",
+      "dict": true,
+      "expect": "We watched Mister Rogers with the kids last night."
+    },
+    {
+      "raw": "The Mister Softee truck came by again today.",
+      "dict": false,
+      "expect": "The Mister Softee truck came by again today."
+    },
+    {
+      "raw": "The Mister Softee truck came by again today.",
+      "dict": true,
+      "expect": "The Mister Softee truck came by again today."
+    },
+    {
+      "raw": "Grandpa loved watching Mister Ed reruns.",
+      "dict": false,
+      "expect": "Grandpa loved watching Mister Ed reruns."
+    },
+    {
+      "raw": "Grandpa loved watching Mister Ed reruns.",
+      "dict": true,
+      "expect": "Grandpa loved watching Mister Ed reruns."
+    },
+    {
+      "raw": "There is a Mister Donut right by the station.",
+      "dict": false,
+      "expect": "There is a Mister Donut right by the station."
+    },
+    {
+      "raw": "There is a Mister Donut right by the station.",
+      "dict": true,
+      "expect": "There is a Mister Donut right by the station."
+    },
+    {
+      "raw": "She called him a little mister all day long.",
+      "dict": false,
+      "expect": "She called him a little mister all day long."
+    },
+    {
+      "raw": "She called him a little mister all day long.",
+      "dict": true,
+      "expect": "She called him a little mister all day long."
+    },
+    {
+      "raw": "The missus wants us home by six.",
+      "dict": false,
+      "expect": "The missus wants us home by six."
+    },
+    {
+      "raw": "The missus wants us home by six.",
+      "dict": true,
+      "expect": "The missus wants us home by six."
+    },
+    {
+      "raw": "Doctor Who is my favorite show.",
+      "dict": false,
+      "expect": "Doctor Who is my favorite show."
+    },
+    {
+      "raw": "Doctor Who is my favorite show.",
+      "dict": true,
+      "expect": "Doctor Who is my favorite show."
+    },
+    {
+      "raw": "Saint Paul is a lovely city in the summer.",
+      "dict": false,
+      "expect": "Saint Paul is a lovely city in the summer."
+    },
+    {
+      "raw": "Saint Paul is a lovely city in the summer.",
+      "dict": true,
+      "expect": "Saint Paul is a lovely city in the summer."
+    },
+    {
+      "raw": "Miss Daisy will see you now.",
+      "dict": false,
+      "expect": "Miss Daisy will see you now."
+    },
+    {
+      "raw": "Miss Daisy will see you now.",
+      "dict": true,
+      "expect": "Miss Daisy will see you now."
+    },
+    {
+      "raw": "MISTER SMITH IS HERE.",
+      "dict": false,
+      "expect": "MISTER SMITH IS HERE."
+    },
+    {
+      "raw": "MISTER SMITH IS HERE.",
+      "dict": true,
+      "expect": "MISTER SMITH IS HERE."
+    },
+    {
+      "raw": "Talk to mister\nSmith tomorrow.",
+      "dict": false,
+      "expect": "Talk to mister\nSmith tomorrow."
+    },
+    {
+      "raw": "Talk to mister\nSmith tomorrow.",
+      "dict": true,
+      "expect": "Talk to mister\nSmith tomorrow."
+    },
+    {
+      "raw": "Yes, mister, right away.",
+      "dict": false,
+      "expect": "Yes, mister, right away."
+    },
+    {
+      "raw": "Yes, mister, right away.",
+      "dict": true,
+      "expect": "Yes, mister, right away."
+    },
+    {
+      "raw": "Mister and Mrs Smith arrived early.",
+      "dict": false,
+      "expect": "Mister and Mrs Smith arrived early."
+    },
+    {
+      "raw": "Mister and Mrs Smith arrived early.",
+      "dict": true,
+      "expect": "Mister and Mrs Smith arrived early."
+    },
+    {
+      "raw": "Mister and misses Smith arrived early.",
+      "dict": false,
+      "expect": "Mister and misses Smith arrived early."
+    },
+    {
+      "raw": "Mister and misses Smith arrived early.",
+      "dict": true,
+      "expect": "Mister and misses Smith arrived early."
+    },
+    {
+      "raw": "Mrs Smith and Mr Jones are both here.",
+      "dict": false,
+      "expect": "Mrs Smith and Mr Jones are both here."
+    },
+    {
+      "raw": "Mrs Smith and Mr Jones are both here.",
+      "dict": true,
+      "expect": "Mrs Smith and Mr Jones are both here."
+    },
+    {
+      "raw": "Mr. Smith is already in the lobby.",
+      "dict": false,
+      "expect": "Mr. Smith is already in the lobby."
+    },
+    {
+      "raw": "Mr. Smith is already in the lobby.",
+      "dict": true,
+      "expect": "Mr. Smith is already in the lobby."
+    },
+    {
+      "raw": "Mister, Smith is here to see you.",
+      "dict": false,
+      "expect": "Mister, Smith is here to see you."
+    },
+    {
+      "raw": "Mister, Smith is here to see you.",
+      "dict": true,
+      "expect": "Mister, Smith is here to see you."
+    },
+    {
+      "raw": "Thanks mister Nobody else stopped to help.",
+      "dict": false,
+      "expect": "Thanks mister Nobody else stopped to help."
+    },
+    {
+      "raw": "Thanks mister Nobody else stopped to help.",
+      "dict": true,
+      "expect": "Thanks mister Nobody else stopped to help."
+    },
+    {
+      "raw": "We met Mister on the train, or so he called himself.",
+      "dict": false,
+      "expect": "We met Mister on the train, or so he called himself."
+    },
+    {
+      "raw": "We met Mister on the train, or so he called himself.",
+      "dict": true,
+      "expect": "We met Mister on the train, or so he called himself."
+    },
+    {
+      "raw": "Mister Mister was a band in the eighties.",
+      "dict": false,
+      "expect": "Mister Mister was a band in the eighties."
+    },
+    {
+      "raw": "Mister Mister was a band in the eighties.",
+      "dict": true,
+      "expect": "Mister Mister was a band in the eighties."
+    },
+    {
+      "raw": "Thanks mister May I ask your name?",
+      "dict": false,
+      "expect": "Thanks mister May I ask your name?"
+    },
+    {
+      "raw": "Thanks mister May I ask your name?",
+      "dict": true,
+      "expect": "Thanks mister May I ask your name?"
+    },
+    {
+      "raw": "Hey Mister, Sam says hi.",
+      "dict": false,
+      "expect": "Hey Mister, Sam says hi."
+    },
+    {
+      "raw": "Hey Mister, Sam says hi.",
+      "dict": true,
+      "expect": "Hey Mister, Sam says hi."
+    },
+    {
+      "raw": "Mister Smith",
+      "dict": false,
+      "expect": "Mr. Smith"
+    },
+    {
+      "raw": "mister smith is here",
+      "dict": false,
+      "expect": "Mister smith is here."
+    },
+    {
+      "raw": "Hey Mister DJ, play our song",
+      "dict": false,
+      "expect": "Hey Mister DJ, play our song."
+    },
+    {
+      "raw": "Mister T pities the fool",
+      "dict": false,
+      "expect": "Mister T pities the fool."
+    },
+    {
+      "raw": "Mister Smith- is here",
+      "dict": false,
+      "expect": "Mister Smith- is here."
+    },
+    {
+      "raw": "I met Mister José Ramos at the conference",
+      "dict": false,
+      "expect": "I met Mister José Ramos at the conference."
+    },
+    {
+      "raw": "Missus and Mister Smith are here",
+      "dict": false,
+      "expect": "Mrs. and Mr. Smith are here."
+    },
+    {
+      "raw": "Mister's here already",
+      "dict": false,
+      "expect": "Mister's here already"
+    },
+    {
+      "raw": "Misters Smith and Jones are here",
+      "dict": false,
+      "expect": "Misters Smith and Jones are here."
+    },
+    {
+      "raw": "(Mister Smith) is here",
+      "dict": false,
+      "expect": "(Mister Smith) is here."
+    },
+    {
+      "raw": "Ask Mister O'brien about the lease",
+      "dict": false,
+      "expect": "Ask Mister O'brien about the lease."
+    },
+    {
+      "raw": "Mister Smith's and Missus Lee's kids are in the same class",
+      "dict": false,
+      "expect": "Mr. Smith's and Mrs. Lee's kids are in the same class."
+    },
+    {
+      "raw": "Mister Wicker, please sit down",
+      "dict": false,
+      "expect": "Mr. Wicker, please sit down."
+    },
+    {
+      "raw": "The meeting with Mister Monday is canceled",
+      "dict": false,
+      "expect": "The meeting with Mister Monday is canceled."
+    },
+    {
+      "raw": "Mister and Missus",
+      "dict": false,
+      "expect": "Mister and Missus"
+    },
+    {
+      "raw": "Say hi to the mister and the missus for me",
+      "dict": false,
+      "expect": "Say hi to the mister and the missus for me."
+    },
+    {
+      "raw": "Mister Smith, Missus Jones and Mister Lee signed it",
+      "dict": false,
+      "expect": "Mr. Smith, Mrs. Jones and Mr. Lee signed it."
+    },
+    {
+      "raw": "Is Mister Smith coming to the review",
+      "dict": false,
+      "expect": "Is Mr. Smith coming to the review."
+    },
+    {
+      "raw": "Hey Priya, did Mister Patel sign the lease",
+      "dict": false,
+      "expect": "Hey Priya, did Mr. Patel sign the lease."
+    },
+    {
+      "raw": "Mister new line Smith",
+      "dict": false,
+      "expect": "Mister\nSmith."
+    },
+    {
+      "raw": "MISTER Smith is here",
+      "dict": false,
+      "expect": "MISTER Smith is here."
+    },
+    {
+      "raw": "Mister  Smith is here",
+      "dict": false,
+      "expect": "Mr. Smith is here."
+    },
+    {
+      "raw": "Missus Chen’s office is upstairs",
+      "dict": false,
+      "expect": "Mrs. Chen’s office is upstairs."
+    },
+    {
+      "raw": "Mister Smiths' house is the blue one",
+      "dict": false,
+      "expect": "Mr. Smiths' house is the blue one."
+    },
+    {
+      "raw": "Mister and Mrs Lee are here",
+      "dict": false,
+      "expect": "Mister and Mrs Lee are here."
+    },
+    {
+      "raw": "Mister and misses Lee are here",
+      "dict": false,
+      "expect": "Mister and misses Lee are here."
+    },
+    {
+      "raw": "We spoke to Mister St. John about it",
+      "dict": false,
+      "expect": "We spoke to Mr. St. John about it."
+    },
+    {
+      "raw": "Mister Smith?",
+      "dict": false,
+      "expect": "Mr. Smith?"
     }
   ],
   "dictionaryOnly": [

@@ -5,7 +5,7 @@
 //! scans of the same patterns (same text out, ~14x faster chain).
 use crate::contract::{CleanupMethod, DictionaryEntry};
 use fancy_regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 const W: &str = "A-Za-z0-9_";
@@ -1324,6 +1324,160 @@ fn date_at(t: &str, s: usize, e: usize, dict: &[DictionaryEntry]) -> Option<(usi
     Some((s1, last_at + body_len, ordinal_figure(day)))
 }
 
+/// ADR 0234: spoken titles the recogniser writes out ("Mister Hopkins", "Missus Poyser"; other decodes of the same
+/// clips write "Mr. Hopkins", "Mrs. Poyser") and their written abbreviations.
+pub const SPOKEN_TITLES: &[(&str, &str)] = &[
+    ("Mister", "Mr."),
+    ("mister", "Mr."),
+    ("Missus", "Mrs."),
+    ("missus", "Mrs."),
+];
+/// ADR 0234: "Mister and Mrs. Lee" / "Missus and Mr. Lee": the title's partner after "and" (then a name).
+const TITLE_PARTNERS: &[(&str, &[&str])] = &[
+    ("Mr.", &["Missus", "missus", "Mrs."]),
+    ("Mrs.", &["Mister", "mister", "Mr."]),
+];
+/// ADR 0234: capitalised words that are not a name after a title: a sentence that starts right after a vocative
+/// "mister" with no mark between them ("Excuse me mister Can you …", "Thanks mister See you"), another title, a
+/// month or weekday. The title stays as spoken. Space-separated; same list in cleanup.ts.
+pub const TITLE_NOT_NAMES: &str = concat!(
+    "The An This That These Those There Here Then Than Thanks Thank Please Sorry Yes Yeah Yep Yup No Nope ",
+    "Not Now Okay Ok Oh Hey Hi Hello Bye Goodbye Well So And But Or Nor Yet If When While Where What Why ",
+    "Who Whom Whose Which How Because Since Although Though Unless Until After Before As At In On Of To ",
+    "For From With Without By About Into Over Under Up Down Out Off Is Are Was Were Be Been Am Do Does ",
+    "Did Done Can Could Will Would Shall Should May Might Must Have Has Had Get Got Go Let Lets It Its We ",
+    "You Your Yours They Them Their He Him His She Her Hers Me My Mine Us Our Ours Some Any All Every ",
+    "Each Both Either Neither None Nothing Nobody Everyone Everybody Someone Somebody Anyone Anybody Just ",
+    "Also Maybe Perhaps Really Very Actually Sure Right Like Look Listen Wait Stop Come See Take Hold ",
+    "Keep Give Tell Ask Make Try Call Send Put Bring Turn Watch Check Hurry Move Leave Sit Stand Follow ",
+    "Help Enjoy Hope Need Want Think Know Guess Mind Excuse Pardon Remember Forget Good Great Nice Sir ",
+    "Madam Mister Missus Miss Mr Mrs Ms Dr",
+);
+static TITLE_NOT_NAME_SET: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| TITLE_NOT_NAMES.split(' ').collect());
+/// ADR 0234: names written with the spelled-out title ("Mister Rogers' Neighborhood", "Mister Ed", "Mister Softee",
+/// "Mister Donut"): the title stays as spoken.
+pub const TITLE_KEPT: &[&str] = &["Rogers", "Ed", "Softee", "Donut"];
+
+/// ADR 0234: a name right after a title: one capital, then a lowercase letter (or "O'" and a capital: "O'Brien"),
+/// ASCII letters with a hyphen only before a capital ("Rodriguez-Lopez"), a possessive "'s" / "s'" and a mark
+/// allowed at its end, and not one of [`TITLE_NOT_NAMES`], [`DATE_MONTHS`], [`DATE_WEEKDAYS`] or [`TITLE_KEPT`].
+fn title_name(w: &str) -> bool {
+    let body = w.trim_end_matches(DATE_MARKS);
+    let base = body
+        .strip_suffix("'s")
+        .or_else(|| body.strip_suffix("\u{2019}s"))
+        .or_else(|| body.strip_suffix(['\'', '\u{2019}']).filter(|b| b.ends_with('s')))
+        .unwrap_or(body);
+    let mut c = base.chars();
+    let (Some(first), Some(second)) = (c.next(), c.next()) else {
+        return false;
+    };
+    if !first.is_ascii_uppercase() {
+        return false;
+    }
+    if !second.is_ascii_lowercase() {
+        // "O'Brien": an apostrophe, a capital and at least one more letter.
+        let third = c.next();
+        if !(matches!(second, '\'' | '\u{2019}')
+            && third.is_some_and(|t| t.is_ascii_uppercase())
+            && c.clone().next().is_some())
+        {
+            return false;
+        }
+    }
+    let mut c = c.peekable();
+    while let Some(ch) = c.next() {
+        let ok = ch.is_ascii_alphabetic() || (ch == '-' && c.peek().is_some_and(|n| n.is_ascii_uppercase()));
+        if !ok {
+            return false;
+        }
+    }
+    !(TITLE_NOT_NAME_SET.contains(base)
+        || DATE_MONTHS.contains(&base)
+        || DATE_WEEKDAYS.contains(&base)
+        || TITLE_KEPT.contains(&base))
+}
+
+/// ADR 0234: a spoken title before a name written as its abbreviation: "Mister Hopkins" → "Mr. Hopkins", "missus
+/// Chen" → "Mrs. Chen", "Mister and Missus Lee" → "Mr. and Mrs. Lee". The title is a whole word, "Mister" /
+/// "mister" / "Missus" / "missus" with nothing attached, and one space (no line break, no mark) separates it from
+/// a [`title_name`], or from "and", its partner title and a name. Off when a dictionary term or alias holds
+/// "mister" or "missus" (the user's own spelling). Runs last, after the dates, so no earlier step sees the new
+/// dot. Anything else stays as spoken: "Hey mister, wait", "Thanks mister. That was kind", "Excuse me mister I
+/// think", "Mister Rogers", "the missus", "Doctor Who", "Mr Smith".
+fn spoken_titles(t: String, dict: &[DictionaryEntry]) -> String {
+    if !(t.contains("ister ") || t.contains("issus ")) {
+        return t;
+    }
+    titles_at(t, dict)
+}
+
+/// [`spoken_titles`] past its prefilter, out of line so a text with no title runs only the two searches.
+#[inline(never)]
+fn titles_at(t: String, dict: &[DictionaryEntry]) -> String {
+    let spelled = |s: &str| {
+        let l = s.to_ascii_lowercase();
+        l.contains("mister") || l.contains("missus")
+    };
+    if dict
+        .iter()
+        .any(|d| spelled(&d.term) || d.aliases.iter().any(|a| spelled(a)))
+    {
+        return t;
+    }
+    // Only the words around each "ister " / "issus " are read (ADR 0199's budget). Words end at ASCII whitespace,
+    // as in cleanup.ts, so the twins split alike.
+    let word_end = |s: usize| {
+        t[s..]
+            .find(|c: char| c.is_ascii_whitespace())
+            .map_or(t.len(), |i| s + i)
+    };
+    // The word after the one ending at byte `e`, when exactly one space separates them.
+    let after = |e: usize| {
+        (t[e..].starts_with(' ') && t[e + 1..].starts_with(|c: char| !c.is_ascii_whitespace()))
+            .then(|| (e + 1, word_end(e + 1)))
+    };
+    let mut edits: Vec<(usize, usize, &str)> = Vec::new();
+    for (i, _) in t.match_indices("ister ").chain(t.match_indices("issus ")) {
+        // The title is a whole word: "M" / "m" right before, then the text's start or ASCII whitespace.
+        let bytes = t.as_bytes();
+        if i == 0 || !matches!(bytes[i - 1], b'M' | b'm') {
+            continue;
+        }
+        let (s, e) = (i - 1, i + 5);
+        if s > 0 && !bytes[s - 1].is_ascii_whitespace() {
+            continue;
+        }
+        let Some(&(_, abbr)) = SPOKEN_TITLES.iter().find(|(w, _)| *w == &t[s..e]) else {
+            continue;
+        };
+        let Some((n1, n1e)) = after(e) else {
+            continue;
+        };
+        let named = title_name(&t[n1..n1e])
+            || (&t[n1..n1e] == "and"
+                && after(n1e).is_some_and(|(p, pe)| {
+                    TITLE_PARTNERS
+                        .iter()
+                        .any(|(a, partners)| *a == abbr && partners.contains(&&t[p..pe]))
+                        && after(pe).is_some_and(|(n, ne)| title_name(&t[n..ne]))
+                }));
+        if named {
+            edits.push((s, e, abbr));
+        }
+    }
+    edits.sort_unstable();
+    if edits.is_empty() {
+        return t;
+    }
+    let mut out = t;
+    for (a, b, text) in edits.into_iter().rev() {
+        out.replace_range(a..b, text);
+    }
+    out
+}
+
 /// ADR 0101: immediate repeats of a whole word, collapsed where [`collapses`] says so. ADR 0199: a scan for the pattern
 /// `(?i)(?<![\w'])(\w+)(?:[\s,]+\1(?![\w']))+` (ASCII `\w`). The apostrophe is part of a word on both sides, so
 /// "you, you're" and "it, it's" are not repeats. The word is a whole run of word characters (a shorter one would be
@@ -2438,7 +2592,10 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = sentence_starts(&t);
     t = lone_i(&t);
     t = apply_dictionary(&t, dict);
-    spoken_dates(spoken_amounts(terminal_punctuation(t, dict)), dict)
+    spoken_titles(
+        spoken_dates(spoken_amounts(terminal_punctuation(t, dict)), dict),
+        dict,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

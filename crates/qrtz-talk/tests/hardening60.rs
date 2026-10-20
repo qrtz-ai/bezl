@@ -60,6 +60,8 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0230 (cycle 79): a month's ordinal day may be written as a figure ("on October 21st").
     // ADR 0232 (cycle 80): a question opening with a wh-contraction ("What's the plan") may end with "?".
     // ADR 0233 (cycle 81): so may one with the contraction on the wh-word's modifier ("What time's the meeting").
+    // ADR 0234 (cycle 82): a spoken title may be written as its abbreviation ("Mister Smith" -> "Mr. Smith").
+    let old = with_titles_from(&old, &new);
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -136,6 +138,30 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
         c59::cleanup_dictation(raw, dict, false).text,
         "cleanup off ({raw:?})"
     );
+}
+
+/// ADR 0234's one allowed edit (written independently of cleanup.rs): where `new` has "Mr." / "Mrs." in the place of
+/// `old`'s "Mister" / "mister" / "Missus" / "missus" (same words, same spaces and line breaks), take it into `old`.
+fn with_titles_from(old: &str, new: &str) -> String {
+    let split = |t: &str| t.split([' ', '\n']).map(str::to_owned).collect::<Vec<_>>();
+    let (o, n) = (split(old), split(new));
+    let seps = |t: &str| t.chars().filter(|c| *c == ' ' || *c == '\n').collect::<String>();
+    if o.len() != n.len() || seps(old) != seps(new) {
+        return old.to_owned();
+    }
+    let mut out = String::new();
+    let mut sep = seps(old).chars().collect::<Vec<_>>().into_iter();
+    for (a, b) in o.iter().zip(&n) {
+        let title = matches!(
+            (a.as_str(), b.as_str()),
+            ("Mister" | "mister", "Mr.") | ("Missus" | "missus", "Mrs.")
+        );
+        out.push_str(if title { b } else { a });
+        if let Some(c) = sep.next() {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// ADR 0205 / ADR 0207's one allowed edit, as a superset (written independently of cleanup.rs): every "<P>, <p>
