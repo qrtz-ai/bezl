@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# One-time (and rotation): put the module-release secrets into GitHub (ADR 0179, docs/release.md "Module releases in
-# CI"). Run it yourself in Terminal on the release Mac:
+# One-time (and rotation): put the release secrets into the GitHub environment `release` (QRT-297, release.yml;
+# docs/modules/production-setup.md has the plain `gh secret set --env release NAME` commands). Run it yourself in
+# Terminal on your Mac:
 #
 #   scripts/ci/setup-secrets.sh                 every secret
-#   scripts/ci/setup-secrets.sh cert|notary|keys|r2   just one group (e.g. to rotate it)
-#   scripts/ci/setup-secrets.sh app-update      qrtz.app's update key (ADR 0181): made here once, never on a server
+#   scripts/ci/setup-secrets.sh cert|notary|keys   just one group (e.g. to rotate it)
+#   scripts/ci/setup-secrets.sh app-update      qrtz.app's update key (ADR 0181): made here once, then uploaded
 #   scripts/ci/setup-secrets.sh --list          what it sets, from where (sets nothing)
 #
 # Every value goes from its source straight into `gh secret set` on stdin: from the keychain (`security`), from a
@@ -12,15 +13,15 @@
 # and deleted on exit). It never touches the offline root keys (~/qrtz-root-a, the keychain item qrtz-root-b, any
 # root-*.key) and refuses to upload one.
 #
-# Secrets (repo qrtz-ai/qrtz, override with QRTZ_REPO):
-#   MACOS_CERT_P12, MACOS_CERT_PASSWORD   only your "Developer ID Application: … (MR26CCZ496)" identity, as a .p12
+# Secrets (environment `release` of repo qrtz-ai/qrtz, override with QRTZ_REPO; QRTZ_TIMESTAMP_KEY also goes to the
+# environment `release-timestamp`, the daily re-sign's, which holds nothing else):
+#   APPLE_CERT_P12_BASE64, APPLE_CERT_PASSWORD   only your "Developer ID Application: … (MR26CCZ496)" identity, as a .p12
 #                                         with a fresh random password (security export asks to allow it)
-#   AC_APPLE_ID, AC_APP_PASSWORD, AC_TEAM_ID   notarization with your Apple ID + an app-specific password (default), or
+#   APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID   notarization with your Apple ID + an app-specific password (default), or
 #   AC_API_KEY, AC_KEY_ID, AC_ISSUER_ID        an App Store Connect API key (.p8)
-#   QRTZ_INDEX_KEY, QRTZ_TIMESTAMP_KEY    the ONLINE signing keys publish.sh and timestamp-job.sh use:
+#   QRTZ_INDEX_KEY, QRTZ_TIMESTAMP_KEY    the ONLINE signing keys publish.sh uses:
 #                                         ~/.qrtz-keys/index.key and ~/.qrtz-keys/timestamp.key
-#   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID   the keychain item qrtz-r2 (account = access key id)
-#   APP_UPDATE_KEY                        `app-update` (not part of `all`): ~/.qrtz-keys/app-update.key, made on this
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD (empty)   `app-update` (not part of `all`): ~/.qrtz-keys/app-update.key, made on this
 #                                         Mac by `tauri signer generate` (no password; 0600, like index.key) the first
 #                                         time; its public key goes into crates/qrtz-app/src/app_update_key.pub (commit
 #                                         it). An existing key is never replaced: it is only uploaded again.
@@ -28,7 +29,6 @@ set -euo pipefail
 repo="${QRTZ_REPO:-qrtz-ai/qrtz}"
 team="MR26CCZ496"
 keys="${QRTZ_KEYS:-$HOME/.qrtz-keys}"
-r2_account_default="177665085902fbdae8b82993bb7a0b91"
 ossl=/usr/bin/openssl # LibreSSL: its .p12 imports into any macOS keychain
 die() { echo "setup-secrets: $*" >&2; exit 1; }
 say() { echo "setup-secrets: $*"; }
@@ -47,12 +47,13 @@ chmod 700 "$tmp"
 trap 'rm -rf "$tmp"' EXIT
 umask 077
 
-put() { # <name>: the value on stdin, trailing newline dropped
-  local v
+env_name="${QRTZ_RELEASE_ENV:-release}"
+put() { # <name> [<environment>]: the value on stdin, trailing newline dropped
+  local v e="${2:-$env_name}"
   v="$(cat)"
   [[ -n "$v" ]] || die "$1: empty, not set"
-  printf '%s' "$v" | gh secret set "$1" --repo "$repo" >/dev/null
-  say "set $1"
+  printf '%s' "$v" | gh secret set "$1" --env "$e" --repo "$repo" >/dev/null
+  say "set $1 (environment $e)"
 }
 
 # A root key is never a CI secret (ADR 0153: roots stay offline; ADR 0179).
@@ -107,8 +108,8 @@ do_cert() {
   PW="$newpw" "$ossl" pkcs12 -export -in "$cert" -inkey "$key" -name "Developer ID Application ($team)" \
     -passout env:PW -out "$tmp/one.p12"
   rm -f "$tmp"/cert*.pem "$tmp"/key*.pem
-  base64 -i "$tmp/one.p12" | tr -d '\n' | put MACOS_CERT_P12
-  printf '%s' "$newpw" | put MACOS_CERT_PASSWORD
+  base64 -i "$tmp/one.p12" | tr -d '\n' | put APPLE_CERT_P12_BASE64
+  printf '%s' "$newpw" | put APPLE_CERT_PASSWORD
   rm -f "$tmp/one.p12"
 }
 
@@ -127,10 +128,10 @@ do_notary() {
       read -r -s -p "  app-specific password (hidden): " pw
       echo
       [[ -n "$pw" ]] || die "empty password"
-      printf '%s' "$email" | put AC_APPLE_ID
-      printf '%s' "$pw" | put AC_APP_PASSWORD
+      printf '%s' "$email" | put APPLE_ID
+      printf '%s' "$pw" | put APPLE_APP_PASSWORD
       pw=""
-      printf '%s' "$team" | put AC_TEAM_ID
+      printf '%s' "$team" | put APPLE_TEAM_ID
       ;;
     2)
       say "  Make the key at https://appstoreconnect.apple.com/access/integrations/api (Users and Access → Integrations"
@@ -154,7 +155,7 @@ do_notary() {
 }
 
 do_keys() {
-  # publish.sh: "$keys/index.key" (the index) and "$keys/timestamp.key" (the timestamp); timestamp-job.sh only the
+  # publish.sh: "$keys/index.key" (the index) and "$keys/timestamp.key" (the timestamp); the daily re-sign only the
   # latter. Both are hex Ed25519 seeds, 0600. Root keys are never read here.
   case "$keys" in *qrtz-root*) die "QRTZ_KEYS=$keys is a root key dir: refused" ;; esac
   local role f
@@ -165,21 +166,13 @@ do_keys() {
     grep -Eq '^[0-9a-f]{64}[[:space:]]*$' "$f" || die "$f: not a 64-hex Ed25519 seed"
     tr -d '[:space:]' <"$f" | put "QRTZ_$(tr a-z A-Z <<<"$role")_KEY"
   done
-}
-
-do_r2() {
-  local id
-  id="$(security find-generic-password -s qrtz-r2 2>/dev/null | sed -n 's/^ *"acct"<blob>="\(.*\)"$/\1/p')"
-  [[ -n "$id" ]] || die "no keychain item qrtz-r2 (security add-generic-password -s qrtz-r2 -a <access key id> -w)"
-  printf '%s' "$id" | put R2_ACCESS_KEY_ID
-  security find-generic-password -s qrtz-r2 -w | tr -d '\n' | put R2_SECRET_ACCESS_KEY
-  printf '%s' "${R2_ACCOUNT_ID:-$r2_account_default}" | put R2_ACCOUNT_ID
+  tr -d '[:space:]' <"$keys/timestamp.key" | put QRTZ_TIMESTAMP_KEY release-timestamp
 }
 
 do_app_update() {
   # ADR 0181: the key that signs qrtz.app's update archives. Separate from the module root, index and timestamp keys;
   # its public half is compiled into the app. The private key is made here and lives only in this file and in the
-  # APP_UPDATE_KEY secret: never printed, never on a command line, never on a server.
+  # TAURI_SIGNING_PRIVATE_KEY secret: never printed, never on a command line, never on a server.
   local root key pub out
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
   key="$keys/app-update.key"
@@ -199,13 +192,14 @@ do_app_update() {
     [[ -f "$key" && -f "$key.pub" ]] || die "tauri signer generate wrote no key"
   fi
   chmod 600 "$key" "$key.pub"
-  tr -d '[:space:]' <"$key" | put APP_UPDATE_KEY
+  tr -d '[:space:]' <"$key" | put TAURI_SIGNING_PRIVATE_KEY
+  # The key has no password (a 0600 file); release.yml treats an unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD as empty.
   out="$(tr -d '[:space:]' <"$key.pub")"
   [[ "$out" =~ ^[A-Za-z0-9+/]+=*$ ]] || die "$key.pub isn't a base64 public key"
   {
     echo "# ADR 0181: qrtz.app's update public key (minisign, base64 of the .pub text), compiled into the app."
     echo "# Made by scripts/ci/setup-secrets.sh app-update; the private key is ~/.qrtz-keys/app-update.key and the"
-    echo "# APP_UPDATE_KEY secret only. Rotation: ADR 0181."
+    echo "# TAURI_SIGNING_PRIVATE_KEY secret only. Rotation: ADR 0181."
     echo "$out"
   } >"$pub"
   chmod 644 "$pub"
@@ -214,14 +208,12 @@ do_app_update() {
 }
 
 case "${1:-all}" in
-  all) do_cert; do_notary; do_keys; do_r2 ;;
+  all) do_cert; do_notary; do_keys ;;
   cert) do_cert ;;
   notary) do_notary ;;
   keys) do_keys ;;
-  r2) do_r2 ;;
   app-update) do_app_update ;;
-  *) die "usage: setup-secrets.sh [all|cert|notary|keys|r2|app-update|--list]" ;;
+  *) die "usage: setup-secrets.sh [all|cert|notary|keys|app-update|--list]" ;;
 esac
-say "done. In $repo: $(gh secret list --repo "$repo" | cut -f1 | tr '\n' ' ')"
-say "Run a release: gh workflow run modules-release.yml --repo $repo   (the timestamp: modules-timestamp.yml;"
-say "  qrtz.app itself: gh workflow run app-release.yml --repo $repo)"
+say "done. In $repo ($env_name): $(gh secret list --env "$env_name" --repo "$repo" | cut -f1 | tr '\n' ' ')"
+say "Release: push a tag (v<x.y.z> for qrtz.app, <module>-v<x.y.z> for a package) and approve the run (release.yml)."

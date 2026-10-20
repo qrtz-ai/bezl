@@ -1,7 +1,7 @@
 # Production setup: what's done, and Jared's checklist
 
-v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.ai`, the signed index and
-`qrtz install …` over the network. echo, nano and ctrl are built in (the bundled `qrtz-helper`), and so is snap
+v1 ships one signed, notarized qrtz.app and its package hosting: the `index` GitHub release (QRT-297), the signed
+index and `qrtz install …` over the network. echo, nano and ctrl are built in (the bundled `qrtz-helper`), and so is snap
 (`qrtz-snap`, ADR 0159). Part A is the signed build. Part B is the hosting.
 
 ## What's done (box side, 2026-10-18)
@@ -19,14 +19,13 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
   and `inference.voice` is cut from v1).
 - **`scripts/modules/release-keys.sh`**: the whole key ceremony in one command (offline only). Root 1 has threshold 2,
   so it is signed by both root keys and a key rotation needs both.
-- **`scripts/modules/publish.sh`**: build, verify, upload to R2, and a live check, with credentials from env
-  vars only. `--out-only` (or `--no-upload`) builds and verifies and writes `~/qrtz-publish-out.upload.tsv`, the
-  list of files to upload by hand (no rclone, no R2 token); `--timestamp` is the re-sign. Sole host:
-  `modules.qrtz.ai` (ADR 0167), which never holds model files: the index pins each one's Hugging Face URL and hash and
-  the app downloads it from there (ADR 0171).
-- **`scripts/modules/timestamp-job.sh install`**: the automatic re-sign, a launchd job that runs every day at 09:00
-  and after a missed run. It uses only the timestamp key and gets the R2 key from your keychain. A failure posts a
-  notification.
+- **`scripts/modules/publish.sh`**: build, verify, upload, and a live check (QRT-297: the upload is
+  `scripts/release/gh-store.sh`, assets on the fixed `index` GitHub release; no Cloudflare). `--out-only` (or
+  `--no-upload`) builds and verifies and writes `~/qrtz-publish-out.upload.tsv` with no upload and no token;
+  `--timestamp` is the re-sign. The host never holds model files: the index pins each one's Hugging Face URL and hash
+  and the app downloads it from there (ADR 0171).
+- **`.github/workflows/release.yml`** (QRT-297): releases and the daily timestamp re-sign run in GitHub Actions. See
+  [Releases on GitHub](#releases-on-github-qrt-297) below.
 - **Proven end to end on the box** with throwaway keys (deleted afterwards): `release-keys.sh` (threshold 2: root 1 signed by both root keys) → `publish.sh --no-upload` with the five real pinned
   model sets (1.7 GB, every file matching its pin) and the repo's own `qrtz.json` for echo, nano, ctrl, snap and
   `inference.voice` (stub executables) → index 1 with 10 packages, 79 blobs verified → `qrtz-publish timestamp`
@@ -107,73 +106,115 @@ today.
 
 ## Part B: package hosting (v1)
 
-[hosting-setup.md](hosting-setup.md) has the details. This is the order, with what's already done marked.
+The keys (B4) and the root pin (B5) are done. The hosting moved from Cloudflare R2 to GitHub Releases on 2026-10-20
+(QRT-297); the old Cloudflare zone, R2 bucket and B2 mirror steps are gone. The Dash worker
+(`services/dash-worker`, `dash.qrtz.ai`) still runs on Cloudflare and is not part of this.
 
-**B1. Cloudflare zone.** Done: `qrtz.ai`'s nameservers moved to Cloudflare at about 4 PM PT on 2026-10-18. You only
-check that the zone shows **Active** (dash.cloudflare.com → `qrtz.ai` → **Overview**) and that the website and mail
-records came across ([§1](hosting-setup.md#1-cloudflare-account-and-the-qrtzai-zone), step 2).
+**B4. Keys, offline.** Done 2026-10-18 (`scripts/modules/release-keys.sh`; root 1 has threshold 2, both root keys).
+`root1Sha256 = 02dbb15f7927e343c5747a4d085a564775a49aecec2f854c7d028c4935afaa7d`, root 1 expires 2027-10-18. Never
+send any `*.key` file, and never put a root key in GitHub.
 
-**B2. R2 bucket `qrtz-modules`, the `modules.qrtz.ai` custom domain, cache rules, privacy settings.** Bobs does
-this, on your go, in the Cloudflare session on his browser ([§2](hosting-setup.md#2-the-r2-bucket), steps 1–5). **You
-do:** say go, then make the R2 API token yourself (R2 → **Manage API tokens** → **Create API token**, Object Read &
-Write, only bucket `qrtz-modules`, §2 step 6). Keep it in your password manager, not in chat or Bobs's browser.
+**B5. Pin the root.** Done 2026-10-18. `root1Sha256` is set in `crates/qrtz-app/src/module_hosts.json` and the public
+`1.root.json` and `.sig` are checked in at `crates/qrtz-modules/roots/`. The first publish to GitHub uploads them as
+the assets `v1.root.1.root.json` (+ `.sig`).
 
-**B3. No package-host mirror.** Done by decision (2026-10-18, ADR 0167): Jared chose not to run Backblaze B2.
-`modules.qrtz.ai` is the sole package host; `module_hosts.json` has `mirrors: []`. Skip the old B2 setup steps.
+**B6. Back up** `~/.qrtz-keys` to an encrypted disk. The `index` release is now the record of everything published
+(`scripts/ci/hydrate-out.sh` rebuilds a publish dir from it).
 
-**B4. Keys, offline (replaces hosting-setup §4's manual commands).** While online, run `cargo fetch` in the checkout
-once. Then turn Wi-Fi off, plug in a USB stick (ideally encrypted APFS, named ROOTKEY-A) and run one of:
+## Releases on GitHub (QRT-297)
 
-```sh
-scripts/modules/release-keys.sh /Volumes/ROOTKEY-A keychain             # root-b in this Mac's login keychain
-scripts/modules/release-keys.sh /Volumes/ROOTKEY-A /Volumes/ROOTKEY-B   # root-b on a second stick
-```
+**Where things live.** Each release is a tag. `v<x.y.z>` is qrtz.app. `nano-v<x.y.z>`, `ctrl-v<x.y.z>` and
+`snap-v<x.y.z>` are packages. Each tag gets its own GitHub release with the signed dmg or package attached, for people.
+The app itself reads only the fixed `index` release, through direct download URLs such as
+`https://github.com/qrtz-ai/qrtz/releases/download/index/v1.timestamp.json` (never `api.github.com`, which is
+rate-limited). Its assets are the signed root, timestamp and index, every package blob (named by its sha256) and
+qrtz.app's update feed (`v1.app.latest.json`) and archives. A layout path `v1/a/b` is the asset `v1.a.b`. The app
+follows GitHub's redirect only to `objects.githubusercontent.com` and `release-assets.githubusercontent.com`
+(`module_hosts.json` `redirectHosts`), and checks every byte against the signed index or the update key as before.
 
-Root 1 needs both root keys (threshold 2), so one lost or stolen key can't change who is trusted. It prints
-`root1Sha256 = <64 hex>`. **Send us** that line (it's public). Then eject the stick(s) and keep root-a and root-b in
-different places. Never send any `*.key` file.
+**What runs.** `.github/workflows/release.yml`:
 
-**Done 2026-10-18** (Jared's Mac, run with `QRTZ_KEYS_ALLOW_ONLINE=1`, so the offline check was skipped):
-`root1Sha256 = 02dbb15f7927e343c5747a4d085a564775a49aecec2f854c7d028c4935afaa7d`, root 1 expires 2027-10-18.
+1. `plan` reads the tag, checks the tagged commit's version matches, and checks that commit is on main.
+2. `build` compiles the app or the package on a macOS runner with **no secrets** and a read-only token.
+3. `sign` runs only for a commit on main, in the `release` environment, so **it waits for your approval**. It
+   re-signs everything inside out with the Developer ID, notarizes and staples it, signs the update archive and
+   feed (app) or the package index and timestamp (package), and uploads to GitHub Releases. Its token has
+   `contents: write` and nothing else.
+4. `timestamp` runs every day at 16:00 UTC (9 AM PDT) in the separate `release-timestamp` environment, which holds
+   only the timestamp key. It re-signs the index timestamp (clients refuse one older than 8 days).
+5. `feed-refresh` (run by hand, `tag=feed-refresh`) re-signs qrtz.app's update feed, which expires 30 days after it
+   was signed.
 
-**B5. Pin the root. Done 2026-10-18.** `root1Sha256` is set in `crates/qrtz-app/src/module_hosts.json` (checked by
-`offline_graph`). The public `1.root.json` and `.sig` are checked in at `crates/qrtz-modules/roots/`, and
-`crates/qrtz-modules/tests/pinned_root.rs` checks that they hash to the pin and carry threshold 2 met by both root
-keys. They are also live at `https://modules.qrtz.ai/v1/root/1.root.json` (+ `.sig`). A build made before that
-commit can't install packages, so cut a new signed build afterwards (A4).
+To release: bump the version (`node scripts/app/version.mjs bump`, or `node scripts/modules/version.mjs bump <m>`),
+push to main, then `git tag v<x.y.z>` (or `<m>-v<x.y.z>`) and `git push origin <tag>`. Approve the `sign` job when
+GitHub asks.
 
-**B6. The first publish.** On the release Mac. Model sets are only hashed (the app's copies if it has them, else a
-one-time download from Hugging Face into `~/qrtz-publish-models`); none is uploaded. Without rclone or an R2 token:
+### One-time setup (on your Mac)
 
-```sh
-scripts/modules/publish.sh --release      # module release in one command: bump each changed module's patch
-                                          # (version.mjs: qrtz.json, module.json, modules.lock.json, CHANGELOG.md),
-                                          # push, build, notarize, sign, upload, then tag <m>-v<x.y.z> and push the
-                                          # tags; --force-bump bumps all three. A (package, version) the live
-                                          # index has with other content is refused (qrtz-publish --live-index).
-scripts/modules/publish.sh --out-only     # build + verify, then ~/qrtz-publish-out.upload.tsv: upload each `new`
-                                          # key in order (timestamp pair last) with its Cache-Control, e.g. via
-                                          # the Cloudflare connector
-```
+**1. The environments.** In GitHub: qrtz-ai/qrtz → **Settings** → **Environments**.
 
-Or with rclone (`brew install rclone`):
+- **New environment** `release`:
+  - Tick **Required reviewers** and add yourself (`jlgrimes`). Leave **Prevent self-review** unticked (you are the
+    only reviewer).
+  - **Deployment branches and tags** → **Selected branches and tags** → add the branch rule `main` and the tag rules
+    `v*`, `nano-v*`, `ctrl-v*`, `snap-v*`.
+- **New environment** `release-timestamp`:
+  - No required reviewer (it runs daily on its own).
+  - **Deployment branches and tags** → **Selected branches and tags** → add the branch rule `main` only.
 
-```sh
-# QRTZ_TEAM_ID defaults to MR26CCZ496
-export R2_ACCOUNT_ID=<Cloudflare account id: R2 overview page, right column>
-export R2_ACCESS_KEY_ID=<from step B2> R2_SECRET_ACCESS_KEY="$(security find-generic-password -s qrtz-r2 -w)"
-scripts/modules/publish.sh --no-upload    # build + verify only: check the list it prints
-scripts/modules/publish.sh                # upload to R2, then check modules.qrtz.ai
-```
-
-(Store the R2 secret first: `security add-generic-password -s qrtz-r2 -a <R2 access key id> -w`.) **Send us** the
-last 10 lines of the output. **Then turn on the automatic re-sign** (a timestamp older than 8 days stops new
-installs everywhere):
+Or from Terminal (`gh` signed in as you; adds the reviewer and the branch rule; add the tag rules in the web page):
 
 ```sh
-echo "$R2_ACCOUNT_ID" > ~/.qrtz-keys/r2-account-id
-scripts/modules/timestamp-job.sh install    # daily at 09:00, and at login/wake after a missed run
-scripts/modules/timestamp-job.sh status     # last run and result; log: ~/Library/Logs/qrtz-timestamp.log
+id="$(gh api user --jq .id)"
+gh api -X PUT repos/qrtz-ai/qrtz/environments/release \
+  -F "reviewers[][type]=User" -F "reviewers[][id]=$id" \
+  -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"
+for p in main; do gh api -X POST repos/qrtz-ai/qrtz/environments/release/deployment-branch-policies -f name="$p" -f type=branch; done
+for p in 'v*' 'nano-v*' 'ctrl-v*' 'snap-v*'; do gh api -X POST repos/qrtz-ai/qrtz/environments/release/deployment-branch-policies -f name="$p" -f type=tag; done
+gh api -X PUT repos/qrtz-ai/qrtz/environments/release-timestamp \
+  -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"
+gh api -X POST repos/qrtz-ai/qrtz/environments/release-timestamp/deployment-branch-policies -f name=main -f type=branch
 ```
 
-**B7. Back up** `~/qrtz-publish-out` (the record of everything published) and `~/.qrtz-keys` to an encrypted disk.
+**2. The secrets.** Each command asks for the value (paste it at the prompt, or pipe it in as shown). Never paste a
+value into chat, an issue or a file in the repo. These run on your Mac only.
+
+```sh
+# Developer ID: export only "Developer ID Application: Jared Grimes (MR26CCZ496)" from Keychain Access as a .p12
+# with a new password, then:
+base64 -i ~/Desktop/DeveloperID.p12 | gh secret set APPLE_CERT_P12_BASE64 --env release --repo qrtz-ai/qrtz
+gh secret set APPLE_CERT_PASSWORD --env release --repo qrtz-ai/qrtz          # the .p12 password
+rm -P ~/Desktop/DeveloperID.p12
+# Notarization (your Apple ID and an app-specific password from account.apple.com → App-Specific Passwords):
+gh secret set APPLE_ID --env release --repo qrtz-ai/qrtz                     # your Apple ID email
+gh secret set APPLE_TEAM_ID --env release --repo qrtz-ai/qrtz --body MR26CCZ496
+gh secret set APPLE_APP_PASSWORD --env release --repo qrtz-ai/qrtz          # the app-specific password
+# qrtz.app's update key (minisign, made by `scripts/ci/setup-secrets.sh app-update` if you don't have one yet):
+tr -d '[:space:]' < ~/.qrtz-keys/app-update.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --env release --repo qrtz-ai/qrtz
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release --repo qrtz-ai/qrtz   # press Enter: the key has no password
+# The package index's online keys (never a root key):
+tr -d '[:space:]' < ~/.qrtz-keys/index.key | gh secret set QRTZ_INDEX_KEY --env release --repo qrtz-ai/qrtz
+tr -d '[:space:]' < ~/.qrtz-keys/timestamp.key | gh secret set QRTZ_TIMESTAMP_KEY --env release --repo qrtz-ai/qrtz
+tr -d '[:space:]' < ~/.qrtz-keys/timestamp.key | gh secret set QRTZ_TIMESTAMP_KEY --env release-timestamp --repo qrtz-ai/qrtz
+# Check (names only):
+gh secret list --env release --repo qrtz-ai/qrtz && gh secret list --env release-timestamp --repo qrtz-ai/qrtz
+```
+
+`scripts/ci/setup-secrets.sh` does the same from your keychain and key files in one go (it exports the Developer ID
+identity for you).
+
+**3. Notifications.** On the repo page: **Watch** → **Custom** → tick **Releases**, so every published release
+emails you. A release you didn't start is the signal to delete it and rotate the keys.
+
+**4. The update public key.** If `crates/qrtz-app/src/app_update_key.pub` still holds no key, run
+`scripts/ci/setup-secrets.sh app-update` once and commit the `.pub` it writes. The `sign` job refuses to publish an
+app update without it.
+
+**5. The first publish.** Push a package tag (e.g. `git tag nano-v<version in modules/nano/qrtz.json>` and
+`git push origin nano-v…`), approve the run, and check
+`curl -sL https://github.com/qrtz-ai/qrtz/releases/download/index/v1.timestamp.json`. Then the app: `git tag
+v<version in tauri.conf.json>` and push it.
+
+**Cleanup in Cloudflare (when you're ready, by hand).** Nothing in qrtz reads R2 any more. You can delete the
+`qrtz-modules` bucket, its `modules.qrtz.ai` custom domain and the R2 API token, and the `qrtz-r2` keychain item on
+your Mac. Keep the `qrtz.ai` zone and everything the Dash worker uses.
