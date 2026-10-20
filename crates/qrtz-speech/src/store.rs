@@ -148,7 +148,12 @@ impl SessionPin {
     /// A safe-point check for a running session (N66): `true` once any applied list denies the pinned version.
     /// The session then finishes the utterance in flight and ends; the rollback or fixed install runs once idle.
     pub fn revoked(&self) -> bool {
-        self.inner.lock().unwrap().state.denied.contains(&self.version)
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .state
+            .denied
+            .contains(&self.version)
     }
 }
 
@@ -207,7 +212,10 @@ pub fn choose_engine(a: &SpeechAvailability) -> EngineChoice {
 
 impl Drop for SessionPin {
     fn drop(&mut self) {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(n) = g.pins.get_mut(&self.version) {
             *n -= 1;
             if *n == 0 {
@@ -300,7 +308,9 @@ impl SpeechStore {
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap()
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn root(&self) -> &Path {

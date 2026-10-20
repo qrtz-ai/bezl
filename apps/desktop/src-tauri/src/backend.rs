@@ -432,7 +432,11 @@ fn pump_events(app: &AppHandle) {
             if qrtz_ipc::is_stream(&event) {
                 send_stream(&b, &event, &payload);
             }
-            let targets = b.subs.lock().unwrap().fanout(&event);
+            let targets = b
+                .subs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .fanout(&event);
             for (label, sub_apps) in targets {
                 let msg = json!({"event": event, "payload": payload, "subApps": sub_apps});
                 if let Err(e) = app.emit_to(EventTarget::webview_window(label.clone()), EVENT, msg) {
@@ -452,7 +456,12 @@ fn pump_events(app: &AppHandle) {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
         loop {
             tick.tick().await;
-            let s = app2.state::<Backend>().session.lock().unwrap().clone();
+            let s = app2
+                .state::<Backend>()
+                .session
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
             if tray::is_recording(&s) {
                 tray::tick(&app2, &s);
             }
@@ -463,7 +472,10 @@ fn pump_events(app: &AppHandle) {
 /// ADR 0095: the payload is serialized once and the same JSON goes to every window's stream for `event` (the
 /// broadcast path built and serialized a message per window). A send that fails means the page is gone: drop it.
 fn send_stream(b: &Backend, event: &str, payload: &Value) {
-    let mut streams = b.streams.lock().unwrap();
+    let mut streams = b
+        .streams
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut chans = streams.fanout(event).peekable();
     if chans.peek().is_none() {
         return;
@@ -480,7 +492,9 @@ fn send_stream(b: &Backend, event: &str, payload: &Value) {
 
 fn on_session(app: &AppHandle, session: Value) {
     let b = app.state::<Backend>();
-    *b.session.lock().unwrap() = session.clone();
+    *b.session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = session.clone();
     tray::update(app, &session);
     let want = policy::hud_wanted(&b.service.config(), &session);
     linger(app, &b.hud, windows::HUD, want, policy::HUD_LINGER, true);
@@ -569,13 +583,24 @@ fn apply_config(app: &AppHandle, cfg: &Value, first: bool) {
 
     let b = app.state::<Backend>();
     let next = policy::hotkeys(cfg);
-    let changed = { *b.hotkeys.lock().unwrap() != next };
+    let changed = {
+        *b.hotkeys
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            != next
+    };
     if first || changed {
         bind_hotkeys(app, &next);
-        *b.hotkeys.lock().unwrap() = next;
+        *b.hotkeys
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
     }
     if !first {
-        let s = b.session.lock().unwrap().clone();
+        let s = b
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         if !policy::hud_wanted(cfg, &s) {
             linger(app, &b.hud, windows::HUD, false, policy::HUD_LINGER, true);
         }
@@ -635,8 +660,14 @@ pub fn tray_action(app: &AppHandle, id: &str) {
 /// A webview navigated or closed: drop its subscriptions (they re-subscribe on boot).
 pub fn forget_webview(app: &AppHandle, label: &str) {
     if let Some(b) = app.try_state::<Backend>() {
-        b.subs.lock().unwrap().remove_target(label);
-        b.streams.lock().unwrap().remove_target(label);
+        b.subs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove_target(label);
+        b.streams
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove_target(label);
     }
 }
 

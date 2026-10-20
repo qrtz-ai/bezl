@@ -299,7 +299,7 @@ async fn fetch_one(
                 }
                 write_at(part, start, &bytes).map_err(|e| e.to_string())?;
                 {
-                    let _g = log.lock().expect("log");
+                    let _g = log.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                     append_mark(marks, i).map_err(|e| e.to_string())?;
                 }
                 counted.fetch_add(len, Ordering::SeqCst);
@@ -359,7 +359,10 @@ mod tests {
             start: u64,
             len: u64,
         ) -> Result<Vec<u8>, String> {
-            self.asked.lock().unwrap().push(src.clone());
+            self.asked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(src.clone());
             let (s, e) = (start as usize, (start + len) as usize);
             Ok(self.data[s..e].to_vec())
         }

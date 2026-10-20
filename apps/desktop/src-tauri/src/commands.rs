@@ -46,7 +46,7 @@ pub fn qrtz_subscribe(sub_app: String, event: String, webview: Webview) -> Value
     let r = backend
         .subs
         .lock()
-        .unwrap()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .subscribe(webview.label(), &sub_app, &event);
     if webview.label() == crate::windows::MAIN {
         backend.mark_ready();
@@ -73,7 +73,7 @@ pub fn qrtz_stream_open(
     let r = backend
         .streams
         .lock()
-        .unwrap()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .open(webview.label(), &sub_app, &event, channel);
     if webview.label() == crate::windows::MAIN {
         backend.mark_ready();
@@ -94,7 +94,7 @@ pub fn qrtz_stream_join(id: u64, sub_app: String, webview: Webview) -> Value {
         .state::<Backend>()
         .streams
         .lock()
-        .unwrap()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .join(webview.label(), id, &sub_app);
     match r {
         Ok(()) => json!({"ok": true}),
@@ -112,7 +112,7 @@ pub fn qrtz_stream_close(id: u64, webview: Webview) -> Value {
         .state::<Backend>()
         .streams
         .lock()
-        .unwrap()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .close(webview.label(), id);
     json!({"ok": closed})
 }

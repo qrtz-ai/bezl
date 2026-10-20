@@ -251,7 +251,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
     app.manage(TrayHandles::default());
     let s = tray_state(&json_idle(), now_ms());
     let (m, status) = menu(app, &s)?;
-    *app.state::<TrayHandles>().0.lock().unwrap() = status;
+    *app.state::<TrayHandles>()
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = status;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon(false)?)
         .icon_as_template(true)
@@ -274,7 +277,10 @@ pub fn update(app: &AppHandle, session: &Value) {
     let s = tray_state(session, now_ms());
     if let Ok((m, status)) = menu(app, &s) {
         let _ = tray.set_menu(Some(m));
-        *app.state::<TrayHandles>().0.lock().unwrap() = status;
+        *app.state::<TrayHandles>()
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = status;
     }
     if let Ok(i) = icon(s.recording) {
         let _ = tray.set_icon(Some(i));
@@ -292,7 +298,13 @@ pub fn tick(app: &AppHandle, session: &Value) {
     let s = tray_state(session, now_ms());
     let _ = tray.set_title(Some(&s.title));
     let _ = tray.set_tooltip(Some(&s.tooltip));
-    if let Some(mi) = app.state::<TrayHandles>().0.lock().unwrap().as_ref() {
+    if let Some(mi) = app
+        .state::<TrayHandles>()
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+    {
         let _ = mi.set_text(&s.items[0].label);
     }
 }
