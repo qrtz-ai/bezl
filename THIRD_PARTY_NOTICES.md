@@ -121,22 +121,24 @@ CDLA-Permissive-2.0 (Mozilla's root list), and the Unicode-3.0 crates (ICU4X dat
 list below carries by name. **Review:** a full-text bundle of every license (e.g. `cargo about generate`) is not
 generated yet. The table names each license; the full texts are at https://spdx.org/licenses/.
 
-### espeak-ng (GPL-3.0-or-later), in FluidAudio's LuxTTS text-to-speech parts
+### espeak-ng (GPL-3.0-or-later): possibly espeak-derived parts of FluidAudio's LuxTTS
 
 [eSpeak NG](https://github.com/espeak-ng/espeak-ng) is GPL-3.0-or-later, Copyright (C) 2005 to 2014 Jonathan
-Duddington, Copyright (C) 2015-2017 Reece H. Dunn, and contributors. qrtz does not ship, link or call espeak-ng. It
-reaches qrtz only through FluidAudio 0.17.7's LuxTTS English G2P (`Sources/FluidAudio/TTS/LuxTts/G2p`), which
-FluidAudio describes as reproducing espeak-ng's output "instead of bundling espeak": a lexicon harvested offline from
-espeak-ng (`luxtts_en_us_lexicon.tsv.zz`, `luxtts_en_us_g2p_aux.json`) and clause rules ported from espeak's
-`translate.c` / `dictionary.c` semantics. qrtz never uses text-to-speech, but `qrtz-echo` links FluidAudio
-statically, so the LuxTTS G2P code is in that executable. The lexicon files are in FluidAudio's SwiftPM resource
-bundle, which is not copied into `qrtz.app` (`scripts/release/verify-bundle.sh` refuses any nested `.bundle`).
+Duddington, Copyright (C) 2015-2017 Reece H. Dunn, and contributors. qrtz does not ship, link or call espeak-ng
+itself. FluidAudio 0.17.7's LuxTTS English G2P (`Sources/FluidAudio/TTS/LuxTts/G2p`) is possibly espeak-derived:
+FluidAudio says it reproduces espeak-ng's output, with clause rules modelled on espeak's `translate.c` /
+`dictionary.c` and a lexicon generated offline by running espeak-ng (`luxtts_en_us_lexicon.tsv.zz`,
+`luxtts_en_us_g2p_aux.json`). qrtz treats those rules and any data generated from espeak-ng as GPL-3.0-or-later.
 
-qrtz treats these parts as covered by espeak-ng's GPL-3.0-or-later terms. The full text is in
-[licenses/GPL-3.0.txt](licenses/GPL-3.0.txt) and at https://www.gnu.org/licenses/gpl-3.0.txt. Their source is
-FluidAudio at tag `v0.17.7` (https://github.com/FluidInference/FluidAudio/tree/v0.17.7) and espeak-ng itself. GPL-3.0
-and qrtz's AGPL-3.0-only may be combined (section 13 of each license); each part keeps its own license, and
-[LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md) does not apply to them.
+What `qrtz.app` contains: `qrtz-echo` links FluidAudio statically, so the G2P code (its rules and a few phoneme
+constants) is compiled in. The generated lexicon and aux tables are not: they are only in FluidAudio's SwiftPM
+resource bundle, which the app doesn't ship (`scripts/release/verify-bundle.sh` refuses any nested `.bundle`), and no
+table from them is compiled into `qrtz-echo`. qrtz never uses text-to-speech.
+
+The GPL-3.0 text ships in the app (`Contents/Resources/licenses/GPL-3.0.txt`; repo `licenses/GPL-3.0.txt`). The
+source of these parts is FluidAudio at tag `v0.17.7`, which every qrtz release attaches (see "Source code" below), and
+espeak-ng itself. GPL-3.0 and qrtz's AGPL-3.0-only may be combined (section 13 of each license); each part keeps its
+own license, and [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md) does not apply to them.
 
 ### FluidAudio's own third-party code and data
 
