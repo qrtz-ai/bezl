@@ -16,6 +16,13 @@ export const domainOf = (url: string) => {
   }
 };
 
+/**
+ * ADR 0231 finding 3: the rel any Dash link anchor must carry. Dash links render as buttons with no href, so the
+ * webview never navigates or opens a window for them; the host opens them in the default browser (no opener, no
+ * referrer). Pinned by blocks.links.test.tsx.
+ */
+export const DASH_LINK_REL = 'noopener noreferrer';
+
 const confirmed = new Set<string>();
 /**
  * First click per domain asks first (the interstitial), with a warning for punycode hosts; https only. The host
@@ -152,7 +159,10 @@ export function Block({
           {v.items.slice(0, 10).map((it, i) => (
             <Stack key={i} dir="row" gap={2} align="baseline">
               {it.url ? (
-                <Link onClick={() => void openLink(it.url as string, open)}>
+                <Link
+                  rel={DASH_LINK_REL}
+                  onClick={() => void openLink(it.url as string, open)}
+                >
                   {it.text}
                 </Link>
               ) : (
