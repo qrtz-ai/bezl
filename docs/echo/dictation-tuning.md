@@ -2438,3 +2438,68 @@ still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
 5. If the recogniser already types "Mr." for you, nothing changes. If you want the spelled-out title somewhere, add
    it to the dictionary (for example "Mister Softee") and the rule stays off. If anything reads worse, `git revert
    868ac2c6` (talk-only) and tell Echo the dictation.
+
+## 54. Cycle 83: a filler said as its own sentence goes with its mark (ADR 0235, `7cb8629c`)
+
+Polish first. Cleanup took a filler out but left its mark when the recogniser wrote it as its own sentence, so
+cleanup itself typed "Thanks.. Can you send it?", "Are you coming?. Let me know", ". I think we should …" and, for a
+lone "Um.", a bare ".". The cached hypotheses on the box have it ("…like music in the air. Ah." typed "…in the
+air.."). Now a filler that opens the text or follows a sentence mark, with its own "." / "?" / "!" run and then a
+blank or the end, goes with that run, so the text types exactly as it would without the filler.
+
+| Run                                     | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| --------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`32511cfc`), the 182 cases | 178 / 182 | 42 chars (0.66 % of 6349)  | 0           | 0 / 444             |
+| `7cb8629c`, the 182 cases               | 178 / 182 | 42 chars (no case changes) | 0           | 0 / 444             |
+| old cleanup, 190 cases (+8 filler)      | 178 / 190 | 54 chars                   | -           | 0 / 458             |
+| `7cb8629c`, 190 cases                   | 186 / 190 | 42 chars (0.62 % of 6776)  | 0           | 0 / 458             |
+
+- **Examples:** "Thanks for the update. Um. Can you send me the deck tonight" → "Thanks for the update. Can you
+  send me the deck tonight?" (was "update.. Can"); "Um. I think we should push the launch to next week" → "I think we
+  should push the launch to next week." (was ". I think …"); "Are you coming to the offsite? Hmm. Let me know by
+  Friday" → "…offsite? Let me know by Friday." (was "offsite?. Let"). Kept: "Which school did you pick? UM. Go Blue!"
+  (capitals), "Use the range 0..10", "Grab the umbrella. Umbrella stands …", "Okay. Uhura …", "Wait... What did you
+  say?".
+- **False-positive evidence:** 14 keep vectors against 8 positives, 21 refusals in tests/hardening83.rs, and on 54 498
+  runs (the 2859 cached hypotheses with and without their final mark, every vector, 23 000 generated seams, × 2
+  dictionaries) old and new differ only in marks, spaces and a capital after a removed leading mark, never a word;
+  on the real hypotheses only "…in the air.." → "…in the air." and "." → "". Rust = TS on every run; hardening60's
+  oracle green on 3 000 000 generated texts.
+- **Rejected this cycle** (details in ADR 0235): a filler with a comma at a sentence start ("Thanks. Um, can you" types
+  "Thanks can you send it." today; a segment cut looks the same, so it stays), a lowercase word after the filler
+  sentence, a filler after a comma, collapsing ".." anywhere else ("0..10", "...", code), and a run of commas
+  ("plan,, but" types "plan, , but": **N204 new, low**: collapsing it changes what "scratch that" and the filler-comma
+  step see, so it needs its own cycle and oracle).
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped (median per round, ms): 495 words 0.117 / 0.118 → 0.117 / 0.124; question 0.123 / 0.123 → 0.121 / 0.130;
+  vocative 0.131 / 0.132 → 0.130 / 0.131; tag 0.121 / 0.121 → 0.120 / 0.120; imperative 0.121 / 0.121 → 0.120 /
+  0.120; date 0.122 / 0.122 → 0.121 / 0.121; wh-contraction 0.121 / 0.121 → 0.120 / 0.120; modifier contraction
+  0.121 / 0.122 → 0.120 / 0.120; titles 0.127 / 0.130 → 0.126 / 0.124; the new 544-word text with 31 filler
+  sentences 0.123 / 0.123. Noise, ceiling 2 ms; the benchmark times the filler text and checks it types exactly like
+  the dictation without the fillers. One byte pass before the filler pass, on the final text only. Capture,
+  segmenting, the decode schedule, Parakeet's settings, the drain / final pass, insert and the timing log are
+  unchanged.
+- **Dictation path review since `868ac2c6`:** only `32511cfc` (cycle 82's docs) landed; no change to crates/qrtz-talk,
+  packages/core/src/talk, native/ or the press path besides this rule. N197 (needs the Mac's device-switch gap), N199
+  (Jared's call) and N203 stay open; N204 is new (above).
+- **Nano quick check:** vitest src/note 130 passed in 19 files; 3 files can't load through the borrowed node_modules
+  (Vite "Denied ID"), not a code failure. No Note code changed.
+
+Next: p15 after the Mac check; N204 with its own oracle; N203 if real dictations show it; then P7 (idle memory / CPU
+on the Mac first) or P6's remaining helper side. P5's p50 / p95 budget still waits on `node
+scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 83)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `7cb8629c`), then `scripts/dev/dev-local.sh` as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening83 --test polish_set -- --nocapture`: ten
+   budget medians well under 0.5 ms (box 0.12-0.13 ms), "polish set: 186/190 exact", regressions 0, all pass.
+3. Hold fn and say "Thanks for the update." then pause, say "um", pause, and "Can you send me the deck tonight": it
+   types "Thanks for the update. Can you send me the deck tonight?" with one period, whether or not the recogniser
+   wrote the "um" as its own sentence.
+4. Start a dictation with "um", a pause, then "I think we should push the launch": it types "I think we should push
+   the launch." with no leading ".".
+5. Unchanged: "um, can you …" after a sentence still types as before (ADR 0235 leaves it). If anything reads worse,
+   `git revert 7cb8629c` (talk-only) and tell Echo the dictation.
