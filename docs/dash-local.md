@@ -52,3 +52,24 @@ dash.qrtz.ai route.
   invalid.
 - **Secrets**: the pepper and setup token are random, generated locally and never printed. They stay valid only as
   long as the local state does. `--wipe` deletes both.
+
+## Old Keychain items from before origin tagging (QRT-286)
+
+Since f9c8518 every owner key is stored with its origin as the Keychain item's comment, and the comment is part of
+every lookup. An item saved by a dev build from before that commit (service `ai.qrtz.dash-net`, no comment) can't be
+read or deleted by the store.
+
+The helper removes such items itself, at every start (`crates/qrtz-dash-net/src/legacy_sweep.rs`):
+
+- It looks only at service `ai.qrtz.dash-net`, accounts `owner-key` and `owner-key.pending`. `qrtz-dash-dev` items
+  and other services' items are never listed or touched.
+- It lists items by attributes only and never reads a secret.
+- It deletes an item only if it has no comment, matched by service, account and creation date, and skips it if a
+  tagged item shares that account and creation date. Tagged items are never deleted.
+- It is idempotent and bounded: one listing, at most one delete per item, and it stops at the first unexpected error.
+  A run with nothing left to remove changes nothing.
+
+Tests: `tests/legacy_sweep.rs`, and on a throwaway keychain in CI's `keychain` job, `tests/real_keychain.rs`.
+
+Don't remove these items by hand with `security delete-generic-password -s ai.qrtz.dash-net ...`: it matches on
+service and account only, so it deletes the tagged item too. Just run the helper once (connect Dash in a dev build).
