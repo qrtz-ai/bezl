@@ -79,8 +79,12 @@ describe('local test mode gate', () => {
           body: JSON.stringify({ code, name: 'x' }),
         }),
       );
-    const tst = await post(`${TEST_CODE_PREFIX}ABCD-EFGH`, '192.0.2.201');
-    const wrong = await post('ENR-ABCD-EFGH', '192.0.2.202');
+    // QRT-284 format: a well-formed TST- code takes the refused path, not the malformed one.
+    const tst = await post(
+      `${TEST_CODE_PREFIX}ABCDEFGH.${'2'.repeat(17)}`,
+      '192.0.2.201',
+    );
+    const wrong = await post(`ENR-ABCDEFGH.${'2'.repeat(17)}`, '192.0.2.202');
     expect(tst.status).toBe(401);
     expect(await tst.text()).toBe(await wrong.text());
   });
@@ -119,7 +123,7 @@ describe('test-code endpoint and locked sources (item 3)', () => {
     for (let i = 0; i < 12; i++)
       last = (await post(`ENR-AAAA-AAA${i % 10}`)).status;
     expect(last).toBe(429);
-    const tst = await post(`${TEST_CODE_PREFIX}ABCD-EFGH`);
+    const tst = await post(`${TEST_CODE_PREFIX}ABCDEFGH.${'2'.repeat(17)}`);
     const enr = await post('ENR-ZZZZ-ZZZZ');
     expect(tst.status).toBe(429);
     expect(enr.status).toBe(429);
