@@ -159,9 +159,10 @@ impl Spawn for ProcessSpawn {
         let mut child = qrtz_cloexec::spawn(|| cmd.spawn())?;
         // The helper end now lives in the child only.
         let speech = speech.map(|(host, _helper)| host);
-        let stdout = child.stdout.take().expect("piped stdout");
-        let stdin = child.stdin.take().expect("piped stdin");
-        let stderr = child.stderr.take().expect("piped stderr");
+        let unpiped = |what: &str| std::io::Error::other(format!("helper {what} is not piped"));
+        let stdout = child.stdout.take().ok_or_else(|| unpiped("stdout"))?;
+        let stdin = child.stdin.take().ok_or_else(|| unpiped("stdin"))?;
+        let stderr = child.stderr.take().ok_or_else(|| unpiped("stderr"))?;
         Ok(child_io(stdout, stdin, stderr, speech, |kill_rx| async move {
             let status = tokio::select! {
                 s = child.wait() => s,

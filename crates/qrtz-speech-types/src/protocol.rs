@@ -19,6 +19,11 @@ pub struct SpeechProtocol {
     host_to_speech: Validator,
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+)]
 pub fn protocol() -> &'static SpeechProtocol {
     static P: OnceLock<SpeechProtocol> = OnceLock::new();
     P.get_or_init(|| {

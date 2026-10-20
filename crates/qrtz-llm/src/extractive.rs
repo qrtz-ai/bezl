@@ -57,13 +57,38 @@ impl<K: PartialEq> NextDifferent<K> {
 const STOP_WORDS: &str = "a an the and or but if of to in on at for with is are was were be been it this that we you i they he she so just like yeah okay ok um uh do does did have has had not no yes our your my me us them from as by about can will would should could there here what when how who which";
 
 static STOP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| STOP_WORDS.split(' ').collect());
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static ACTION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i-u:\b(i'll|i will|we'll|we will|you'll|will you|can you|could you|let's|need to|needs to|have to|must|action item|todo|to-do|follow up|follow-up|by (monday|tuesday|wednesday|thursday|friday|tomorrow|eod|end of (day|week)|next week))\b)").unwrap()
 });
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static ASK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i-u:\b(can you|could you|will you)\b)").unwrap());
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static NAMED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\p{Lu}\p{Ll}+),").unwrap());
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static WORD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\p{L}\p{N}']+").unwrap());
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static TASK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
         r"^(?i-u:todo:?|- \[ \]|\[ \]|action:?|ai:)[{JS_SPACE_CLASS}]*([^\n\r\x{{2028}}\x{{2029}}]+)$"
@@ -179,7 +204,7 @@ pub fn extractive_summary(
     ranked.sort_by(|a, b| {
         let d = b.1 - a.1;
         if d != 0.0 {
-            d.partial_cmp(&0.0).unwrap()
+            d.partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal)
         } else {
             a.0.idx.cmp(&b.0.idx)
         }
