@@ -225,6 +225,11 @@ pub fn ranked(p: &[u32]) -> Vec<usize> {
 
 /// Hash of what a question was asked over: node, option ids and refs, the run's position and the goal's hash.
 /// Replay recomputes it; a difference is a divergence.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "serde_json on a plain derived type with string keys cannot fail"
+)]
 pub fn input_hash(goal: &Goal, node: Node, options: &[Opt], position: &str) -> String {
     #[derive(Serialize)]
     struct In<'a> {
@@ -246,6 +251,11 @@ pub fn input_hash(goal: &Goal, node: Node, options: &[Opt], position: &str) -> S
 }
 
 /// Answer one question: score, calibrate, pick, classify. Pure except for the scorer and the clock.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "the built-in heuristic scorer is infallible; it is the fallback when the model fails"
+)]
 pub fn decide(
     q: &Question,
     goal: &Goal,

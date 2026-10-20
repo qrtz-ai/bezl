@@ -289,7 +289,7 @@ impl Driver<'_> {
                 Some(g) if g.reverified != Some(true) => {
                     // Approved: read the tree again; the approval stands only if nothing moved.
                     let gate_id = g.id.clone();
-                    self.read_tree(st, app.clone(), None);
+                    self.read_tree(st, app, None);
                     let now = self.log.state();
                     // Review M1: find the approved element again by its fingerprint (exactly one), not its old id.
                     let fresh = match (a.handle(), now.tree.as_ref()) {
