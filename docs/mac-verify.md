@@ -61,7 +61,7 @@ Play a YouTube talk and speak for a few seconds.
 ## 4. Inside the app (1 min)
 
 ```sh
-bun start                      # tauri dev (or `bun run make` for the .app + .dmg)
+cd apps/desktop && bun start   # tauri dev (or `bun run make` for the .app + .dmg)
 ```
 
 - [ ] With `bun run make`, `Contents/MacOS/qrtz-helper` is in the .app. In either build, Settings → System shows the helper as connected and not mock.

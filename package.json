@@ -12,15 +12,12 @@
   },
   "scripts": {
     "dev:local": "bash scripts/dev/dev-local.sh",
-    "start": "bun run build:helper && bun --bun run --cwd apps/desktop start",
-    "make": "bun run build:helper && bun --bun run --cwd apps/desktop make",
     "release:mac": "bash scripts/release/sign-notarize.sh",
     "lint": "bun --bun oxlint && bun --bun oxfmt --check && bun scripts/check-boundaries.mjs && bun scripts/check-typography.mjs && bun scripts/check-ui-purity.mjs && bun scripts/check-titles.mjs && bun scripts/check-swift.mjs && bun scripts/modules/qrtz-json.mjs --check",
     "lint:fix": "bun --bun oxlint --fix && bun --bun oxfmt --write",
     "typecheck": "bun --bun tsc -b && bun --bun tsc -p tsconfig.test.json",
     "check": "bun run lint && bun run typecheck && bun run test",
     "test": "bun --bun vitest run",
-    "e2e": "playwright test -c e2e-tauri/playwright.config.ts",
     "build:helper": "bun scripts/build-helper.mjs",
     "test:helper": "bun scripts/build-helper.mjs --test",
     "gen:contracts": "QRTZ_UPDATE_CONTRACTS=1 bun --bun vitest run apps/desktop/src/shared/contract-json.test.ts",
@@ -28,9 +25,7 @@
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
-    "axe-core": "^4.14.0",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
     "typescript": "^6.0.3",
