@@ -36,6 +36,7 @@
       "qrtz-dash-net": {
         "role": "dash-egress",
         "adr": "0231",
+        "why": "Agent Dash's dashboard API: dash:* calls (dash.read, dash.manage) relayed over stdio to https://dash.qrtz.ai, with the owner key kept in this helper's own Keychain item.",
         "egress": ["https://dash.qrtz.ai"],
         "netCrates": ["reqwest"],
         "entitlements": {
