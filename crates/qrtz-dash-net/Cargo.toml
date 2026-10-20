@@ -30,8 +30,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 # OSX_10_15: the data-protection keychain (Bozniak M6).
 security-framework = { version = "3", features = ["OSX_10_15"] }
-# QRT-286: CFDate/CFString for the legacy sweep's creation-date match (already in the tree via security-framework).
-core-foundation = "0.10"
 
 [dev-dependencies]
 qrtz-dash = { workspace = true }
