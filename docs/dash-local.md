@@ -52,3 +52,25 @@ dash.qrtz.ai route.
   invalid.
 - **Secrets**: the pepper and setup token are random, generated locally and never printed. They stay valid only as
   long as the local state does. `--wipe` deletes both.
+
+## Old Keychain items from before origin tagging (QRT-286)
+
+Since f9c8518 every owner key is stored with its origin as the Keychain item's comment, and the comment is part of
+every lookup. An item saved by a dev build from before that commit (service `ai.qrtz.dash-net`, no comment) can no
+longer be read or deleted by the app, so it just sits in the login Keychain.
+
+No such item exists outside dev Macs: Dash has never shipped (qrtz-dash-net isn't in v0.1.0 or v0.2.0) and
+dash.qrtz.ai has never been deployed, so no release build ever saved an owner key. The app therefore has no
+first-run sweep for these items. If you ran Dash in a dev build before f9c8518, remove them by hand once:
+
+```sh
+# Repeat each line until it says the item could not be found.
+security delete-generic-password -s ai.qrtz.dash-net -a owner-key
+security delete-generic-password -s ai.qrtz.dash-net -a owner-key.pending
+```
+
+This also removes any tagged `ai.qrtz.dash-net` item on that Mac. That is harmless on a dev Mac: connect again with a
+new setup token. Local test mode never uses that service (it uses `qrtz-dash-dev`), so it isn't affected.
+
+If Dash ever ships in a release build that could have saved an untagged item, this stops being enough: add a
+first-run sweep that deletes only items with no comment, with a test, before that release.
