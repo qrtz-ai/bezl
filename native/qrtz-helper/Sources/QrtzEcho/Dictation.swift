@@ -421,7 +421,12 @@ public actor DictationEngine {
             if busy.contains(ObjectIdentifier(t)) {
                 send(.log(level: .warn, msg: "dictation asr \(t.name) still finishing the last dictation; skipped")); continue
             }
-            do { try await t.prepare(); await t.reset(); s.transcriber = t; break }
+            let tp = ContinuousClock.now
+            do {
+                try await t.prepare()
+                send(.log(level: .info, msg: "qrt270 t+\(qrt270Ms()) dictation.start waited \(tp.duration(to: .now)) for \(t.name) prepare"))
+                await t.reset(); s.transcriber = t; break
+            }
             catch { send(.log(level: .warn, msg: "dictation asr \(t.name) unavailable: \(error)")) }
         }
         // N134: nothing would hear this dictation (every recogniser busy or failing, no speech module attached):

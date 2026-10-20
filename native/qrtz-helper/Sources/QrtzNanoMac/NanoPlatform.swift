@@ -49,6 +49,8 @@ public func makeNanoPlatform(micHub: MicHub, modelLoads: ModelLoads = ModelLoads
 func warmModels(_ loads: ModelLoads) async -> String {
     func ms(_ t: Date) -> Int { Int(Date().timeIntervalSince(t) * 1000) }
     var parts: [String] = []
+    logErr("qrt270 t+\(qrt270Ms()) nano.warm start")
+    defer { logErr("qrt270 t+\(qrt270Ms()) nano.warm end: " + parts.joined(separator: ", ")) }
     // N127: a recording that starts cancels the warm; it stops between models (each one is unloaded right after its
     // load, so nothing stays resident next to the recording's models).
     func cancelled() -> String? { Task.isCancelled ? "models.warm cancelled (recording started) after: " + (parts.isEmpty ? "none" : parts.joined(separator: ", ")) : nil }

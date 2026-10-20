@@ -14,8 +14,10 @@ import QrtzShared
 /// Decodes are serialised by the segmenter (one at a time), and the decoder state is fresh per segment.
 public final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
     public let name = "parakeet-tdt-v2"
-    public init() {}
+    public init() { _ = qrt270Ms() }
     private let load = SharedLoad<AsrManager>()
+    /// QRT-270 diag: the first decode after a load (Core ML / ANE first-predict cost).
+    private var firstDecodeLogged = false
     public private(set) var lastLoad: (ms: Int, expectCached: Bool, why: String)?
 
     public func prepare() async throws {
@@ -24,11 +26,14 @@ public final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
             let stamp = CompiledModelStamp(set: LocalModels.echoAsr, dir: dir)
             let expect = stamp.expectCached()
             let t0 = Date()
+            logErr("qrt270 t+\(qrt270Ms()) parakeet.load start (expectCached=\(expect.cached) \(expect.why))")
             let models = try AsrModels.loadLocal(from: dir, version: .v2)
+            logErr("qrt270 t+\(qrt270Ms()) parakeet.loadLocal done \(Int(Date().timeIntervalSince(t0) * 1000)) ms")
             let m = AsrManager(config: .default, models: models)
             let ms = Int(Date().timeIntervalSince(t0) * 1000)
             stamp.record(loadMs: ms)
             self?.lastLoad = (ms, expect.cached, expect.why)
+            logErr("qrt270 t+\(qrt270Ms()) parakeet.load end \(ms) ms")
             logErr("parakeet: loaded in \(ms) ms (\(expect.cached ? "specialization cached" : "specializing: " + expect.why))")
             return m
         }
@@ -40,7 +45,12 @@ public final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
         let minimum = ASRConstants.minimumRequiredSamples(forSampleRate: 16_000)
         let audio = samples.count >= minimum ? samples : samples + [Float](repeating: 0, count: minimum - samples.count)
         var state = TdtDecoderState.make(decoderLayers: await m.decoderLayerCount)
+        let td = Date()
         let r = try await m.transcribe(audio, decoderState: &state)
+        if !firstDecodeLogged {
+            firstDecodeLogged = true
+            logErr("qrt270 t+\(qrt270Ms()) parakeet.firstDecode \(Int(Date().timeIntervalSince(td) * 1000)) ms for \(audio.count / 16) ms audio")
+        }
         // Word starts from the token timings (for the stitch). The words themselves are the final text's when they
         // line up one to one (its spacing and punctuation as the manager formatted it), else the tokens' own.
         let timed = buildWordTimings(from: r.tokenTimings ?? [])
@@ -56,6 +66,7 @@ public final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
     }
 
     public func unload() async {
+        firstDecodeLogged = false
         let m = load.clear()
         await m?.cleanup()
     }
