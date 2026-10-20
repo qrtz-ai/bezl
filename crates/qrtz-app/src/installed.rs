@@ -480,6 +480,7 @@ pub fn public_refusal(detail: &str) -> &'static str {
                 "is not installed",
                 "isn't bundled",
                 "no bundled manifest",
+                "No such file",
             ],
             "missing binary: the helper isn't where qrtz expects it",
         ),
@@ -512,12 +513,42 @@ pub fn public_refusal(detail: &str) -> &'static str {
             "signature mismatch: the helper isn't signed with qrtz's Developer ID identity",
         ),
         (&["need macOS"], "code checks need macOS"),
+        (
+            &["is the dev stub"],
+            "dev stub: the real helper isn't built yet (bun run build:helper)",
+        ),
         (&["is disabled"], "disabled: this version was turned off"),
     ];
     KINDS
         .iter()
         .find(|(needles, _)| needles.iter().any(|n| detail.contains(n)))
         .map_or("launch refused: a launch check failed (see the log)", |(_, r)| r)
+}
+
+/// QRT-291: the one gate every `helper:status` (event and invoke) and talk's copy pass through. A `last_error`
+/// that still names a path (a `/` or `\\`), from any spawner or exit path, is reworded to its fixed public reason,
+/// keeping a path-free `<module>: ` prefix. Path-free errors pass unchanged.
+pub fn public_status(s: &qrtz_helper_bridge::HelperStatus) -> qrtz_helper_bridge::HelperStatus {
+    let mut out = s.clone();
+    out.last_error = s.last_error.as_deref().map(public_error);
+    out
+}
+
+/// See [`public_status`].
+pub fn public_error(e: &str) -> String {
+    if !e.contains('/') && !e.contains('\\') {
+        return e.to_owned();
+    }
+    let module = e
+        .split_once(": ")
+        .map(|(m, _)| m)
+        .filter(|m| {
+            !m.is_empty()
+                && m.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        })
+        .unwrap_or("helper");
+    format!("{module}: {}", public_refusal(e))
 }
 
 /// Wraps a module's spawn so a refusal reaches the supervisor (and so `helper:status`) as [`public_refusal`] only;
