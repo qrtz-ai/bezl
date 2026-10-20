@@ -10,7 +10,7 @@ members = ["crates/*", "apps/desktop/src-tauri", "tools/*"]
 version = "0.2.4"
 edition = "2021"
 rust-version = "1.90"
-license = "LicenseRef-Proprietary"
+license = "AGPL-3.0-only"
 publish = false
 
 [workspace.dependencies]

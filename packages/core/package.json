@@ -17,5 +17,5 @@
   "dependencies": {
     "zod": "^4.6.7"
   },
-  "license": "UNLICENSED"
+  "license": "AGPL-3.0-only"
 }

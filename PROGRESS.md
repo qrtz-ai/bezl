@@ -408,7 +408,7 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 ## Iteration 18: v0.1.0 production-readiness sweep (2026-10-16)
 
 - `npm audit --omit=dev`: 0 vulnerabilities. Dev: vitest 3→5 and oxfmt 0.41→0.73 clear the critical tinypool advisories, and the tree was reformatted with the new oxfmt. One high advisory remains: `image-size` under `@electron-forge/maker-dmg` → appdmg. It's macOS build time only, only parses our own icon, and has no upstream fix.
-- `LICENSE` is proprietary (all rights reserved), and every package's `license` is now `UNLICENSED`, replacing the leftover scaffold "MIT". Jared should confirm this.
+- `LICENSE` is AGPL-3.0-only (QRT-275), and every package's `license` is `AGPL-3.0-only`, replacing the earlier `UNLICENSED`.
 - `THIRD_PARTY_NOTICES.md` covers the models (Parakeet EOU under the NVIDIA Open Model License; Parakeet 0.6B and Sortformer v2 under CC-BY-4.0; MiniLM under Apache-2.0), FluidAudio (Apache-2.0), onnxruntime (MIT), Electron and transformers.js, plus a generated table of npm production dependencies (`scripts/third-party.mjs`). Models download at runtime and are not bundled. The packaged app ships only a JS stub of sharp, not the LGPL libvips binaries.
 - `CHANGELOG.md` v0.1.0; all packages bumped to 0.1.0; tag `v0.1.0` pushed (tag only, no GitHub release).
 
