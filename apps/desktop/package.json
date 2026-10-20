@@ -11,8 +11,11 @@
     "dev:mock": "VITE_QRTZ_MOCK_IPC=1 vite",
     "build": "vite build",
     "tauri": "tauri",
-    "start": "tauri dev",
-    "make": "tauri build",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "start": "bun ../../scripts/build-helper.mjs && bun --bun run tauri:dev",
+    "make": "bun ../../scripts/build-helper.mjs && bun --bun run tauri:build",
+    "e2e": "playwright test -c ../../e2e-tauri/playwright.config.ts",
     "typecheck": "tsc -b"
   },
   "dependencies": {

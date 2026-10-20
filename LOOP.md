@@ -11,7 +11,7 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
    ```sh
    bun run lint && bun run typecheck && bun run test && bun run check:rust
    ```
-   Also run `bun run e2e` when the renderer, the shell or the IPC contract changed.
+   Also run `bun run e2e` (from apps/desktop) when the renderer, the shell or the IPC contract changed.
    A task is done only when its ticket's **acceptance criteria** hold.
 5. **Commit** with a message that names its ticket (`QRT-<n>`), authored as
    `Jared Grimes <jlgrimes@users.noreply.github.com>` (see `AGENTS.md`), and push to `main`.
