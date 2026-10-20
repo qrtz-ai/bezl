@@ -27,8 +27,23 @@ check "$(req POST /v1/owner/codes -H "authorization: Bearer $OWNER")" 201 "app e
 check "$(req POST /v1/owner/test-codes -H "authorization: Bearer $OWNER")" 201 "issue test code (local mode only)"
 CODE="$(j code <"$tmp/out")"
 [[ "$CODE" == TST-* ]] && echo "ok   code is a test code (TST-)" || { echo "FAIL code prefix: ${CODE:0:4}"; exit 1; }
-check "$(req POST /v1/enroll -d '{"code":"ENR-AAAA-BBBB","name":"x"}')" 401 "wrong code"
+[[ "$CODE" =~ ^TST-[2-9A-HJKMNP-TV-Z]{8}\.[2-9A-HJKMNP-TV-Z]{17}$ ]] && echo "ok   code is <id>.<secret> (QRT-284)" || { echo "FAIL code format"; exit 1; }
+check "$(req POST /v1/enroll -d '{"code":"ENR-AAAA-BBBB","name":"x"}')" 401 "malformed code"
+WRONG401="$(cat "$tmp/out")"
 # JSON bodies go into a variable first: macOS /bin/bash 3.2 mis-parses \" inside "$( ... )" (broken body, shifted args).
+# QRT-284: 5 wrong secrets on one id kill that code; unknown, wrong and dead all answer the same 401.
+check "$(req POST /v1/owner/test-codes -H "authorization: Bearer $OWNER")" 201 "issue a code to kill"
+KILL="$(j code <"$tmp/out")"; KID="${KILL%%.*}"
+for i in 1 2 3 4 5; do
+  body="$(printf '{"code":"%s.22222222222222222","name":"x"}' "$KID")"
+  check "$(req POST /v1/enroll -d "$body")" 401 "wrong secret $i/5"
+  [[ "$(cat "$tmp/out")" == "$WRONG401" ]] || { echo "FAIL wrong-secret body differs"; exit 1; }
+done
+body="$(printf '{"code":"%s","name":"dead bot"}' "$KILL")"
+check "$(req POST /v1/enroll -d "$body")" 401 "right secret after 5 strikes: dead"
+[[ "$(cat "$tmp/out")" == "$WRONG401" ]] && echo "ok   dead code answers like a wrong code" || { echo "FAIL dead body differs"; exit 1; }
+check "$(req POST /v1/enroll -d '{"code":"TST-22222222.33333333333333333","name":"x"}')" 401 "unknown id"
+[[ "$(cat "$tmp/out")" == "$WRONG401" ]] && echo "ok   unknown id answers like a wrong code" || { echo "FAIL unknown body differs"; exit 1; }
 body="$(printf '{"code":"%s","name":"smoke bot","description":"local smoke"}' "$CODE")"
 check "$(req POST /v1/enroll -d "$body")" 201 "enroll"
 AID="$(j agent_id <"$tmp/out")"; TOK="$(j agent_token <"$tmp/out")"
