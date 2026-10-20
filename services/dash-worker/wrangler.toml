@@ -26,4 +26,5 @@ new_sqlite_classes = ["Dashboard", "EnrollDirectory"]
 enabled = true
 head_sampling_rate = 1
 
-# Secrets (never in this file): DASH_PEPPER (64 hex) and DASH_SETUP_TOKEN, set with `wrangler secret put`.
+# Secrets (never in this file): DASH_PEPPER (64 hex), DASH_ENROLL_KEY (64 hex, QRT-284: keys only the enrollment-code
+# HMAC) and DASH_SETUP_TOKEN, set with `wrangler secret put`.
