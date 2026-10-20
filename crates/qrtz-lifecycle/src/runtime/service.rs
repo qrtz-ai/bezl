@@ -184,7 +184,10 @@ impl NoteRuntime {
                 }
             }
         });
-        sh.handles.lock().unwrap().push(h.abort_handle());
+        sh.handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(h.abort_handle());
         NoteRuntime { sh }
     }
 
@@ -192,7 +195,13 @@ impl NoteRuntime {
     /// nothing more), pending calls fail with `E_UNAVAILABLE`, and no further event is emitted.
     pub fn kill(&self) {
         self.sh.killed.store(true, Ordering::SeqCst);
-        for h in self.sh.handles.lock().unwrap().drain(..) {
+        for h in self
+            .sh
+            .handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+        {
             h.abort();
         }
     }
@@ -697,7 +706,10 @@ impl Shared {
             return None;
         }
         let h = tokio::spawn(f);
-        let mut hs = self.handles.lock().unwrap();
+        let mut hs = self
+            .handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if hs.len() > 64 {
             hs.retain(|h| !h.is_finished());
         }

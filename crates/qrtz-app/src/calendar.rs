@@ -135,7 +135,10 @@ impl NanoCalendar {
     }
 
     pub fn set_prompt(&self, f: PromptFn) {
-        *self.prompt.lock().unwrap() = Some(f);
+        *self
+            .prompt
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(f);
     }
 
     fn settings(&self) -> CalendarSettings {
@@ -399,7 +402,11 @@ impl NanoCalendar {
                         let evs = s.events.clone();
                         due_prompts(&evs, now_ms(), set.chosen.as_deref(), &mut s.prompted)
                     };
-                    let f = me.prompt.lock().unwrap().clone();
+                    let f = me
+                        .prompt
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .clone();
                     if let Some(f) = f {
                         for e in due {
                             f(detected_line(&e));
