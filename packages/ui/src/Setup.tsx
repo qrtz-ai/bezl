@@ -6,7 +6,14 @@ import { Stack } from './Layout';
 import { Progress } from './Progress';
 import { Spinner } from './Spinner';
 import { Text } from './Text';
-import { ModelRequirement, formatBytes } from './ModelRequirement';
+import type { ReactNode } from 'react';
+import {
+  ModelRequired,
+  ModelRequirement,
+  formatBytes,
+  type ModelRequirementProps,
+  type ModelRequirementState,
+} from './ModelRequirement';
 
 /** Structural copy of `SpeechSetupStatus` (@qrtz/core): a version, a size and a download state, never an engine. */
 export interface SpeechSetupView {
@@ -247,6 +254,66 @@ export function SpeechNotice({
       data-testid="speech-notice"
       testIds={{ open: 'speech-notice-open' }}
     />
+  );
+}
+
+/**
+ * Echo and nano can't work without their speech model: until it's installed, the app's page body shows the
+ * ModelRequired banner and the rest of the page blurred and inert. `status` null (still reading): the page shows
+ * as is, so an installed model never flashes the gate.
+ */
+export function SpeechRequired({
+  app,
+  status,
+  note,
+  onDownload,
+  onCancel,
+  onOpen,
+  children,
+  'data-testid': testId,
+  testIds,
+}: {
+  app: string;
+  status: SpeechSetupView | null;
+  note?: ReactNode;
+  /** Only an app that may download (echo holds speech.manage); others open their models on the qrtz page. */
+  onDownload?: () => void;
+  onCancel?: () => void;
+  onOpen?: () => void;
+  children?: ReactNode;
+  'data-testid'?: string;
+  testIds?: ModelRequirementProps['testIds'];
+}) {
+  if (!status) return <>{children}</>;
+  const d = status.download;
+  const busy = BUSY.has(d.state);
+  const state: ModelRequirementState = !status.configured
+    ? 'unavailable'
+    : busy
+      ? 'downloading'
+      : d.state === 'error'
+        ? 'error'
+        : status.installed
+          ? 'ready'
+          : 'missing';
+  return (
+    <ModelRequired
+      app={app}
+      name="speech model"
+      purpose="turns what you say into text, on this mac"
+      sizeBytes={status.latestBytes ?? (d.total || null)}
+      state={state}
+      {...(busy ? { progress: speechProgress(d) } : {})}
+      error={d.error ?? null}
+      {...(note ? { note } : {})}
+      {...(onDownload ? { onDownload, onRetry: onDownload } : {})}
+      {...(busy && onCancel ? { onCancel } : {})}
+      {...(!busy && onOpen && !onDownload ? { onOpen } : {})}
+      {...(testId ? { 'data-testid': testId } : {})}
+      {...(testIds ? { testIds } : {})}
+    >
+      {children}
+    </ModelRequired>
   );
 }
 

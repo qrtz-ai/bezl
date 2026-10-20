@@ -506,7 +506,7 @@ test('no page scrolls sideways: every page fits its width, at the default and a 
     );
   for (const width of [1100, 760]) {
     await page.setViewportSize({ width, height: 720 });
-    await page.goto('/?dev=1&seed=1&mockSpeech=missing#/note');
+    await page.goto('/?dev=1&seed=1#/note');
     await expect(page.getByTestId('note-app')).toBeVisible();
     await page.getByText('Weekly Product Sync').first().click();
     await expect(page.getByText("Let's start.")).toBeVisible();

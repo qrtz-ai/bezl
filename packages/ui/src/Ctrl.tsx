@@ -1,4 +1,5 @@
 import {
+  ModelRequired,
   ModelRequirement,
   type ModelRequirementState,
 } from './ModelRequirement';
@@ -488,9 +489,19 @@ const MODEL_STATE: Record<DecisionModelInfo['state'], ModelRequirementState> = {
   failed: 'error',
 };
 
+const MODEL_PROPS = {
+  name: 'decision model',
+  purpose: "picks ctrl's next step, on this mac",
+} as const;
+
+const modelError = (model: DecisionModelInfo) =>
+  model.state === 'failed'
+    ? (model.error ?? 'failed its check, nothing was kept')
+    : null;
+
 /**
- * ctrl's decision model (ADR 0116): the only time ctrl uses the network is this download, and only after a yes
- * here. Without it ctrl decides with its built-in rules.
+ * ctrl's decision model (ADR 0116), once it's on this mac: its size and "turn off". The only time ctrl uses the
+ * network is its download, and only after a yes in CtrlModelRequired.
  */
 export function DecisionModelCard({
   model,
@@ -501,23 +512,10 @@ export function DecisionModelCard({
 }) {
   return (
     <ModelRequirement
-      name="decision model"
-      purpose="picks ctrl's next step, on this mac"
+      {...MODEL_PROPS}
       sizeBytes={model.sizeBytes || null}
       state={MODEL_STATE[model.state]}
-      error={
-        model.state === 'failed'
-          ? (model.error ?? 'failed its check, nothing was kept')
-          : null
-      }
-      fallback="ctrl decides with its built-in rules and never goes online"
-      note={
-        <span data-testid="ctrl-model-scorer">
-          {model.scorer === 'laya'
-            ? 'deciding with the on-device model'
-            : 'deciding with the built-in rules'}
-        </span>
-      }
+      error={modelError(model)}
       {...(model.consented
         ? { onRemove: () => onConsent(false), onCancel: () => onConsent(false) }
         : { onDownload: () => onConsent(true) })}
@@ -530,5 +528,42 @@ export function DecisionModelCard({
         status: 'ctrl-model-line',
       }}
     />
+  );
+}
+
+/**
+ * ctrl can't decide without its model: until it's installed, ctrl's page shows the ModelRequired banner and the
+ * rest of the page blurred and inert. Whatever the backend reports as its scorer, a model that isn't installed
+ * blocks.
+ */
+export function CtrlModelRequired({
+  model,
+  onConsent,
+  children,
+}: {
+  model: DecisionModelInfo;
+  onConsent: (yes: boolean) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <ModelRequired
+      app="ctrl"
+      {...MODEL_PROPS}
+      sizeBytes={model.sizeBytes || null}
+      state={MODEL_STATE[model.state]}
+      error={modelError(model)}
+      onDownload={() => onConsent(true)}
+      onRetry={() => onConsent(true)}
+      {...(model.consented ? { onCancel: () => onConsent(false) } : {})}
+      data-testid="ctrl-model"
+      testIds={{
+        download: 'ctrl-model-on',
+        retry: 'ctrl-model-retry',
+        cancel: 'ctrl-model-off',
+        status: 'ctrl-model-line',
+      }}
+    >
+      {children}
+    </ModelRequired>
   );
 }

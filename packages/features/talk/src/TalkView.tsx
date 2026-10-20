@@ -15,8 +15,7 @@ import {
   TermList,
   Text,
   useToast,
-  SpeechNotice,
-  ModelRequirement,
+  SpeechRequired,
   ModuleSettingsButton,
   ModuleSettingsModal,
   Switch,
@@ -38,12 +37,14 @@ import {
   isModuleOn,
   isOnBundledFallback,
   loadConfig,
-  requestNavigate,
   type Config,
   type SpeechSetupStatus,
 } from '@qrtz/core';
 import { entryMeta, parseTerm } from './format';
 import TalkSettings from './TalkSettings';
+
+const CONSENT_NOTE =
+  'parakeet downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.';
 
 const mb = (b: number) => `${Math.max(1, Math.round(b / 1e6))} mb`;
 
@@ -92,7 +93,6 @@ function useEchoSwitch() {
   }, [qrtz]);
   useEffect(refresh, [refresh]);
   const liveState = live?.download.state;
-  const busy = BUSY.has(liveState ?? parakeet?.download.state ?? 'idle');
   // A download finished (or failed): read echo's own status again so the offer reflects it.
   useEffect(() => {
     if (liveState && !BUSY.has(liveState)) refresh();
@@ -157,23 +157,6 @@ function useEchoSwitch() {
       data-testid="echo-switch"
     />
   );
-  // The speech notice is hidden while this offer is up, so a failed download's reason is shown here instead.
-  const failed = (live?.download.state ?? parakeet?.download.state) === 'error';
-  const offer =
-    on && parakeet && needsParakeet && !busy ? (
-      <ModelRequirement
-        name="speech model"
-        purpose="turns what you say into text, on this mac"
-        sizeBytes={parakeet?.latestBytes ?? null}
-        state={failed ? 'error' : 'missing'}
-        error={parakeet?.download.error ?? null}
-        note="parakeet downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac."
-        onDownload={() => void download().then(setParakeet, fail)}
-        onRetry={() => void download().then(setParakeet, fail)}
-        data-testid="echo-offer"
-        testIds={{ download: 'echo-download', retry: 'echo-download' }}
-      />
-    ) : null;
   const statusError =
     statusFailed && !parakeet ? (
       <Callout
@@ -201,15 +184,18 @@ function useEchoSwitch() {
         echo is using the copy built into qrtz: its update couldn't start
       </Text>
     ) : null;
-  // On the "on" page the error takes the offer's place (the offer needs the status it couldn't read).
   return {
     notice,
     on,
     loaded: !!cfg,
     control,
     dialog,
-    offer: statusError ?? offer,
     statusError,
+    download: () => void download().then(setParakeet, fail),
+    cancel: () =>
+      void qrtz
+        .invoke('speech:pause', { extensions: ['echo'] })
+        .then(setParakeet, fail),
   };
 }
 
@@ -228,8 +214,10 @@ export default function TalkView() {
     <TalkOn
       switchControl={echo.control}
       dialog={echo.dialog}
-      offer={echo.offer}
+      statusError={echo.statusError}
       notice={echo.notice}
+      onDownload={echo.download}
+      onCancel={echo.cancel}
     />
   );
 }
@@ -237,13 +225,17 @@ export default function TalkView() {
 function TalkOn({
   switchControl,
   dialog,
-  offer,
+  statusError,
   notice,
+  onDownload,
+  onCancel,
 }: {
   switchControl: ReactNode;
   dialog: ReactNode;
-  offer: ReactNode;
+  statusError: ReactNode;
   notice: ReactNode;
+  onDownload: () => void;
+  onCancel: () => void;
 }) {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -275,6 +267,9 @@ function TalkOn({
     void qrtz.invoke('talk:history').then(setHistory, () => {});
   }, [qrtz, changed]);
 
+  // Nothing dictates without the speech model (SpeechRequired gates the body; this is the header's button).
+  const sp = speechSetup.speech;
+  const speechReady = !sp || (sp.configured && !!sp.installed);
   const listening = state?.phase === 'listening';
   const busy = !!state && !['idle', 'error', 'listening'].includes(state.phase);
   const toggle = useCallback(() => {
@@ -316,7 +311,7 @@ function TalkOn({
           <Button
             variant={listening ? 'danger' : 'primary'}
             onClick={toggle}
-            disabled={busy}
+            disabled={busy || !speechReady}
             data-testid="talk-toggle"
           >
             {listening ? 'stop' : 'dictate'}
@@ -333,81 +328,87 @@ function TalkOn({
       {optsModal}
       {dialog}
       {notice}
-      {offer}
-      {/* ADR 0175: one notice at a time. While echo's own download offer is up, the generic speech notice (and
-          its settings link) stays hidden; it comes back for the progress bar once a download starts. */}
-      {offer ? null : (
-        <SpeechNotice
-          status={speechSetup.speech}
-          onOpen={() => requestNavigate({ app: 'qrtz', item: 'echo' })}
-        />
-      )}
-      {state && state.phase !== 'idle' ? (
-        <Stack data-testid="talk-live">
-          <TalkPill
-            inline
-            phase={state.phase}
-            level={state.level}
-            {...(state.error ? { error: state.error } : {})}
-          />
-        </Stack>
-      ) : null}
-      <SettingsSection title="history" data-testid="talk-history">
-        {history.length ? (
-          <PlainList label="dictation history">
-            {history.map((e) => (
-              <TalkHistoryRow
-                key={e.id}
-                text={e.text}
-                meta={entryMeta(e)}
-                {...(e.error ? { flag: e.error } : {})}
-                onCopy={() =>
-                  void qrtz
-                    .invoke('talk:copy', { id: e.id })
-                    .then(() => toast('copied', 'success'))
-                }
-                onDelete={() =>
-                  void qrtz.invoke('talk:delete-entry', { id: e.id })
-                }
-              />
-            ))}
-          </PlainList>
-        ) : (
-          <EmptyState title="nothing dictated yet" />
-        )}
-      </SettingsSection>
-      <SettingsSection title="dictionary" data-testid="talk-dictionary">
-        <Stack as="form" dir="row" gap={2} onSubmit={addTerm}>
-          <Input
-            aria-label="add a word"
-            placeholder="qrtz = cue arts"
-            value={draft}
-            maxLength={200}
-            onChange={(e) => setDraft(e.target.value)}
-            data-testid="talk-term-input"
-          />
-          <Button
-            variant="secondary"
-            type="submit"
-            disabled={!parseTerm(draft)}
-            data-testid="talk-term-add"
-          >
-            add
-          </Button>
-        </Stack>
-        {dict.length ? (
-          <TermList>
-            {dict.map((d) => (
-              <DictionaryTerm
-                key={d.term}
-                term={d.term}
-                aliases={d.aliases}
-                onRemove={() => saveDict(dict.filter((x) => x.term !== d.term))}
-              />
-            ))}
-          </TermList>
+      {statusError}
+      {/* ADR 0175: echo can't dictate without its speech model, so until it's here the page shows only the
+          download (with the consent note) over the blurred page. */}
+      <SpeechRequired
+        app="echo"
+        status={speechSetup.speech}
+        note={CONSENT_NOTE}
+        onDownload={onDownload}
+        onCancel={onCancel}
+        data-testid="echo-offer"
+        testIds={{ download: 'echo-download', retry: 'echo-download' }}
+      >
+        {state && state.phase !== 'idle' ? (
+          <Stack data-testid="talk-live">
+            <TalkPill
+              inline
+              phase={state.phase}
+              level={state.level}
+              {...(state.error ? { error: state.error } : {})}
+            />
+          </Stack>
         ) : null}
-      </SettingsSection>
+        <SettingsSection title="history" data-testid="talk-history">
+          {history.length ? (
+            <PlainList label="dictation history">
+              {history.map((e) => (
+                <TalkHistoryRow
+                  key={e.id}
+                  text={e.text}
+                  meta={entryMeta(e)}
+                  {...(e.error ? { flag: e.error } : {})}
+                  onCopy={() =>
+                    void qrtz
+                      .invoke('talk:copy', { id: e.id })
+                      .then(() => toast('copied', 'success'))
+                  }
+                  onDelete={() =>
+                    void qrtz.invoke('talk:delete-entry', { id: e.id })
+                  }
+                />
+              ))}
+            </PlainList>
+          ) : (
+            <EmptyState title="nothing dictated yet" />
+          )}
+        </SettingsSection>
+        <SettingsSection title="dictionary" data-testid="talk-dictionary">
+          <Stack as="form" dir="row" gap={2} onSubmit={addTerm}>
+            <Input
+              aria-label="add a word"
+              placeholder="qrtz = cue arts"
+              value={draft}
+              maxLength={200}
+              onChange={(e) => setDraft(e.target.value)}
+              data-testid="talk-term-input"
+            />
+            <Button
+              variant="secondary"
+              type="submit"
+              disabled={!parseTerm(draft)}
+              data-testid="talk-term-add"
+            >
+              add
+            </Button>
+          </Stack>
+          {dict.length ? (
+            <TermList>
+              {dict.map((d) => (
+                <DictionaryTerm
+                  key={d.term}
+                  term={d.term}
+                  aliases={d.aliases}
+                  onRemove={() =>
+                    saveDict(dict.filter((x) => x.term !== d.term))
+                  }
+                />
+              ))}
+            </TermList>
+          ) : null}
+        </SettingsSection>
+      </SpeechRequired>
     </Page>
   );
 }

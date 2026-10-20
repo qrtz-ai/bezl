@@ -4,6 +4,8 @@ import {
   ModelsPanel,
   PlainList,
   SpeechNotice,
+  SpeechRequired,
+  Text,
   SpeechSetupPanel,
   TalkHistoryRow,
   TalkPill,
@@ -124,6 +126,20 @@ export const Speech: S = {
               onResume={noop}
               onDelete={noop}
             />
+          </Width>
+        </Row>
+      ))}
+      {STATES.map(([label, v]) => (
+        <Row key={`required-${label}`} label={`required · ${label}`}>
+          <Width w={560}>
+            <SpeechRequired
+              app="echo"
+              status={v}
+              onDownload={noop}
+              onCancel={noop}
+            >
+              <Text>echo&apos;s page</Text>
+            </SpeechRequired>
           </Width>
         </Row>
       ))}

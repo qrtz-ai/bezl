@@ -12,7 +12,7 @@ import {
   Spinner,
   Stack,
   useToast,
-  SpeechNotice,
+  SpeechRequired,
   ModuleSettingsButton,
   ModuleSettingsModal,
 } from '@qrtz/ui';
@@ -171,6 +171,9 @@ export default function NoteView() {
       <NoteSettings />
     </ModuleSettingsModal>
   );
+  // Nothing records without the speech model (SpeechRequired gates the page body; this is the header's button).
+  const sp = speechSetup.speech;
+  const speechReady = !sp || (sp.configured && !!sp.installed);
   const busy =
     isCapturingPhase(session.phase) ||
     session.phase === 'stopping' ||
@@ -193,6 +196,7 @@ export default function NoteView() {
           {busy ? null : (
             <Button
               size="sm"
+              disabled={!speechReady}
               onClick={() => void act(qrtz.invoke('note:start', {}))}
               data-testid="note-record-manual"
               icon="circle"
@@ -219,137 +223,145 @@ export default function NoteView() {
       }
     >
       {optsModal}
-      {notesPage ? (
-        <Notes linkable />
-      ) : (
-        <SplitView
-          sidebar={
-            <>
-              {searching ? (
-                <Input
-                  autoFocus
-                  placeholder="search"
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setPages(1);
-                  }}
-                  data-testid="note-search"
-                  aria-label="search meetings"
-                />
-              ) : null}
-              <SpeechNotice
-                status={speechSetup.speech}
-                onOpen={() => requestNavigate({ app: 'qrtz', item: 'nano' })}
-              />
-              {searching || busy ? null : (
-                <Upcoming
-                  onRecord={(title) =>
-                    void act(qrtz.invoke('note:start', title ? { title } : {}))
+      <SpeechRequired
+        app="nano"
+        status={speechSetup.speech}
+        onOpen={() => requestNavigate({ app: 'qrtz', item: 'nano' })}
+        data-testid="speech-notice"
+        testIds={{ open: 'speech-notice-open' }}
+      >
+        {notesPage ? (
+          <Notes linkable />
+        ) : (
+          <SplitView
+            sidebar={
+              <>
+                {searching ? (
+                  <Input
+                    autoFocus
+                    placeholder="search"
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setPages(1);
+                    }}
+                    data-testid="note-search"
+                    aria-label="search meetings"
+                  />
+                ) : null}
+                {searching || busy ? null : (
+                  <Upcoming
+                    onRecord={(title) =>
+                      void act(
+                        qrtz.invoke('note:start', title ? { title } : {}),
+                      )
+                    }
+                  />
+                )}
+                <Stack as="ul" gap={0} scroll grow aria-label="meetings">
+                  {visible.length === 0 ? (
+                    <Stack as="li">
+                      <EmptyState
+                        title={query ? 'no matches' : 'no meetings'}
+                      />
+                    </Stack>
+                  ) : (
+                    visible.map(({ meeting, hit }) => (
+                      <MeetingRow
+                        key={meeting.id}
+                        title={meeting.title}
+                        date={
+                          meeting.status === 'done'
+                            ? fmtDate(meeting.startedAt)
+                            : `${fmtDate(meeting.startedAt)} · ${meeting.status}`
+                        }
+                        {...(hit ? { snippet: hit.snippet } : {})}
+                        selected={selected === meeting.id}
+                        onSelect={() => setSelected(meeting.id)}
+                      />
+                    ))
+                  )}
+                  {hasMore ? (
+                    <Stack as="li">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPages((n) => n + 1)}
+                        data-testid="note-show-more"
+                      >
+                        more
+                      </Button>
+                    </Stack>
+                  ) : null}
+                </Stack>
+              </>
+            }
+          >
+            <Stack gap={6}>
+              {session?.helper === 'missing' || session?.helper === 'down' ? (
+                <Callout
+                  tone="danger"
+                  data-testid="helper-notice"
+                  title={
+                    session.helper === 'missing'
+                      ? 'recording unavailable: capture helper missing'
+                      : 'capture helper stopped, restarting'
                   }
                 />
-              )}
-              <Stack as="ul" gap={0} scroll grow aria-label="meetings">
-                {visible.length === 0 ? (
-                  <Stack as="li">
-                    <EmptyState title={query ? 'no matches' : 'no meetings'} />
-                  </Stack>
-                ) : (
-                  visible.map(({ meeting, hit }) => (
-                    <MeetingRow
-                      key={meeting.id}
-                      title={meeting.title}
-                      date={
-                        meeting.status === 'done'
-                          ? fmtDate(meeting.startedAt)
-                          : `${fmtDate(meeting.startedAt)} · ${meeting.status}`
-                      }
-                      {...(hit ? { snippet: hit.snippet } : {})}
-                      selected={selected === meeting.id}
-                      onSelect={() => setSelected(meeting.id)}
-                    />
-                  ))
-                )}
-                {hasMore ? (
-                  <Stack as="li">
+              ) : null}
+              {error ? (
+                <Callout
+                  tone="danger"
+                  title={error}
+                  data-testid="note-error"
+                  action={
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setPages((n) => n + 1)}
-                      data-testid="note-show-more"
+                      onClick={() => setError(null)}
                     >
-                      more
+                      dismiss
                     </Button>
-                  </Stack>
-                ) : null}
-              </Stack>
-            </>
-          }
-        >
-          <Stack gap={6}>
-            {session?.helper === 'missing' || session?.helper === 'down' ? (
-              <Callout
-                tone="danger"
-                data-testid="helper-notice"
-                title={
-                  session.helper === 'missing'
-                    ? 'recording unavailable: capture helper missing'
-                    : 'capture helper stopped, restarting'
-                }
-              />
-            ) : null}
-            {error ? (
-              <Callout
-                tone="danger"
-                title={error}
-                data-testid="note-error"
-                action={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setError(null)}
-                  >
-                    dismiss
-                  </Button>
-                }
-              />
-            ) : null}
-            <CaptureStatus
-              degraded={[]}
-              error={session.errorInfo?.message ?? null}
-              onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
-            />
-            <Hud
-              s={session}
-              onRecord={() => void act(qrtz.invoke('note:start', {}))}
-              onStop={() => void act(qrtz.invoke('note:stop'))}
-              onPause={() => void act(qrtz.invoke('note:pause', {}))}
-              onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
-              onAlways={() =>
-                void act(
-                  qrtz
-                    .invoke('note:set-auto-record', { enabled: true })
-                    .then(() => qrtz.invoke('note:start', {})),
-                )
-              }
-              onOpen={(id) => setSelected(id)}
-            />
-            {selected ? (
-              <Suspense fallback={<Spinner />}>
-                <MeetingDetail
-                  key={selected}
-                  id={selected}
-                  tab={tab}
-                  onTab={setTab}
-                  onDelete={(title) => requestDelete(selected, title)}
+                  }
                 />
-              </Suspense>
-            ) : isCapturingPhase(session.phase) ? null : (
-              <EmptyState title="no meeting selected" />
-            )}
-          </Stack>
-        </SplitView>
-      )}
+              ) : null}
+              <CaptureStatus
+                degraded={[]}
+                error={session.errorInfo?.message ?? null}
+                onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
+              />
+              <Hud
+                s={session}
+                onRecord={() => void act(qrtz.invoke('note:start', {}))}
+                onStop={() => void act(qrtz.invoke('note:stop'))}
+                onPause={() => void act(qrtz.invoke('note:pause', {}))}
+                onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
+                onAlways={() =>
+                  void act(
+                    qrtz
+                      .invoke('note:set-auto-record', { enabled: true })
+                      .then(() => qrtz.invoke('note:start', {})),
+                  )
+                }
+                onOpen={(id) => setSelected(id)}
+              />
+              {selected ? (
+                <Suspense fallback={<Spinner />}>
+                  <MeetingDetail
+                    key={selected}
+                    id={selected}
+                    tab={tab}
+                    onTab={setTab}
+                    onDelete={(title) => requestDelete(selected, title)}
+                  />
+                </Suspense>
+              ) : isCapturingPhase(session.phase) ? null : (
+                <EmptyState title="no meeting selected" />
+              )}
+            </Stack>
+          </SplitView>
+        )}
+      </SpeechRequired>
     </Page>
   );
 }

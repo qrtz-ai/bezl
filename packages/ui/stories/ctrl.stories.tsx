@@ -4,6 +4,7 @@ import {
   AskCard,
   ConfirmCard,
   DecisionList,
+  CtrlModelRequired,
   DecisionModelCard,
   RunHistory,
   RunTimeline,
@@ -141,35 +142,26 @@ const model = (m: Partial<DecisionModelInfo>): DecisionModelInfo => ({
   ...m,
 });
 export const Model: S = {
-  name: 'decision model card',
+  name: 'decision model · required',
   render: () => (
     <>
       {(
         [
-          [
-            'not asked',
-            model({
-              consented: false,
-              state: 'not_installed',
-              scorer: 'heuristic',
-            }),
-          ],
-          ['downloading', model({ state: 'downloading', scorer: 'heuristic' })],
+          ['not asked', model({ consented: false, state: 'not_installed' })],
+          ['downloading', model({ state: 'downloading' })],
+          ['failed', model({ state: 'failed', error: 'download failed' })],
+          ['unavailable', model({ state: 'unavailable' })],
           ['installed', model({})],
-          [
-            'failed',
-            model({
-              state: 'failed',
-              scorer: 'heuristic',
-              error: 'download failed',
-            }),
-          ],
-          ['unavailable', model({ state: 'unavailable', scorer: 'heuristic' })],
         ] as const
       ).map(([label, m]) => (
         <Row key={label} label={label}>
-          <Width w={480}>
-            <DecisionModelCard model={m} onConsent={noop} />
+          <Width w={640}>
+            <CtrlModelRequired model={m} onConsent={noop}>
+              <Text>ctrl&apos;s page</Text>
+              {m.state === 'installed' ? (
+                <DecisionModelCard model={m} onConsent={noop} />
+              ) : null}
+            </CtrlModelRequired>
           </Width>
         </Row>
       ))}

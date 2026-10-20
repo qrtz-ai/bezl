@@ -1,5 +1,17 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ModelRequirement, type ModelRequirementProps } from '../src';
+import {
+  Button,
+  Input,
+  ModelRequired,
+  ModelRequirement,
+  Page,
+  SettingsSection,
+  Stack,
+  Text,
+  useTheme,
+  type ModelRequiredProps,
+  type ModelRequirementProps,
+} from '../src';
 import { Row, Width, noop } from './_util';
 
 const meta: Meta = { title: 'components/model requirement' };
@@ -16,7 +28,6 @@ const decision = {
   name: 'decision model',
   purpose: "picks ctrl's next step, on this mac",
   sizeBytes: 484_000_000,
-  fallback: 'ctrl decides with its built-in rules and never goes online',
 };
 
 const STATES: [string, ModelRequirementProps][] = [
@@ -49,16 +60,7 @@ const STATES: [string, ModelRequirementProps][] = [
       onRetry: noop,
     },
   ],
-  [
-    'optional · fallback',
-    {
-      ...decision,
-      state: 'missing',
-      note: 'deciding with the built-in rules',
-      onDownload: noop,
-    },
-  ],
-  ['unavailable', { ...decision, state: 'unavailable', onRemove: noop }],
+  ['unavailable', { ...decision, state: 'unavailable' }],
 ];
 
 function All({ layout, w }: { layout: 'card' | 'row'; w: number }) {
@@ -111,11 +113,98 @@ export const Error: S = {
     </Width>
   ),
 };
-export const Optional: S = {
-  name: 'optional · fallback',
+/** Stand-in app body: what shows blurred and inert behind the banner. */
+function FakeBody() {
+  const t = useTheme();
+  return (
+    <>
+      <Stack dir="row" gap={2}>
+        <Input aria-label="do" placeholder="do…" />
+        <Button>do</Button>
+      </Stack>
+      <SettingsSection title="history">
+        {['open safari', 'reply to sam', 'rename the q3 folder'].map((x) => (
+          <div
+            key={x}
+            style={{
+              padding: t.space[2],
+              borderBottom: `1px solid ${t.color.border}`,
+            }}
+          >
+            <Text>{x}</Text>
+          </div>
+        ))}
+      </SettingsSection>
+    </>
+  );
+}
+
+const REQUIRED: [string, ModelRequiredProps][] = [
+  ['missing', { ...speech, app: 'echo', state: 'missing', onDownload: noop }],
+  [
+    'downloading',
+    {
+      ...speech,
+      app: 'echo',
+      state: 'downloading',
+      progress: { done: 504_000_000, total: 1_200_000_000 },
+      onCancel: noop,
+    },
+  ],
+  [
+    'error',
+    {
+      ...speech,
+      app: 'nano',
+      state: 'error',
+      error: "the file didn't match its fingerprint",
+      onRetry: noop,
+    },
+  ],
+  ['unavailable', { ...decision, app: 'ctrl', state: 'unavailable' }],
+];
+
+function RequiredPage({ p }: { p: ModelRequiredProps }) {
+  return (
+    <Page title={p.app}>
+      <ModelRequired {...p}>
+        <FakeBody />
+      </ModelRequired>
+    </Page>
+  );
+}
+
+export const RequiredEvery: S = {
+  name: 'required · every state',
   render: () => (
-    <Width w={480}>
-      <ModelRequirement {...STATES[5]![1]} />
-    </Width>
+    <>
+      {REQUIRED.map(([label, p]) => (
+        <Row key={label} label={label}>
+          <Width w={720}>
+            <RequiredPage p={p} />
+          </Width>
+        </Row>
+      ))}
+    </>
   ),
+};
+export const RequiredMissing: S = {
+  name: 'required · missing',
+  render: () => <RequiredPage p={REQUIRED[0]![1]} />,
+};
+export const RequiredDownloading: S = {
+  name: 'required · downloading',
+  render: () => <RequiredPage p={REQUIRED[1]![1]} />,
+};
+export const RequiredError: S = {
+  name: 'required · error',
+  render: () => <RequiredPage p={REQUIRED[2]![1]} />,
+};
+export const RequiredUnavailable: S = {
+  name: 'required · unavailable',
+  render: () => <RequiredPage p={REQUIRED[3]![1]} />,
+};
+export const RequiredReady: S = {
+  name: 'required · ready (no gate)',
+  render: () => <RequiredPage p={{ ...speech, app: 'echo', state: 'ready' }} />,
 };

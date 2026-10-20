@@ -112,8 +112,9 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     expect(
       v.calls.filter((c) => c.channel === 'speech:download').map((c) => c.req),
     ).toEqual([{ extensions: ['echo'] }]);
-    // Downloading now: the offer goes away (the notice shows the bar), and nothing touched the config.
-    expect(v.q('echo-offer')).toBeNull();
+    // The model is required: the gate stays until it's installed, and nothing touched the config.
+    expect(v.q('echo-offer')).not.toBeNull();
+    expect(v.q('echo-offer-blocked')?.hasAttribute('inert')).toBe(true);
     expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
     v.unmount();
   });
@@ -130,9 +131,10 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     await act(async () => v.q('echo-download')!.click());
     await v.emit('speech:status', downloading);
     await v.settle();
-    // Downloading: the offer is gone and the notice is back, with the progress bar.
-    expect(v.q('echo-offer')).toBeNull();
-    expect(v.q('speech-notice')?.textContent).toContain('downloading · 0%');
+    // Downloading: the same gate shows the progress bar, still with no separate notice.
+    expect(v.q('echo-offer')?.dataset.state).toBe('downloading');
+    expect(v.q('echo-offer')?.textContent).toContain('downloading · 0%');
+    expect(v.q('speech-notice')).toBeNull();
     v.unmount();
   });
 
@@ -153,12 +155,13 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     v.unmount();
   });
 
-  it('offers nothing while a download runs, and nothing once parakeet is installed', async () => {
+  it('blocks with the progress while a download runs, and lifts once parakeet is installed', async () => {
     let s = downloading;
     const v = await mount(async () => s);
     expect(v.q('talk')).not.toBeNull();
-    expect(v.q('echo-offer')).toBeNull();
-    // The download finishes: the view reads echo's status again and still offers nothing.
+    expect(v.q('echo-offer')?.dataset.state).toBe('downloading');
+    expect(v.q('echo-download')).toBeNull();
+    // The download finishes: the view reads echo's status again and the gate lifts.
     s = installed;
     await v.emit('speech:status', installed);
     await v.settle();
@@ -297,11 +300,11 @@ describe('a failed speech:status (N183)', () => {
     v.unmount();
   });
 
-  it('on the on page, the error takes the offer place and the switch still works', async () => {
+  it('on the on page, the error shows above the gate (an unread status is not ready) and the switch still works', async () => {
     const v = await mount(() => Promise.reject(new Error('E_UNAVAILABLE')));
     expect(v.q('talk')).not.toBeNull();
     expect(v.q('echo-status-error')).not.toBeNull();
-    expect(v.q('echo-offer')).toBeNull();
+    expect(v.q('echo-offer')?.dataset.state).toBe('missing');
     expect((v.q('echo-switch') as HTMLButtonElement).disabled).toBe(false);
     v.unmount();
   });

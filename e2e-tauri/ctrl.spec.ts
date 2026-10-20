@@ -4,7 +4,7 @@ import { axe } from './axe';
 // ctrl do (ADR 0214) in the shipped renderer over the mocked Tauri IPC: type one command, watch the run's decisions
 // and actions, answer the confirm card or the ask card, and scrub the run. The chain itself runs over fixture trees
 // in `cargo test -p qrtz-ctrl`; the mock replays canned runs of the same shape.
-async function open(page: Page, errors: string[]) {
+async function open(page: Page, errors: string[], withModel = true) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
@@ -13,6 +13,11 @@ async function open(page: Page, errors: string[]) {
   await page.getByTestId('nav-ctrl').click();
   const ctrl = page.locator('[data-subapp="ctrl"]');
   await expect(ctrl.getByTestId('ctrl')).toBeVisible();
+  // The decision model is required: the mock starts without it, so a yes downloads it and lifts the gate.
+  if (withModel) {
+    await ctrl.getByTestId('ctrl-model-on').click();
+    await expect(ctrl.getByTestId('ctrl-model-gate')).toHaveCount(0);
+  }
   return ctrl;
 }
 
@@ -96,23 +101,38 @@ test('ctrl do: an unclear command asks for one of three; a pick finishes, cancel
   expect(errors).toEqual([]);
 });
 
-test('ctrl: the decision model is a choice; a yes installs the pinned model, off removes it', async ({
+test('ctrl: without the decision model the page is blocked; a yes installs it, off blocks again', async ({
   page,
 }) => {
   const errors: string[] = [];
-  const ctrl = await open(page, errors);
-  const card = ctrl.getByTestId('ctrl-model');
-  await expect(card).toHaveAttribute('data-state', 'missing');
-  await expect(card.getByTestId('ctrl-model-scorer')).toHaveText(
-    'deciding with the built-in rules',
+  const ctrl = await open(page, errors, false);
+  const gate = ctrl.getByTestId('ctrl-model-gate');
+  const banner = ctrl.getByTestId('ctrl-model');
+  await expect(banner).toHaveAttribute('data-state', 'missing');
+  await expect(banner.getByTestId('ctrl-model-title')).toHaveText(
+    'ctrl needs the decision model',
   );
-  await expect(card.getByTestId('ctrl-model-line')).toHaveText(
+  await expect(banner.getByTestId('ctrl-model-line')).toHaveText(
     'not downloaded · 484 mb',
   );
-  await expect(card.getByTestId('ctrl-model-on')).toHaveText('download');
-  await card.getByTestId('ctrl-model-on').click();
+  await expect(ctrl.getByText('built-in rules')).toHaveCount(0);
+  await expect(gate.getByTestId('ctrl-model-blocked')).toHaveAttribute(
+    'inert',
+    '',
+  );
+  // Inert: the do field sits under the blocked, blurred body and can't take focus.
+  expect(
+    await ctrl
+      .getByTestId('ctrl-do-input')
+      .evaluate((el) => !!el.closest('[inert]')),
+  ).toBe(true);
+  await expect(banner.getByTestId('ctrl-model-on')).toHaveText('download');
+  await banner.getByTestId('ctrl-model-on').click();
+  await expect(gate).toHaveCount(0);
+  await expect(ctrl.getByTestId('ctrl-do-input')).toBeEditable();
+  const card = ctrl.getByTestId('ctrl-model');
   await expect(card).toHaveAttribute('data-state', 'ready');
   await card.getByTestId('ctrl-model-off').click();
-  await expect(card).toHaveAttribute('data-state', 'missing');
+  await expect(gate).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -53,11 +53,12 @@ export interface ModelRequirementProps {
   progress?: ModelRequirementProgress;
   /** error: the real reason. */
   error?: string | null;
-  /** Optional model: what the app does without it ("ctrl decides with its built-in rules"). */
-  fallback?: string;
   /** Extra muted line under the purpose (a consent note, which engine is deciding). */
   note?: ReactNode;
-  layout?: 'card' | 'row';
+  /** `banner`: ModelRequired's full-width strip at the top of a page body (no card around it). */
+  layout?: 'card' | 'row' | 'banner';
+  /** banner: the app that needs the model, for the title "echo needs the speech model". */
+  app?: string;
   onDownload?: () => void;
   onCancel?: () => void;
   onRetry?: () => void;
@@ -117,8 +118,8 @@ const ICON = {
 
 /**
  * The one view for "this app needs a model": missing (name, purpose, size, download), downloading (progress,
- * cancel), ready, error (the reason, retry) and optional (what happens without it). `card` sits inline in an
- * app's page; `row` fits a settings list or a side panel. Rows 12 apart inside, sections 24 apart outside.
+ * cancel), ready, error (the reason, retry) and unavailable. `card` sits inline in an app's page; `row` fits a
+ * settings list or a side panel; `banner` is ModelRequired's strip. Rows 12 apart inside, sections 24 apart outside.
  */
 export function ModelRequirement(p: ModelRequirementProps) {
   const t = useTheme();
@@ -127,7 +128,6 @@ export function ModelRequirement(p: ModelRequirementProps) {
     purpose,
     state,
     layout = 'card',
-    fallback,
     note,
     'data-testid': testId = 'model-requirement',
   } = p;
@@ -221,7 +221,9 @@ export function ModelRequirement(p: ModelRequirementProps) {
         <Icon name={ICON[state]} tone={tone} />
       )}
       <div style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 auto' }}>
-        <Text truncate={layout === 'row'}>{name}</Text>
+        <Text truncate={layout === 'row'} data-testid={`${testId}-title`}>
+          {layout === 'banner' && p.app ? `${p.app} needs the ${name}` : name}
+        </Text>
         <Text
           variant="caption"
           muted={state !== 'error'}
@@ -245,17 +247,11 @@ export function ModelRequirement(p: ModelRequirementProps) {
   ) : null;
 
   const details =
-    layout === 'card' &&
-    (purpose || note || (fallback && state !== 'ready')) ? (
+    layout !== 'row' && (purpose || note) ? (
       <div style={{ display: 'grid', gap: t.space[1] }}>
         {purpose ? (
           <Text variant="bodySm" muted>
             {purpose}
-          </Text>
-        ) : null}
-        {fallback && state !== 'ready' ? (
-          <Text variant="bodySm" muted data-testid={`${testId}-fallback`}>
-            {`without it, ${fallback}`}
           </Text>
         ) : null}
         {note ? (
@@ -283,12 +279,70 @@ export function ModelRequirement(p: ModelRequirementProps) {
               border: `1px solid ${state === 'error' ? `color-mix(in srgb, ${t.color.danger} 35%, transparent)` : t.color.border}`,
               minWidth: 0,
             }
-          : { display: 'grid', gap: t.space[2], minHeight: 32, minWidth: 0 }
+          : layout === 'banner'
+            ? {
+                display: 'grid',
+                gap: t.space[3],
+                width: '100%',
+                boxSizing: 'border-box',
+                paddingBottom: t.space[4],
+                borderBottom: `1px solid ${state === 'error' ? `color-mix(in srgb, ${t.color.danger} 35%, transparent)` : t.color.border}`,
+                minWidth: 0,
+              }
+            : { display: 'grid', gap: t.space[2], minHeight: 32, minWidth: 0 }
       }
     >
       {head}
       {bar}
       {details}
+    </div>
+  );
+}
+
+export interface ModelRequiredProps extends Omit<
+  ModelRequirementProps,
+  'layout' | 'app'
+> {
+  /** The app that can't work without the model: "echo", "nano", "ctrl". */
+  app: string;
+  /** The app's page body: shown as is once the model is ready, blurred and inert until then. */
+  children?: ReactNode;
+}
+
+/**
+ * The one gate for an app whose model is required (every app's is): until the model is ready, a full-width
+ * banner sits at the top of the page body ("echo needs the speech model", its state and the one action) and the
+ * rest of the page shows blurred behind it, inert and hidden from assistive tech, because nothing works without
+ * the model. Once ready it renders only the children.
+ */
+export function ModelRequired({ children, ...p }: ModelRequiredProps) {
+  const t = useTheme();
+  const testId = p['data-testid'] ?? 'model-required';
+  if (p.state === 'ready') return <>{children}</>;
+  return (
+    <div
+      data-testid={`${testId}-gate`}
+      data-model-required={p.state}
+      style={{ display: 'grid', gap: t.space[6], minWidth: 0, width: '100%' }}
+    >
+      <ModelRequirement {...p} layout="banner" data-testid={testId} />
+      <div
+        inert
+        aria-hidden
+        data-testid={`${testId}-blocked`}
+        style={{
+          filter: 'blur(6px)',
+          opacity: 0.6,
+          pointerEvents: 'none',
+          userSelect: 'none',
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: t.space[6],
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

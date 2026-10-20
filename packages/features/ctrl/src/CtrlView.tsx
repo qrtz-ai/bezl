@@ -4,6 +4,7 @@ import {
   Button,
   ConfirmCard,
   DecisionList,
+  CtrlModelRequired,
   DecisionModelCard,
   EmptyState,
   Input,
@@ -67,7 +68,7 @@ export default function CtrlView() {
     [qrtz, fail],
   );
   useEffect(loadRuns, [loadRuns, changed]);
-  // ADR 0116: a backend without the model channels simply hides the section.
+  // ADR 0116: a backend without the model channels has nothing to gate on (no model to download).
   useEffect(() => {
     void qrtz.invoke('ctrl:model').then(setModel, () => setModel(null));
   }, [qrtz, changed]);
@@ -128,24 +129,8 @@ export default function CtrlView() {
   );
   const stoppable =
     busy ?? (run && run.status === 'running' ? run.runId : null);
-  return (
-    <Page
-      data-testid="ctrl"
-      title="ctrl"
-      actions={
-        <>
-          <Text variant="caption" muted truncate>
-            does it on your screen · esc stops it
-          </Text>
-          <ModuleSettingsButton
-            module="ctrl"
-            onClick={() => setSettingsOpen(true)}
-            data-testid="ctrl-settings-open"
-          />
-        </>
-      }
-    >
-      {optsModal}
+  const body = (
+    <>
       <Stack
         as="form"
         dir="row"
@@ -219,7 +204,7 @@ export default function CtrlView() {
           <EmptyState title="nothing done yet" icon="command" />
         )}
       </SettingsSection>
-      {model ? (
+      {model?.state === 'installed' ? (
         <SettingsSection
           title="decision model"
           data-testid="ctrl-model-section"
@@ -227,6 +212,33 @@ export default function CtrlView() {
           <DecisionModelCard model={model} onConsent={consent} />
         </SettingsSection>
       ) : null}
+    </>
+  );
+  return (
+    <Page
+      data-testid="ctrl"
+      title="ctrl"
+      actions={
+        <>
+          <Text variant="caption" muted truncate>
+            does it on your screen · esc stops it
+          </Text>
+          <ModuleSettingsButton
+            module="ctrl"
+            onClick={() => setSettingsOpen(true)}
+            data-testid="ctrl-settings-open"
+          />
+        </>
+      }
+    >
+      {optsModal}
+      {model ? (
+        <CtrlModelRequired model={model} onConsent={consent}>
+          {body}
+        </CtrlModelRequired>
+      ) : (
+        body
+      )}
     </Page>
   );
 }

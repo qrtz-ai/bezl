@@ -4,6 +4,7 @@ import {
   AskCard,
   ConfirmCard,
   DecisionList,
+  CtrlModelRequired,
   DecisionModelCard,
   RunHistory,
   RunTimeline,
@@ -139,16 +140,44 @@ describe('DecisionModelCard (ADR 0116)', () => {
     scorer: 'heuristic' as const,
     error: null,
   };
-  it('offers the download only as a choice, all lowercase', () => {
+  it('blocks ctrl until the model is here: a full-width banner over the blurred, inert page', () => {
     const html = renderToStaticMarkup(
-      <DecisionModelCard model={base} onConsent={noop} />,
+      <CtrlModelRequired model={base} onConsent={noop}>
+        <p data-testid="ctrl-body">body</p>
+      </CtrlModelRequired>,
     );
+    expect(html).toContain('ctrl needs the decision model');
     expect(html).toContain('data-testid="ctrl-model-on"');
-    expect(html).not.toContain('ctrl-model-off');
-    expect(html).toContain('built-in rules');
+    expect(html).toContain('data-layout="banner"');
+    expect(html).toMatch(/inert=""[^>]*data-testid="ctrl-model-blocked"/);
+    expect(html).toContain('blur(');
+    expect(html).not.toContain('built-in rules');
     expect(html.replace(/<[^>]*>/g, '')).toBe(
       html.replace(/<[^>]*>/g, '').toLowerCase(),
     );
+  });
+  it('blocks even when the backend still decides with its rules', () => {
+    const html = renderToStaticMarkup(
+      <CtrlModelRequired
+        model={{ ...base, consented: true, state: 'failed', error: 'x' }}
+        onConsent={noop}
+      >
+        <p>body</p>
+      </CtrlModelRequired>,
+    );
+    expect(html).toContain('data-model-required="error"');
+    expect(html).toContain('data-testid="ctrl-model-retry"');
+  });
+  it('shows only the page once the model is installed', () => {
+    const html = renderToStaticMarkup(
+      <CtrlModelRequired
+        model={{ ...base, consented: true, state: 'installed' }}
+        onConsent={noop}
+      >
+        <p data-testid="ctrl-body">body</p>
+      </CtrlModelRequired>,
+    );
+    expect(html).toBe('<p data-testid="ctrl-body">body</p>');
   });
   it('after a yes on the placeholder it says nothing was downloaded and offers turning off', () => {
     const html = renderToStaticMarkup(
@@ -165,20 +194,5 @@ describe('DecisionModelCard (ADR 0116)', () => {
     expect(html).toContain('data-state="unavailable"');
     expect(html).toContain('nothing downloaded');
     expect(html).toContain('data-testid="ctrl-model-off"');
-  });
-  it('names the on-device model only when it decides', () => {
-    const html = renderToStaticMarkup(
-      <DecisionModelCard
-        model={{
-          ...base,
-          consented: true,
-          state: 'installed',
-          scorer: 'laya',
-          sizeBytes: 420e6,
-        }}
-        onConsent={noop}
-      />,
-    );
-    expect(html).toContain('deciding with the on-device model');
   });
 });
