@@ -62,5 +62,35 @@ expect_fail bundled_helpers "$t/modules" ABCDE12345
 rm -rf "$t/modules/corrupt"
 expect_pass bundled_helpers "$t/modules" ABCDE12345
 expect_fail bundled_helpers "$t/modules" ""   # no signing team given
+
+# QRT-292: build-packages.sh holds nano and snap (and ctrl) to the same rules through module_code / check_package.
+for mod in nano snap ctrl; do
+  expect_pass module_code "$here/../../modules/$mod/module.json" MR26CCZ496
+  expect_fail module_code "$here/../../modules/$mod/module.json" ZZZZZ99999   # pinned to another team
+done
+pm="$t/pkg-module.json"
+for bad_req in 'identifier \"ai.qrtz.p\" and anchor apple generic' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\" or anchor apple' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\" || anchor apple' \
+               'identifier \"ai.qrtz.p\" and (certificate leaf[subject.OU] = \"ABCDE12345\" or identifier \"ai.qrtz.p\")' \
+               'identifier \"ai.qrtz.p\" and not certificate leaf[subject.OU] = \"ABCDE12345\"' \
+               'identifier \"ai.qrtz.p\" and ! certificate leaf[subject.OU] = \"ABCDE12345\"' \
+               'anchor apple or identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"'; do
+  printf '{"code":{"bundleId":"ai.qrtz.p","designatedRequirement":"%s"}}' "$bad_req" >"$pm"
+  expect_fail module_code "$pm" ABCDE12345
+done
+printf '{"code":{"bundleId":"ai.qrtz.p",' >"$pm"; expect_fail module_code "$pm" ABCDE12345   # unparseable
+expect_fail module_code "$t/no-such-module.json" ABCDE12345
+printf '{"code":{"bundleId":"ai.qrtz.p","designatedRequirement":"identifier \\"ai.qrtz.p\\" and certificate leaf[subject.OU] = \\"ABCDE12345\\""}}' >"$pm"
+expect_pass module_code "$pm" ABCDE12345
+pexe="$t/qrtz-p"; cp /usr/bin/true "$pexe"
+codesign --force --identifier qrtz-p --sign - "$pexe"           # file name, as 0.2.4's echo was
+expect_fail check_package "$pexe" "$pm" ai.qrtz.p ABCDE12345 -
+codesign --force --identifier ai.qrtz.p --sign - "$pexe"
+expect_pass check_package "$pexe" "$pm" ai.qrtz.p ABCDE12345 -
+expect_fail check_package "$pexe" "$pm" ai.qrtz.other ABCDE12345 -   # module.json bundleId != build-packages table
+expect_fail check_package "$pexe" "$pm" ai.qrtz.p ZZZZZ99999 -       # module.json doesn't pin the signing team
+# A Developer ID build is held to the full requirement: an ad-hoc signature with the right identifier still fails.
+expect_fail check_package "$pexe" "$pm" ai.qrtz.p ABCDE12345 "Developer ID Application: Test (ABCDE12345)"
 ((bad == 0)) || { echo "bundled-helpers test: $bad failed" >&2; exit 1; }
 echo "bundled-helpers test: all $pass passed"
