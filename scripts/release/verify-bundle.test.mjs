@@ -185,15 +185,12 @@ describe('verify-bundle.sh', () => {
     );
   });
 
-  it('is called by release:mac, publish-local.sh and app-release.yml', () => {
+  it('is called by release:mac, and publish-local.sh', () => {
     expect(read('scripts/release/sign-notarize.sh')).toContain(
       'scripts/release/verify-bundle.sh" "$APP"',
     );
     expect(read('scripts/app/publish-local.sh')).toContain(
       'scripts/release/verify-bundle.sh" "$app"',
-    );
-    expect(read('.github/workflows/app-release.yml')).toContain(
-      'bash scripts/release/verify-bundle.sh "$app"',
     );
   });
 

@@ -22,7 +22,7 @@
     },
     "apps/desktop": {
       "name": "@qrtz/desktop",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "dependencies": {
         "@qrtz/core": "workspace:*",
         "@qrtz/feature-ctrl": "workspace:*",
