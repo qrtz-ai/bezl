@@ -3,8 +3,10 @@
 //! `cargo test -p qrtz-dash-net --features dev-local` (debug: override compiled), plus `--release --features dev-local`.
 use qrtz_dash_net::*;
 
+#[cfg(all(debug_assertions, feature = "dev-local"))]
 #[test]
 fn dev_origin_accepts_only_http_127_0_0_1_with_a_port() {
+    use qrtz_dash_net::dev_origin::dev_origin_ok;
     for ok in [
         "http://127.0.0.1:8799",
         "http://127.0.0.1:1",

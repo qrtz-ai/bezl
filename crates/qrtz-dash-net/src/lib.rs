@@ -26,31 +26,13 @@ pub const DEV_ORIGIN_VAR: &str = "QRTZ_DASH_ORIGIN";
 /// `true` only in debug builds with the `dev-local` feature. Everywhere else the override code is not compiled in.
 pub const DEV_OVERRIDE_COMPILED: bool = cfg!(all(debug_assertions, feature = "dev-local"));
 
-/// `http://127.0.0.1:<port>` exactly: explicit port 1-65535, no path, userinfo, query, fragment or other host
-/// (not `localhost`, not `[::1]`).
-pub fn dev_origin_ok(o: &str) -> bool {
-    let Some(port) = o.strip_prefix("http://127.0.0.1:") else {
-        return false;
-    };
-    !port.is_empty()
-        && port.len() <= 5
-        && port.bytes().all(|b| b.is_ascii_digit())
-        && !port.starts_with('0')
-        && port.parse::<u32>().is_ok_and(|p| (1..=65535).contains(&p))
-}
+/// The dev-only loopback origin: compiled only into debug + dev-local builds (src/dev_origin.rs).
+#[cfg(all(debug_assertions, feature = "dev-local"))]
+pub mod dev_origin;
 
-/// The dev override, read once. `Err` if it is set but not a valid loopback origin (the helper then exits).
 #[cfg(all(debug_assertions, feature = "dev-local"))]
 fn dev_origin() -> Result<Option<&'static str>, ()> {
-    static O: std::sync::OnceLock<Result<Option<String>, ()>> = std::sync::OnceLock::new();
-    O.get_or_init(|| match std::env::var(DEV_ORIGIN_VAR) {
-        Err(std::env::VarError::NotPresent) => Ok(None),
-        Ok(v) if dev_origin_ok(&v) => Ok(Some(v)),
-        _ => Err(()),
-    })
-    .as_ref()
-    .map(|o| o.as_deref())
-    .map_err(|_| ())
+    dev_origin::read()
 }
 
 /// Release builds (or no `dev-local`): there is no override path at all.
