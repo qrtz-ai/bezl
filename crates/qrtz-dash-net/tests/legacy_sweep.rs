@@ -1,5 +1,5 @@
 //! QRT-286: the legacy sweep deletes only untagged `ai.qrtz.dash-net` owner-key items, and a second run is a no-op.
-//! The fake deletes like the real Keychain: by service, account and creation date, whatever the comment.
+//! The fake deletes like the real Keychain: by service and account, whatever the comment.
 use qrtz_dash_net::legacy_sweep::*;
 use qrtz_dash_net::*;
 use std::cell::RefCell;
@@ -25,7 +25,7 @@ impl SweepKeychain for Fake {
             .cloned()
             .collect())
     }
-    fn delete(&self, service: &str, account: &str, created: &str) -> Result<(), String> {
+    fn delete(&self, service: &str, account: &str) -> Result<(), String> {
         if self.fail_delete {
             return Err("errSecInteractionNotAllowed".into());
         }
@@ -33,7 +33,7 @@ impl SweepKeychain for Fake {
         self.items
             .lock()
             .unwrap()
-            .retain(|i| !(i.service == service && i.account == account && i.created == created));
+            .retain(|i| !(i.service == service && i.account == account));
         Ok(())
     }
 }
@@ -53,7 +53,6 @@ const TAG: &str = "qrtz-dash origin https://dash.qrtz.ai";
 
 fn world() -> Vec<ItemAttrs> {
     vec![
-        item(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, None, T1),
         item(KEYCHAIN_SERVICE, KEYCHAIN_PENDING_ACCOUNT, Some(""), T1),
         item(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, Some(TAG), T2),
         item(KEYCHAIN_SERVICE, "someone-else", None, T1),
@@ -78,7 +77,7 @@ fn deletes_only_untagged_dash_net_owner_key_items() {
     assert_eq!(
         r,
         SweepReport {
-            deleted: 2,
+            deleted: 1,
             skipped: 0
         }
     );
@@ -97,7 +96,7 @@ fn deletes_only_untagged_dash_net_owner_key_items() {
     assert!(left.iter().any(|i| i.service == "com.example.other"));
     assert!(left.iter().any(|i| i.account == "someone-else"));
     // Only the real service is ever listed, never the dev one.
-    assert_eq!(*k.listed.borrow(), vec![KEYCHAIN_SERVICE.to_string()]);
+    assert!(k.listed.borrow().iter().all(|s| s == KEYCHAIN_SERVICE));
 }
 
 #[test]
@@ -119,10 +118,10 @@ fn a_second_run_changes_nothing() {
 }
 
 #[test]
-fn an_untagged_item_sharing_a_tagged_items_creation_date_is_left_alone() {
-    // The delete matches service, account and date, so it would take the tagged item too: skip it.
+fn an_untagged_item_sharing_an_account_with_a_tagged_item_is_left_alone() {
+    // The delete matches service and account, so it would take the tagged item too: skip it.
     let items = vec![
-        item(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, None, T2),
+        item(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, None, T1),
         item(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, Some(TAG), T2),
     ];
     let k = Fake {

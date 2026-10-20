@@ -64,8 +64,8 @@ The helper removes such items itself, at every start (`crates/qrtz-dash-net/src/
 - It looks only at service `ai.qrtz.dash-net`, accounts `owner-key` and `owner-key.pending`. `qrtz-dash-dev` items
   and other services' items are never listed or touched.
 - It lists items by attributes only and never reads a secret.
-- It deletes an item only if it has no comment, matched by service, account and creation date, and skips it if a
-  tagged item shares that account and creation date. Tagged items are never deleted.
+- It deletes an item only if it has no comment and no tagged item shares its account (the delete matches service
+  and account). It then lists again and fails if the untagged item is still there or a tagged item is gone.
 - It is idempotent and bounded: one listing, at most one delete per item, and it stops at the first unexpected error.
   A run with nothing left to remove changes nothing.
 

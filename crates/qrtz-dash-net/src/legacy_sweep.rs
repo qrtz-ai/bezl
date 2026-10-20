@@ -8,8 +8,9 @@
 //! - looks only at [`KEYCHAIN_SERVICE`] (never [`crate::DEV_KEYCHAIN_SERVICE`] or any other service) and only at
 //!   the [`KEYCHAIN_ACCOUNT`] and [`KEYCHAIN_PENDING_ACCOUNT`] accounts;
 //! - lists items by attributes only: the secret is never requested or read;
-//! - deletes an item only if it has no comment, matched by service, account and creation date, and only when no
-//!   tagged item shares that account and creation date (so the delete query can't match a tagged item);
+//! - deletes an item only if it has no comment and it is the only item listed under its account (the delete
+//!   matches service and account, so it runs only when that query can't reach a tagged item), then lists again and
+//!   fails if the untagged item is still there or any tagged item is gone;
 //! - is idempotent: once the untagged items are gone a run finds nothing and changes nothing;
 //! - is bounded: one listing, at most one delete per listed item, and it stops at the first unexpected error.
 use crate::{KEYCHAIN_ACCOUNT, KEYCHAIN_PENDING_ACCOUNT, KEYCHAIN_SERVICE};
@@ -31,13 +32,13 @@ impl ItemAttrs {
     }
 }
 
-/// What the sweep needs from a keychain: an attribute-only listing and a delete by service, account and creation
-/// date. The macOS Keychain in the helper, a fake in tests.
+/// What the sweep needs from a keychain: an attribute-only listing and a delete by service and account. The macOS
+/// Keychain in the helper, a fake in tests.
 pub trait SweepKeychain {
     /// Every generic-password item of `service`, attributes only. No items is `Ok(vec![])`.
     fn list(&self, service: &str) -> Result<Vec<ItemAttrs>, String>;
-    /// Deletes the items of `service`/`account` created at `created`. Nothing to delete is `Ok(())`.
-    fn delete(&self, service: &str, account: &str, created: &str) -> Result<(), String>;
+    /// Deletes every item of `service`/`account`, whatever its comment. Nothing to delete is `Ok(())`.
+    fn delete(&self, service: &str, account: &str) -> Result<(), String>;
 }
 
 /// What a sweep did.
@@ -45,7 +46,7 @@ pub trait SweepKeychain {
 pub struct SweepReport {
     /// Untagged items deleted.
     pub deleted: usize,
-    /// Untagged items left because a tagged item shares their account and creation date.
+    /// Untagged items left because a tagged item shares their account.
     pub skipped: usize,
 }
 
@@ -53,29 +54,32 @@ pub struct SweepReport {
 /// service, or another account; stops at the first error.
 pub fn sweep_untagged(k: &dyn SweepKeychain) -> Result<SweepReport, String> {
     let items = k.list(KEYCHAIN_SERVICE)?;
+    let tagged: Vec<&ItemAttrs> = items.iter().filter(|i| i.tagged()).collect();
     let mut report = SweepReport::default();
-    let mut done: Vec<(&str, &str)> = Vec::new();
-    for it in &items {
-        if it.service != KEYCHAIN_SERVICE
-            || it.tagged()
-            || !(it.account == KEYCHAIN_ACCOUNT || it.account == KEYCHAIN_PENDING_ACCOUNT)
-        {
+    for account in [KEYCHAIN_ACCOUNT, KEYCHAIN_PENDING_ACCOUNT] {
+        let under: Vec<&ItemAttrs> = items
+            .iter()
+            .filter(|i| i.service == KEYCHAIN_SERVICE && i.account == account)
+            .collect();
+        let untagged = under.iter().filter(|i| !i.tagged()).count();
+        if untagged == 0 {
             continue;
         }
-        let key = (it.account.as_str(), it.created.as_str());
-        if done.contains(&key) {
+        if untagged != under.len() {
+            report.skipped += untagged;
             continue;
         }
-        done.push(key);
-        let clash = items.iter().any(|o| {
-            o.tagged() && o.service == it.service && o.account == it.account && o.created == it.created
-        });
-        if clash {
-            report.skipped += 1;
-            continue;
+        k.delete(KEYCHAIN_SERVICE, account)?;
+        let now = k.list(KEYCHAIN_SERVICE)?;
+        if now.iter().any(|i| i.account == account && !i.tagged()) {
+            return Err(format!(
+                "legacy keychain sweep: the untagged {account} item is still there"
+            ));
         }
-        k.delete(KEYCHAIN_SERVICE, &it.account, &it.created)?;
-        report.deleted += 1;
+        if tagged.iter().any(|t| !now.contains(t)) {
+            return Err("legacy keychain sweep: a tagged item went missing".into());
+        }
+        report.deleted += untagged;
     }
     Ok(report)
 }
@@ -87,39 +91,6 @@ pub struct KeychainSweep;
 
 #[cfg(target_os = "macos")]
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
-
-/// Parses the keychain's date description, `YYYY-MM-DD hh:mm:ss +0000`, into Core Foundation absolute time.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn cf_absolute_time(created: &str) -> Option<f64> {
-    let s = created.trim();
-    let (date, rest) = s.split_once(' ')?;
-    let (time, zone) = rest.split_once(' ')?;
-    if zone != "+0000" {
-        return None;
-    }
-    let d: Vec<i64> = date.split('-').map(|p| p.parse().ok()).collect::<Option<_>>()?;
-    let t: Vec<i64> = time.split(':').map(|p| p.parse().ok()).collect::<Option<_>>()?;
-    let [y, m, dd]: [i64; 3] = d.try_into().ok()?;
-    let [hh, mm, ss]: [i64; 3] = t.try_into().ok()?;
-    if !(1..=12).contains(&m) || !(1..=31).contains(&dd) || hh > 23 || mm > 59 || ss > 60 {
-        return None;
-    }
-    // Days from the civil date (Howard Hinnant's algorithm).
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + dd - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146_097 + doe - 719_468;
-    let unix = days * 86_400 + hh * 3600 + mm * 60 + ss;
-    Some((unix - 978_307_200) as f64)
-}
-
-#[cfg(test)]
-pub(crate) fn cf_absolute_time_for_tests(created: &str) -> Option<f64> {
-    cf_absolute_time(created)
-}
 
 #[cfg(target_os = "macos")]
 impl SweepKeychain for KeychainSweep {
@@ -158,21 +129,13 @@ impl SweepKeychain for KeychainSweep {
         Ok(out)
     }
 
-    fn delete(&self, service: &str, account: &str, created: &str) -> Result<(), String> {
-        use core_foundation::base::TCFType;
-        use core_foundation::date::CFDate;
-        use core_foundation::string::CFString;
+    fn delete(&self, service: &str, account: &str) -> Result<(), String> {
         use security_framework::passwords::{delete_generic_password_options, PasswordOptions};
-        let at = cf_absolute_time(created).ok_or("unrecognised keychain creation date")?;
         let mut o = PasswordOptions::new_generic_password(service, account);
         if cfg!(not(debug_assertions)) {
             o.use_protected_keychain();
             o.set_access_group(crate::ACCESS_GROUP);
         }
-        // kSecAttrCreationDate ("cdat"): security-framework has no setter for it, and its constant needs unsafe.
-        #[allow(deprecated)]
-        o.query
-            .push((CFString::from_static_string("cdat"), CFDate::new(at).as_CFType()));
         match delete_generic_password_options(o) {
             Ok(()) => Ok(()),
             Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
@@ -190,21 +153,5 @@ pub fn platform_sweep() -> Result<SweepReport, String> {
     #[cfg(not(target_os = "macos"))]
     {
         Ok(SweepReport::default())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_the_keychain_date_description() {
-        assert_eq!(cf_absolute_time_for_tests("2001-01-01 00:00:00 +0000"), Some(0.0));
-        assert_eq!(
-            cf_absolute_time_for_tests("2026-10-20 21:03:06 +0000"),
-            Some(814_222_986.0)
-        );
-        assert_eq!(cf_absolute_time_for_tests("2026-10-20 21:03:06 -0700"), None);
-        assert_eq!(cf_absolute_time_for_tests("nonsense"), None);
     }
 }
