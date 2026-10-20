@@ -3453,6 +3453,7 @@ name = "qrtz-dash-net"
 version = "0.2.4"
 dependencies = [
  "async-trait",
+ "core-foundation",
  "qrtz-dash",
  "qrtz-ipc",
  "reqwest 0.12.28",
