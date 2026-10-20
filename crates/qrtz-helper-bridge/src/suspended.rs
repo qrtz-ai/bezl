@@ -381,11 +381,19 @@ mod tests {
             4242
         }
         fn resume(self) -> io::Result<ChildIo> {
-            self.0 .0.lock().unwrap().push("SIGCONT");
+            self.0
+                 .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push("SIGCONT");
             Err(io::Error::other("resumed (a fake has no pipes)"))
         }
         fn kill(self) {
-            self.0 .0.lock().unwrap().push("SIGKILL");
+            self.0
+                 .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push("SIGKILL");
         }
     }
 
@@ -399,7 +407,10 @@ mod tests {
         });
         assert_eq!(seen, Some(4242), "the check sees the suspended child's pid");
         assert!(r.err().unwrap().to_string().contains("resumed"));
-        assert_eq!(*log.0.lock().unwrap(), vec!["SIGCONT"]);
+        assert_eq!(
+            *log.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
+            vec!["SIGCONT"]
+        );
 
         let log = Arc::new(Log::default());
         let err = release_if_verified(Fake(log.clone()), |_| Err("not ai.qrtz.snap".into()))
@@ -407,6 +418,10 @@ mod tests {
             .unwrap();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         assert!(err.to_string().contains("not ai.qrtz.snap"), "{err}");
-        assert_eq!(*log.0.lock().unwrap(), vec!["SIGKILL"], "killed, never resumed");
+        assert_eq!(
+            *log.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
+            vec!["SIGKILL"],
+            "killed, never resumed"
+        );
     }
 }
