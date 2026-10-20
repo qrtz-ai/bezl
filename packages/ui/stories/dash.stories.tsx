@@ -11,7 +11,7 @@ const CopyPrompt = ({ state }: { state: 'ready' | 'copied' | 'offline' }) => (
   <Stack dir="row" gap={2} align="center">
     {state === 'offline' ? (
       <Text variant="caption" muted>
-        not connected
+        agents can't enroll until a server is connected
       </Text>
     ) : state === 'copied' ? (
       <Text variant="caption" muted>
@@ -40,6 +40,9 @@ export const CopyPromptStates: S = {
         <CopyPrompt state="copied" />
       </Row>
       <Row label="no origin">
+        <CopyPrompt state="offline" />
+      </Row>
+      <Row label="refused: not_connected">
         <CopyPrompt state="offline" />
       </Row>
     </Stack>
