@@ -24,10 +24,16 @@ pub fn open_private_append(p: &Path) -> std::io::Result<fs::File> {
 
 /// temp + fsync + rename, 0600.
 pub fn write_private_atomic(p: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = p.parent().expect("parent");
+    let bad = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "path has no parent or file name",
+        )
+    };
+    let dir = p.parent().ok_or_else(bad)?;
     let tmp = dir.join(format!(
         ".{}.tmp-{}",
-        p.file_name().unwrap().to_string_lossy(),
+        p.file_name().ok_or_else(bad)?.to_string_lossy(),
         std::process::id()
     ));
     {

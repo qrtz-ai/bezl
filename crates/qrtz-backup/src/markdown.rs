@@ -69,6 +69,11 @@ fn platform_label(m: &Meeting) -> String {
     .to_string()
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static NON_ALNUM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\p{L}\p{N}]+").unwrap());
 
 /// `slugify`: lower case, NFKD, runs of anything but letters/digits become `-`, trimmed, at most 60 UTF-16 units

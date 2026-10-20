@@ -714,7 +714,7 @@ impl TalkService {
             "warmMic": cfg.enabled && cfg.warm_mic,
             "preRollMs": cfg.pre_roll_ms,
             "streamAudio": false, // the mic audio is only ever for a host-side engine; there is none
-            "pushKey": if cfg.enabled { cfg.push_key.clone() } else { String::new() },
+            "pushKey": if cfg.enabled { cfg.push_key } else { String::new() },
             "consumeFn": cfg.block_globe_key,
             "pill": cfg.show_pill,
             "autoInsert": cfg.auto_insert,
@@ -889,7 +889,7 @@ impl TalkService {
                     if let Err(Some(m)) = tx.send(Some(m.clone())) {
                         // N124: the stop wait ran out a moment ago and hasn't taken its lock yet: this is a late
                         // final, kept for when it goes ahead (it registers the dictation as late, keeping this).
-                        g.late.insert(id.clone(), Late::Text(bound_final(&s(&m, "text"))));
+                        g.late.insert(id, Late::Text(bound_final(&s(&m, "text"))));
                     }
                     return;
                 }

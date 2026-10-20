@@ -133,14 +133,18 @@ mod linux {
             return None;
         }
         let u16_at = |o: usize| u16::from_le_bytes([bytes[o], bytes[o + 1]]) as usize;
-        let u64_at = |o: usize| u64::from_le_bytes(bytes[o..o + 8].try_into().unwrap()) as usize;
+        let u64_at = |o: usize| {
+            let mut a = [0u8; 8];
+            a.copy_from_slice(&bytes[o..o + 8]);
+            u64::from_le_bytes(a) as usize
+        };
         let (phoff, phentsize, phnum) = (u64_at(32), u16_at(54), u16_at(56));
         for i in 0..phnum {
             let ph = phoff + i * phentsize;
             if ph + 56 > bytes.len() {
                 return None;
             }
-            if u32::from_le_bytes(bytes[ph..ph + 4].try_into().unwrap()) == 3 {
+            if u32::from_le_bytes([bytes[ph], bytes[ph + 1], bytes[ph + 2], bytes[ph + 3]]) == 3 {
                 let (off, sz) = (u64_at(ph + 8), u64_at(ph + 32));
                 let s = bytes.get(off..off + sz)?;
                 let s = s.split(|b| *b == 0).next()?;

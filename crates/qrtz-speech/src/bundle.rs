@@ -50,6 +50,11 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "the version was checked by validate() when this was parsed"
+    )]
     pub fn semver(&self) -> semver::Version {
         semver::Version::parse(&self.version).expect("validated")
     }

@@ -332,6 +332,11 @@ impl SpeechStore {
         self.lock().total_pins()
     }
 
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "N67: the pinned key was validated at load; falling back to the built-in key here would be unsafe"
+    )]
     pub fn key(&self) -> PinnedKey {
         let g = self.lock();
         match (&g.state.pinned_key_id, &g.state.pinned_key) {
@@ -342,7 +347,7 @@ impl SpeechStore {
     }
 
     fn save(&self, st: &State) -> Result<(), SpeechError> {
-        let b = serde_json::to_vec_pretty(st).expect("state json");
+        let b = serde_json::to_vec_pretty(st).map_err(std::io::Error::other)?;
         fsx::write_private_atomic(&self.root.join("current.json"), &b)?;
         fsx::write_private_atomic(&self.root.join("current.json.bak"), &b)?;
         Ok(())
@@ -478,7 +483,8 @@ impl SpeechStore {
     fn read_manifest(&self, dir: &Path) -> Result<Manifest, SpeechError> {
         let root = files::open_dir(dir)?;
         let read = |name: &str| -> Result<Vec<u8>, SpeechError> {
-            let c = std::ffi::CString::new(name).unwrap();
+            let c = std::ffi::CString::new(name)
+                .map_err(|_| SpeechError::Invalid("bundle file name has a NUL byte".into()))?;
             use std::os::fd::{AsRawFd, FromRawFd};
             // SAFETY: valid dir fd and name; owned below.
             let fd = unsafe {
@@ -520,7 +526,10 @@ impl SpeechStore {
                 if ft.is_dir() {
                     walk(base, &p, out)?;
                 } else if ft.is_file() {
-                    out.push(p.strip_prefix(base).unwrap().to_string_lossy().to_string());
+                    let rel = p
+                        .strip_prefix(base)
+                        .map_err(|_| SpeechError::Invalid("bundle file outside its folder".into()))?;
+                    out.push(rel.to_string_lossy().to_string());
                 } else {
                     return Err(SpeechError::Invalid("symlink or special file in bundle".into()));
                 }
@@ -591,7 +600,12 @@ impl SpeechStore {
         if g.total_pins() > 0 {
             g.state.waiting = Some(Waiting {
                 version: c.version.clone(),
-                dir: c.dir.file_name().unwrap().to_string_lossy().to_string(),
+                dir: c
+                    .dir
+                    .file_name()
+                    .ok_or_else(|| SpeechError::Invalid("bundle folder has no name".into()))?
+                    .to_string_lossy()
+                    .to_string(),
             });
             self.save(&g.state)?;
             return Err(SpeechError::Busy);
@@ -821,7 +835,7 @@ impl SpeechStore {
         if d.issued > eff + MAX_LIST_VALIDITY_MS {
             return Err(SpeechError::Signature("denylist issued in the future".into()));
         }
-        st.denylist_key_id = Some(key.key_id.clone());
+        st.denylist_key_id = Some(key.key_id);
         st.denylist_seq = d.seq;
         st.denylist_issued = d.issued;
         st.denylist_expires = d.expires.min(d.issued.saturating_add(MAX_LIST_VALIDITY_MS));

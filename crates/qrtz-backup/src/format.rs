@@ -40,6 +40,11 @@ pub struct Manifest {
 
 impl Manifest {
     /// The zod schema's checks: literal format/version, integers, sha256 hex, at most 100 000 files.
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "constant regex literal; compiled by this crate's unit tests"
+    )]
     pub fn validate(&self) -> Result<(), String> {
         static HEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9a-f]{64}$").unwrap());
         if self.format != BACKUP_FORMAT || self.version != BACKUP_VERSION {
@@ -55,11 +60,21 @@ impl Manifest {
     }
 
     /// Serialized like TS `JSON.stringify(manifest, null, 2)`.
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "serde_json on a plain derived type with string keys cannot fail"
+    )]
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("manifest serializes")
     }
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 static SAFE_AUDIO: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^audio/[A-Za-z0-9._-]{1,128}\.wav$").unwrap());
 
