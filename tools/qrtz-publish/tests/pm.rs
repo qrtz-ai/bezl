@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0157: the package manager end to end on the real publisher output, through a directory transport (the HTTP
 //! transport is qrtz-app's tests): resolution and dedupe, engine swaps, the lock, the store, prune, frozen
 //! reinstalls, mirror fallback, resumable ranges, revocation and the freshness rule.
@@ -1077,7 +1078,7 @@ async fn an_extension_index_entry_carries_models_only_as_its_reads_exception() {
     let mut x = e.clone();
     x.models = vec!["model.nemotron".into()];
     assert!(x.validate("ctrl").is_err());
-    let mut x = e.clone();
+    let mut x = e;
     x.dependencies.clear();
     assert!(x.validate("ctrl").is_err());
 }

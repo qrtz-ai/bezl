@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0236 (echo cycle 84): a run of commas types as one comma. The recogniser sometimes writes ",," ("…to this
 //! rule,, but it will appear…" in the cached hypotheses) and a filler between two spaced commas leaves one ("So , um ,
 //! we"); cleanup put the space after the first comma before its `,+` collapse, so both typed ", , ". Fails without the

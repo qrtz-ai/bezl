@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0207 (echo cycle 67): ADR 0205's subject stutter also collapses before a negated modal or "cannot"
 //! ("So we, we can't make it" → "So we can't make it."). ASCII and curly apostrophes; "candidly" and other lookalikes
 //! stay. Fails without the fix (every positive kept "we, we" / "they, they").

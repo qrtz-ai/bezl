@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Settings "speech" E2E: the real router, the real updater and health check, the speech module
 //! served by the qrtz-speech test kit's bundle server. Download with progress, pause and resume, a quit mid-way
 //! resumes on the next launch (from the `.part` files), a user pause survives a relaunch, a damaged download

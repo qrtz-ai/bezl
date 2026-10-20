@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 4, storage: the files a deleted meeting leaves behind (N15). Mirrors
 //! apps/desktop/src/main/note-service.hardening4.test.ts.
 

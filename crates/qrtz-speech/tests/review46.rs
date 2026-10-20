@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Bozniak's review of ADR 0046 revision 2 (`14a6be1`) and `a5f5b85`: one regression test per finding N61-N69 in
 //! `docs/architecture-review/adr-0046-rev2-review.md`. All fixed (ignores removed) in the N61-N78 commit; the
 //! HealthCheck signature and `pin_session(now)` follow the fixed API (N70, N73).

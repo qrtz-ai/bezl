@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The manifests and lockfile in `modules/` (ADR 0146 §2): valid, consistent with the pinned model manifests,
 //! matching the JSON Schemas in contracts/, and owning every config.json section exactly once.
 mod common;

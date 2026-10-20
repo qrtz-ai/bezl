@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 36, ADR 0112: the `talk latency` line says how loud the mic was. The Linux cross-check
 //! (docs/echo/dictation-tuning.md §10) measured that a quiet mic (speech 20 dB down) costs about a quarter more
 //! word errors and a 15 dB room noise about a third more; whether Jared's mics are in that range decides whether

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0169 upgrade (Bobs and Bozniak, 902bcab review): a Mac upgrading to the empty shell has the app's old model
 //! requests in `qrtz.lock` (echo's and nano's models, pinned by the app before modules were packages). At launch,
 //! `LocalModels::sync_views` drops the ones whose modules aren't installed, with their views, packages and blobs; a

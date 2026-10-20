@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N182 (ADR 0177): talk's "echo's speech model isn't downloaded" probe. A fresh qrtz has echo on before Parakeet is
 //! on the Mac (ADR 0175); when the helper then refuses a press for want of a recogniser, the pill must point at the
 //! download, not "try again in a moment". The probe answers from echo's own sets only (marker + sizes).

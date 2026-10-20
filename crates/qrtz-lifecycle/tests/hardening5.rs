@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 5 (N28): a failed stitch removes its `<main>.stitch` temp and keeps the first part intact; a
 //! meeting delete also takes a leftover `<id>.wav.stitch`. Mirrors apps/desktop/src/main/finalize.hardening5.test.ts.
 

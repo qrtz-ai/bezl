@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0229 (echo cycle 78): an imperative that opens with "Let's" or "Please" and ends in its positive tag, with no
 //! mark of its own, ends with "?" instead of the "." the terminal step used to add: "Let's grab lunch, shall we" →
 //! "Let's grab lunch, shall we?", "Please close the door, will you" → "…, will you?". Only "Let's … , shall we" and

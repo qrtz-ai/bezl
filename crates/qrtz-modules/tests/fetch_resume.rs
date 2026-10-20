@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Backlog P2 (ADR 0218): a download cut short by a crash, a kill or a quit resumes from its `.part` and `.done`
 //! ranges in the next process, and the result is checked against the pinned sha256. Echo's first Parakeet download
 //! (each model file has one pinned source) goes through this fetcher.

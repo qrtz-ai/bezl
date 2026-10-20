@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 34, N166 (ADR 0107): since ADR 0104 the press opens the mic, and the helper's `dictation.start`
 //! takes everything heard since the press as its pre-roll (up to `armMaxMs`, 10 s). The helper decodes that head
 //! and counts it in its release budget (`samples`), but talk's stop wait counted only key-down-at-start to

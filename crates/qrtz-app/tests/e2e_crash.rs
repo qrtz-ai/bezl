@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/crash.spec.ts (docs/e2e-parity.md row 5): the helper dies mid-meeting; the supervisor
 //! restarts it, the recording resumes into a second WAV part, and at stop the parts are stitched (header repaired)
 //! and the meeting is summarized. Nothing from before the crash is lost and the session never sticks.

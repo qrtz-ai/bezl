@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0071: talk has no LLM cleanup. The final ASR text gets the on-device rules (or nothing, with
 //! `talk.autoCleanup` off) and goes straight in. State written while the LLM cleanup existed still loads: a config
 //! with `aiCleanup` / `cleanupModel` / `cleanupTimeoutMs` dictates with the rules and never waits on anything, and

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The Rust mock helper honours every knob `apps/desktop/src-tauri/src/paths.rs` passes (parity with the Electron TS
 //! mock): QRTZ_MOCK_SCENARIO, SPEED, REVOKE, INSERT and CRASH_AFTER_MS. Every line it prints must pass the
 //! helper → host schema.

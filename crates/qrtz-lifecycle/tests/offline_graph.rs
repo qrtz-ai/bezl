@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0078: "qrtz is entirely offline" (ADR 0076) as a property of the build, not a list of removed features.
 //!
 //! 1. Dependency graph (`cargo metadata`, normal edges only, for the macOS and Linux targets): from the app

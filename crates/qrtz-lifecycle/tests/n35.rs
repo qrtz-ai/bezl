@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N35 bounds (also packages/core/src/note/lifecycle.n35.test.ts): a helper that reconnects and fails its mic device
 //! on every part keeps at most `DEVICE_FAILURES` records, each reason cut on code points, and every reconnect clears
 //! the device-only flag.

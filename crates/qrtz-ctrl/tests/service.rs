@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The `ctrl:*` channels over a fake helper and a temp store: `ctrl:do`, asks, confirms, stop, history, and what
 //! reaches the disk (the command in `do.jsonl`; never tree text or the goal in a run file).
 use qrtz_ctrl::helper::{FakeApp, FakeHelper, FakeWorld, HelperClient};

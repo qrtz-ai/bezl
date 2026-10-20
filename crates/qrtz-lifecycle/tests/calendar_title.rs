@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0217: a recording is named after the calendar event it overlaps, and linked to it.
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -60,9 +61,7 @@ fn rig(cal: Arc<Cal>) -> Rig {
     let views = Arc::new(Views::default());
     let rt = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(InlineDb(db.0.clone()))),
-        steps: Arc::new(CoreSteps {
-            db: InlineDb(db.0.clone()),
-        }),
+        steps: Arc::new(CoreSteps { db: InlineDb(db.0) }),
         helper: Arc::new(Helper),
         events: views.clone(),
         config: Arc::new(RuntimeConfig::default),
@@ -74,7 +73,7 @@ fn rig(cal: Arc<Cal>) -> Rig {
         fault_step: None,
         default_title: Arc::new(utc_recording_title),
         pending_delete: None,
-        calendar: Some(cal.clone()),
+        calendar: Some(cal),
     });
     Rig {
         rt,

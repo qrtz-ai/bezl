@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0150 N174 and ctrl loop run 31 on the split host (`QRTZ_MODULE_HELPERS=split`, each extension helper the
 //! mock helper told its module): echo's helper gets its own warm, qrtz-ctrl only runs while ctrl is on and never
 //! holds echo and nano back, and quit reaches all three.

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0220 phase 1 through the app router: the notes vault (`vault:*`, `doc:*`), standalone notes, meeting links,
 //! the migration of old meeting notes (with its backup, once), the mini HUD's quick add, no silent overwrite, and
 //! confinement (only nano's view reaches the vault).

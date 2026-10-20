@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The whole Tauri backend headless: `build_app` (AppDirs → config → DB → NoteRuntime → ports) with the real Rust
 //! mock helper child, driven through the router like the renderer does.
 use qrtz_app::ports::{Notice, ShellHooks};

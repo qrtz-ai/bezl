@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N55 (ADR 0046 §1): the helper is not a deputy. Over the real speech socket to the Rust mock helper (which
 //! checks like the Swift helper): exactly the named count, FIFOs only, write-only only, the right session; the
 //! accepted write ends get PCM while the capture runs and are closed (EOF) when it ends.

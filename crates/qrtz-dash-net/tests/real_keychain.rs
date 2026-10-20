@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! QRT-276: `TwoPhase(KeychainStore)` against a real macOS keychain (debug path: the user's default keychain).
 //!
 //! Ignored by default so `cargo test` never writes to a developer's login keychain. CI's `keychain` job creates a

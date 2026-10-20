@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Runs the shared tier-1 vectors (spec/vectors/lifecycle/*.json) against the Rust port. The same files are run
 //! by vitest (packages/core/src/note/lifecycle.vectors.test.ts), and TS regenerates them, so passing here means
 //! byte-for-byte agreement with the TS lifecycle. Comparison is on `serde_json::Value` (key order irrelevant).

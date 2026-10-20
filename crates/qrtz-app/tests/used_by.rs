@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Jared, 2026-10-18: the module manager's "shared" section listed `model.localvqe`, `model.nemotron-diarizer`,
 //! `model.nemotron` and `model.parakeet-tdt-v2-en` as "used by nothing", and "clean up" then said there was nothing
 //! to clean up. Both were right about different things: the four are the models the app pinned for echo and nano

@@ -1,0 +1,3 @@
+# QRT-288: tests may unwrap/expect; shipped code may not (see [workspace.lints]).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 45, ADR 0147 (N172): echo switched off mid-dictation. ADR 0146 made `modules.echo.enabled` and
 //! `modules.enabled` turn echo off at runtime (as `talk.enabled` always did). Switching off unsets the push key on
 //! the helper, which stops its key tap, so the release of a key already held never arrives; and talk used to drop a

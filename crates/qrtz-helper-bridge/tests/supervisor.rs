@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Port of packages/core/src/helper/supervisor.test.ts with a fake child and paused tokio time.
 use qrtz_helper_bridge::*;
 use std::sync::{Arc, Mutex};

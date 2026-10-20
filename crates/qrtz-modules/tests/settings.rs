@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0146 §6: per-module settings files, and global settings that only control all of them.
 mod common;
 use qrtz_modules::settings::{GlobalSettings, ModuleSettingsStore};

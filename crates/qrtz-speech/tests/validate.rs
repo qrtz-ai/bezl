@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Untrusted module output (ADR 0046 §3.5) and the shared protocol fixtures (spec/vectors/speech).
 use qrtz_speech::protocol::{encode_host_to_speech, parse_speech_line, protocol};
 use qrtz_speech::validate::{check_hello, OutputValidator, Verdict};

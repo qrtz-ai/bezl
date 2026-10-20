@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 6 stress (spec/stress/capture-bounds.json, also run by
 //! packages/core/src/note/lifecycle.hardening6.test.ts): hours of a flapping capture source and a fallback loop with
 //! huge error text keep the session row and the capture report bounded (N29/H8 limits), and every cut is code-point

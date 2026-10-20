@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N182 (ADR 0177): a fresh qrtz has echo on before its speech model is downloaded (ADR 0175). A press then gets the
 //! helper's `dictation.asr` refusal ("no speech recogniser is ready"); the pill used to say "try again in a moment",
 //! which never helps. With the app's probe saying echo's model is missing, it points at the download instead.

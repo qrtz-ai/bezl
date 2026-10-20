@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0216: ctrl+fn records through echo's dictation pipeline (same press, release, pill and local recogniser),
 //! but its transcript goes to ctrl do (`ctrl:do {text}`) and is never inserted. Plain fn still dictates.
 mod common;

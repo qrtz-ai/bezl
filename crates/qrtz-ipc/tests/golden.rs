@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Golden IPC envelopes: every channel's sample request goes through the Rust router (envelope, capability,
 //! request schema) and its sample response passes the Rust response schema; every event sample validates.
 use async_trait::async_trait;

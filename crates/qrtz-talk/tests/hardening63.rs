@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0203 (echo cycle 63): a question after a discourse opener ends with "?" instead of the cleanup's "."
 //! ("So do you want to grab lunch" → "So do you want to grab lunch?"). Openers: so, okay, ok, hey, and, but, also,
 //! alright, with or without their own comma. A bare "So" needs do/does/did/can/could/will/would and a plain verb after
