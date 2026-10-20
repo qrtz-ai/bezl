@@ -12,6 +12,7 @@
 //!   key is this process's own secret: it is created by `dash:connect`, kept in a Keychain item only this helper
 //!   reads ([`KEYCHAIN_SERVICE`]), and is never sent to the app.
 #![forbid(unsafe_code)]
+pub mod legacy_sweep;
 use qrtz_ipc::{AppError, ErrorCode};
 use serde_json::{json, Value};
 use zeroize::{Zeroize, Zeroizing};
