@@ -2480,9 +2480,7 @@ static DICTIONARY_RES: LazyLock<Mutex<HashMap<String, Option<Arc<DictionaryRegex
 const DICTIONARY_CACHE_MAX: usize = 4096;
 
 fn dictionary_regex(core: String) -> Option<Arc<DictionaryRegex>> {
-    let mut cache = DICTIONARY_RES
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut cache = DICTIONARY_RES.lock().unwrap_or_else(crate::poison::recover);
     if let Some(r) = cache.get(&core) {
         return r.clone();
     }

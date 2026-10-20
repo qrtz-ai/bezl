@@ -254,7 +254,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
     *app.state::<TrayHandles>()
         .0
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = status;
+        .unwrap_or_else(crate::poison::recover) = status;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon(false)?)
         .icon_as_template(true)
@@ -280,7 +280,7 @@ pub fn update(app: &AppHandle, session: &Value) {
         *app.state::<TrayHandles>()
             .0
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = status;
+            .unwrap_or_else(crate::poison::recover) = status;
     }
     if let Ok(i) = icon(s.recording) {
         let _ = tray.set_icon(Some(i));
@@ -302,7 +302,7 @@ pub fn tick(app: &AppHandle, session: &Value) {
         .state::<TrayHandles>()
         .0
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(crate::poison::recover)
         .as_ref()
     {
         let _ = mi.set_text(&s.items[0].label);

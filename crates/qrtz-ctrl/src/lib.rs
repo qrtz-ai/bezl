@@ -34,6 +34,7 @@ pub mod guard;
 pub mod helper;
 pub mod laya;
 pub mod log;
+mod poison;
 pub mod runner;
 #[rustfmt::skip]
 pub mod secure_words;

@@ -46,7 +46,7 @@ impl HelperAttach {
         let Some(w) = self
             .waiters
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .remove(sid)
         else {
             return;
@@ -60,7 +60,7 @@ impl HelperAttach {
     pub fn bind_recording(&self, session_id: &str, audio_path: &str) {
         self.recordings
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .insert(session_id.to_owned(), audio_path.to_owned());
     }
     /// The `speech.attach` line for a session: a dictation by id, a recording by its audio path (bound with
@@ -74,7 +74,7 @@ impl HelperAttach {
                 let path = self
                     .recordings
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .unwrap_or_else(crate::poison::recover)
                     .remove(&spec.session_id)?;
                 json!({"kind": "recording", "audioPath": path})
             }
@@ -99,14 +99,11 @@ impl AudioAttach for HelperAttach {
         // resolves the wrong attempt); refuse it instead, the first attempt keeps its waiter and its retry path.
         let (tx, rx) = oneshot::channel();
         {
-            let mut w = self
-                .waiters
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut w = self.waiters.lock().unwrap_or_else(crate::poison::recover);
             if w.contains_key(&spec.session_id) {
                 self.recordings
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .unwrap_or_else(crate::poison::recover)
                     .remove(&spec.session_id);
                 return Err(SpeechError::Module(
                     "speech.attach already in flight for this session".into(),
@@ -117,11 +114,11 @@ impl AudioAttach for HelperAttach {
         let fail = |e: SpeechError| {
             self.waiters
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .unwrap_or_else(crate::poison::recover)
                 .remove(&spec.session_id);
             self.recordings
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .unwrap_or_else(crate::poison::recover)
                 .remove(&spec.session_id);
             Err(e)
         };
@@ -146,7 +143,7 @@ impl AudioAttach for HelperAttach {
         if let Err(e) = h.send_fds(line, spec.session_id.as_bytes().to_vec(), fds).await {
             self.waiters
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .unwrap_or_else(crate::poison::recover)
                 .remove(&spec.session_id);
             return Err(SpeechError::Module(format!("speech.attach: {e}")));
         }
@@ -158,7 +155,7 @@ impl AudioAttach for HelperAttach {
             _ => {
                 self.waiters
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .unwrap_or_else(crate::poison::recover)
                     .remove(&spec.session_id);
                 Err(SpeechError::Module(
                     "helper did not acknowledge speech.attach".into(),
@@ -299,10 +296,7 @@ impl NoteSpeech {
         choose_engine(&self.store.availability(now_ms()))
     }
     pub fn active(&self) -> usize {
-        self.sessions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
+        self.sessions.lock().unwrap_or_else(crate::poison::recover).len()
     }
     fn event(&self, path: &str, ev: SpeechEvent) {
         if let Some(rt) = self.runtime.get() {
@@ -354,7 +348,7 @@ impl NoteSpeech {
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.sessions
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .insert(path.clone(), tx);
         let me = self.clone();
         tokio::spawn(async move {
@@ -389,7 +383,7 @@ impl NoteSpeech {
             }
             me.sessions
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .unwrap_or_else(crate::poison::recover)
                 .remove(&path);
         });
     }
@@ -398,10 +392,7 @@ impl NoteSpeech {
     /// session down; a new helper process (`hello`) ends every session the old one fed.
     pub fn on_helper_line(&self, m: &Value) {
         let path = m["audioPath"].as_str().unwrap_or_default();
-        let s = self
-            .sessions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let s = self.sessions.lock().unwrap_or_else(crate::poison::recover);
         match m["type"].as_str() {
             Some("recording.stopped") => {
                 if let Some(tx) = s.get(path) {
@@ -451,7 +442,7 @@ impl HelperPort for RoutedHelper {
                     if let Some(tx) = speech
                         .sessions
                         .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .unwrap_or_else(crate::poison::recover)
                         .get(&path)
                     {
                         let _ = tx.send(Ctl::Cancel);
@@ -488,7 +479,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         a.waiters
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .insert("s1".into(), tx);
         let e = a.attach(&spec("s1"), vec![]).await.unwrap_err();
         assert!(e.to_string().contains("in flight"), "{e}");
@@ -496,11 +487,7 @@ mod tests {
         assert_eq!(rx.await.unwrap(), Ok(()));
         // No helper: refused, and nothing is left registered for the id.
         assert!(a.attach(&spec("s2"), vec![]).await.is_err());
-        assert!(a
-            .waiters
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_empty());
+        assert!(a.waiters.lock().unwrap_or_else(crate::poison::recover).is_empty());
     }
 
     /// N96: a recording session the host never bound to a file is refused (no file named from the session id);
@@ -523,11 +510,7 @@ mod tests {
             "the binding is used once"
         );
         assert!(a.attach(&rec, vec![]).await.is_err());
-        assert!(a
-            .waiters
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_empty());
+        assert!(a.waiters.lock().unwrap_or_else(crate::poison::recover).is_empty());
     }
 
     /// N96: an expired revocation list asks to connect (stale), it is not a revoked release.

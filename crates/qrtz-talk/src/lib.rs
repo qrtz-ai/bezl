@@ -12,6 +12,7 @@ pub mod config;
 pub mod contract;
 pub mod level;
 pub mod mock;
+mod poison;
 pub mod service;
 pub mod speech;
 pub mod store;

@@ -477,10 +477,7 @@ impl NotchHost {
 
     /// Runs `f` on the broker, then sends the lines it returned (in order).
     fn with<R>(&self, f: impl FnOnce(&mut NotchBroker) -> (Vec<Value>, R)) -> R {
-        let (lines, r) = f(&mut self
-            .broker
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner));
+        let (lines, r) = f(&mut self.broker.lock().unwrap_or_else(crate::poison::recover));
         for l in &lines {
             (self.sink)(l);
         }
@@ -753,28 +750,19 @@ mod tests {
         let sent: Arc<Mutex<Vec<Value>>> = Arc::default();
         let s2 = sent.clone();
         let host = NotchHost::new(
-            Arc::new(move |l: &Value| {
-                s2.lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(l.clone())
-            }),
+            Arc::new(move |l: &Value| s2.lock().unwrap_or_else(crate::poison::recover).push(l.clone())),
             Some(Arc::new(|| false)),
         );
         host.show(&NANO, &status("syncing")).unwrap();
         let t = host.spawn_ticker(TICK_EVERY);
         tokio::time::sleep(std::time::Duration::from_millis(9_000)).await;
         assert_eq!(
-            sent.lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .len(),
+            sent.lock().unwrap_or_else(crate::poison::recover).len(),
             1,
             "still shown at 9 s"
         );
         tokio::time::sleep(std::time::Duration::from_millis(2_500)).await;
-        let lines = sent
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let lines = sent.lock().unwrap_or_else(crate::poison::recover).clone();
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(lines[1], json!({"type": "notch.dismiss", "owner": "module.nano"}));
         drop(host);
@@ -789,30 +777,16 @@ mod tests {
         let secure = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (s2, sec) = (sent.clone(), secure.clone());
         let host = NotchHost::new(
-            Arc::new(move |l: &Value| {
-                s2.lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(l.clone())
-            }),
+            Arc::new(move |l: &Value| s2.lock().unwrap_or_else(crate::poison::recover).push(l.clone())),
             Some(Arc::new(move || sec.load(std::sync::atomic::Ordering::SeqCst))),
         );
         host.show(&SNAP, &status("saved")).unwrap();
         let _t = host.spawn_ticker(TICK_EVERY);
         tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
-        assert_eq!(
-            sent.lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .len(),
-            1
-        );
+        assert_eq!(sent.lock().unwrap_or_else(crate::poison::recover).len(), 1);
         secure.store(true, std::sync::atomic::Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
-        assert_eq!(
-            sent.lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .len(),
-            2
-        );
+        assert_eq!(sent.lock().unwrap_or_else(crate::poison::recover).len(), 2);
     }
 
     /// Review N198: with no secure-input reader (the app today), module show and update are refused with
@@ -822,19 +796,12 @@ mod tests {
         let sent: Arc<Mutex<Vec<Value>>> = Arc::default();
         let s2 = sent.clone();
         let host = NotchHost::new(
-            Arc::new(move |l: &Value| {
-                s2.lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(l.clone())
-            }),
+            Arc::new(move |l: &Value| s2.lock().unwrap_or_else(crate::poison::recover).push(l.clone())),
             None,
         );
         assert!(host.secure_input(), "unknown counts as on");
         assert_eq!(host.show(&NANO, &status("syncing")), Err(Refusal::SecureInput));
-        assert!(sent
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_empty());
+        assert!(sent.lock().unwrap_or_else(crate::poison::recover).is_empty());
         host.show(&Requester::Ctrl, &status("ctrl: opening safari"))
             .unwrap();
         host.update(&Requester::Ctrl, &status("ctrl: typing")).unwrap();
@@ -843,9 +810,7 @@ mod tests {
         assert_eq!(host.update(&NANO, &status("x")), Err(Refusal::NotOwner));
         assert_eq!(host.show(&SNAP, &status("saved")), Err(Refusal::SecureInput));
         assert_eq!(
-            sent.lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .len(),
+            sent.lock().unwrap_or_else(crate::poison::recover).len(),
             3,
             "only ctrl's show, update and dismiss"
         );

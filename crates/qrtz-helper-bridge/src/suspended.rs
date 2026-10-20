@@ -59,7 +59,7 @@ mod posix {
 
     impl Reaper {
         fn kill(&self) {
-            let g = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
+            let g = self.reaped.lock().unwrap_or_else(crate::poison::recover);
             if !*g {
                 // SAFETY: plain kill(2) on our own unreaped child.
                 unsafe { libc::kill(self.pid, libc::SIGKILL) };
@@ -90,7 +90,7 @@ mod posix {
                     break;
                 }
             }
-            let mut g = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
+            let mut g = self.reaped.lock().unwrap_or_else(crate::poison::recover);
             let mut st: libc::c_int = 0;
             loop {
                 // SAFETY: waitpid on our own child.

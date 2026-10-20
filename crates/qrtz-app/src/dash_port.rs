@@ -132,10 +132,7 @@ impl DashPort {
     }
 
     fn with<T>(&self, f: impl FnOnce(&mut Dash) -> T) -> T {
-        let mut d = self
-            .dash
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut d = self.dash.lock().unwrap_or_else(crate::poison::recover);
         f(&mut d)
     }
 

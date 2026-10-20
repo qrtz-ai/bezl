@@ -235,7 +235,7 @@ impl LayaWarmer {
     /// error code such as `laya.no_model` or `helper.timeout`; either way it isn't sent again until the helper
     /// restarts or the model path changes, so an older helper is asked once, not every tick).
     pub fn tick(&self) -> Option<Result<String, String>> {
-        let mut g = self.warmed.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.warmed.lock().unwrap_or_else(crate::poison::recover);
         let (up_ticks, warmed) = &mut *g;
         if !self.helper.is_up() {
             *up_ticks = 0;
