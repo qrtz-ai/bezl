@@ -161,6 +161,55 @@ jobs:
       - name: cargo test (workspace)
         run: cargo test --workspace
 
+  # QRT-276 (Bozniak-cleared): KeychainStore type-check (debug and release paths) and the real-keychain tests that
+  # gate QRT-260, on a THROWAWAY keychain made in this job and always deleted at the end. The login keychain is never
+  # read or written: only the throwaway one is on the search list while the tests run. Only test-generated values
+  # are stored, no repo secret is used, and the token stays contents: read.
+  keychain:
+    name: macOS · KeychainStore (throwaway keychain)
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-keychain
+      - name: type-check KeychainStore (debug and release cfg)
+        run: |
+          cargo check -p qrtz-dash-net --all-targets
+          cargo check -p qrtz-dash-net --all-targets --release
+      - name: build tests
+        run: cargo test -p qrtz-dash-net --test real_keychain --no-run
+      - name: create throwaway keychain
+        run: |
+          kc="$RUNNER_TEMP/qrtz-test-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.keychain-db"
+          pw="$(uuidgen)"   # test-generated, lives only in this job
+          echo "QRTZ_TEST_KEYCHAIN=$kc" >> "$GITHUB_ENV"
+          security list-keychains -d user > "$RUNNER_TEMP/kc-list.orig"
+          security default-keychain -d user > "$RUNNER_TEMP/kc-default.orig"
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 1800 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          security list-keychains -d user -s "$kc"
+          security default-keychain -d user -s "$kc"
+          security default-keychain -d user
+      - name: real keychain tests
+        run: cargo test -p qrtz-dash-net --test real_keychain -- --ignored --test-threads=1
+      - name: delete throwaway keychain
+        if: always()
+        run: |
+          [[ -n "${QRTZ_TEST_KEYCHAIN:-}" ]] || exit 0
+          if [[ -s "$RUNNER_TEMP/kc-default.orig" ]]; then
+            security default-keychain -d user -s "$(tr -d ' "' < "$RUNNER_TEMP/kc-default.orig")" || true
+          fi
+          if [[ -s "$RUNNER_TEMP/kc-list.orig" ]]; then
+            xargs security list-keychains -d user -s < "$RUNNER_TEMP/kc-list.orig" || true
+          fi
+          security delete-keychain "$QRTZ_TEST_KEYCHAIN" || true
+          [[ ! -e "$QRTZ_TEST_KEYCHAIN" ]]
+
   # Unsigned release build on macOS. Named "release", so no restored caches: always a cold, reproducible build.
   release-unsigned:
     name: macOS · unsigned release build · verify-bundle (no Developer ID)
