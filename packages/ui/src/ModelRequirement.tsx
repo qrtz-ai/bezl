@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { calloutBox } from './Callout';
 import { useTheme } from './theme';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -285,8 +286,7 @@ export function ModelRequirement(p: ModelRequirementProps) {
                 gap: t.space[3],
                 width: '100%',
                 boxSizing: 'border-box',
-                paddingBottom: t.space[4],
-                borderBottom: `1px solid ${state === 'error' ? `color-mix(in srgb, ${t.color.danger} 35%, transparent)` : t.color.border}`,
+                ...calloutBox(t, state === 'error' ? 'danger' : 'info'),
                 minWidth: 0,
               }
             : { display: 'grid', gap: t.space[2], minHeight: 32, minWidth: 0 }

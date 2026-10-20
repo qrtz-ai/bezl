@@ -5,6 +5,26 @@ import { useTheme } from './theme';
 
 export type CalloutTone = 'info' | 'warning' | 'danger';
 
+type Theme = ReturnType<typeof useTheme>;
+
+/**
+ * The alert outline every notice shares: a full 1px tone-tinted border on all sides, the tinted fill, radius md and
+ * 10px 12px padding. Callout uses it, and so does the required-model banner, so every alert reads the same.
+ */
+export function calloutBox(t: Theme, tone: CalloutTone = 'info') {
+  const c = {
+    info: t.color.textMuted,
+    warning: t.color.warning,
+    danger: t.color.danger,
+  }[tone];
+  return {
+    padding: '10px 12px',
+    border: `1px solid color-mix(in srgb, ${c} 35%, transparent)`,
+    background: `color-mix(in srgb, ${c} 8%, transparent)`,
+    borderRadius: t.radius.md,
+  } as const;
+}
+
 /**
  * Inline status/error banner with an optional action (e.g. Retry). Danger/warning use role="alert"
  * so screen readers announce them; info is a polite status.
@@ -36,10 +56,7 @@ export function Callout({
         display: 'flex',
         gap: 12,
         alignItems: 'center',
-        padding: '10px 12px',
-        border: `1px solid color-mix(in srgb, ${c} 35%, transparent)`,
-        background: `color-mix(in srgb, ${c} 8%, transparent)`,
-        borderRadius: t.radius.md,
+        ...calloutBox(t, tone),
       }}
     >
       <span

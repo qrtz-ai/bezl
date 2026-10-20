@@ -20,6 +20,7 @@ import {
   PipelineSteps,
   RecordDot,
   RecordingBar,
+  SpeechRequired,
   StatusLines,
   StreamingTranscript,
   SummaryBlock,
@@ -27,6 +28,7 @@ import {
   TranscriptList,
   TranscriptRow,
   type NoteItem,
+  type SpeechSetupView,
 } from '../src';
 import { Frame, Row, Width, noop } from './_util';
 
@@ -335,4 +337,48 @@ export const NotesAppStory: S = {
 export const NotesAppEmpty: S = {
   name: 'notes app (empty)',
   render: () => <NotesAppDemo empty />,
+};
+
+const speechView = (
+  download: SpeechSetupView['download'],
+): SpeechSetupView => ({
+  configured: true,
+  installed: null,
+  bytes: 0,
+  latest: '1.1.0',
+  latestBytes: 412_000_000,
+  waiting: null,
+  listExpired: false,
+  download,
+});
+
+/** Nano can't download (no speech.manage): its gate opens the models list on the qrtz page instead. */
+export const SpeechModelRequired: S = {
+  name: 'speech model · required',
+  render: () => (
+    <>
+      {(
+        [
+          ['not downloaded', speechView({ state: 'idle', done: 0, total: 0 })],
+          [
+            'error',
+            speechView({
+              state: 'error',
+              done: 0,
+              total: 0,
+              error: "couldn't reach the download server",
+            }),
+          ],
+        ] as const
+      ).map(([label, v]) => (
+        <Row key={label} label={label}>
+          <Width w={640}>
+            <SpeechRequired app="nano" status={v} onOpen={noop}>
+              <Text>nano&apos;s page</Text>
+            </SpeechRequired>
+          </Width>
+        </Row>
+      ))}
+    </>
+  ),
 };
