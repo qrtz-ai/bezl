@@ -2313,3 +2313,58 @@ p50 / p95 budget still waits on `node scripts/echo-timing-report.mjs` output fro
    depends on the context" → "…context.".
 5. If Parakeet already ends it with "?" for you, nothing changes (the rule only adds a mark where none was written).
    If anything reads worse, `git revert 9905058a` (talk-only) and tell Echo the dictation.
+
+## 52. Cycle 81: a question with its auxiliary contracted onto the modifier ends with "?" (ADR 0233, `bac67baa`)
+
+Polish first. ADR 0232 gave "What's the plan for tonight" its "?" but left the contraction on the wh-word's
+modifier for its own evidence, so "What time's the meeting tomorrow" still typed "…." while "What time is the meeting
+tomorrow" got "?". Now "what" + time / day / size and "how" + long / much / often / far / old / soon may carry the
+contraction ('s / 're / 'll / 'd / 've), read as the three words, with ADR 0232's subject agreement and predicate
+refusal and every ADR 0196 check.
+
+| Run                                        | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| ------------------------------------------ | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`572e7a14`), the 154 cases    | 150 / 154 | 42 chars (0.80 % of 5259)  | 0           | 0 / 383             |
+| `bac67baa`, the 154 cases                  | 150 / 154 | 42 chars (no case changes) | 0           | 0 / 383             |
+| old cleanup, 168 cases (+14 modifier form) | 150 / 168 | 56 chars                   | -           | 0 / 413             |
+| `bac67baa`, 168 cases                      | 164 / 168 | 42 chars (0.73 % of 5724)  | 0           | 0 / 413             |
+
+- **Examples:** "What time's the meeting tomorrow" → "…tomorrow?"; "How long'll it take to get there" → "…there?";
+  "How long've you been waiting here" → "…here?"; "Hey what time's the dinner tonight" → "Hey, what time's the
+  dinner tonight?". Kept: "What time's the meeting depends on the client." (embedded predicate), "How long's the
+  line is the real question." (second clause), "Next time's on me for sure." (not a wh-word), "When time's up we stop
+  writing." (time clause), "Hey Priya what time's the dinner tonight." (ADR 0206 path unchanged).
+- **False-positive evidence:** 30 keep vectors against 14 positives, 50 refusals in tests/hardening81.rs plus the
+  full wh × modifier × tail × subject table. Old / new output on 8840 runs (the 2835 cached Parakeet hypotheses with
+  and without their final mark, every polish / keep / cleanup.json raw, with and without the polish dictionary): **0
+  differences** besides the 14 positives. Rust and TS identical on 1 663 300 texts × 2 dictionaries.
+- **Rejected this cycle** (details in ADR 0233): no subject after it ("How much's left"), other modifiers ("What
+  else's", "What kind's"), a modifier with another wh-word ("When time's up"), 'm / 't / a second apostrophe, the
+  vocative path, N203.
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped: every old text 0.112-0.123 ms new vs 0.116-0.131 ms old (noise; the new code does no extra work on them),
+  the new text ending in "What time's the meeting tomorrow" 0.117 / 0.115 ms. Ceiling 2 ms. Capture, segmenting,
+  the decode schedule, Parakeet's settings, the drain / final pass, insert and the timing log are unchanged.
+- **Dictation path review since `9905058a`:** no behaviour change in crates/qrtz-talk, packages/core/src/talk,
+  native/ or the press path besides this rule (`a133979c` is whitespace only in config.rs; dev-local is debug-only).
+  N197 (needs the Mac's device-switch gap), N199 (Jared's call) and N203 stay open.
+- **Nano quick check:** vitest src/note 89 passed in 13 files; the 6 `node:sqlite` files need node 22, which the box
+  doesn't have this cycle. No Note code changed.
+
+Next: p15 after the Mac check; N203 if real dictations show it; then P7 (idle memory / CPU on the Mac first) or P6's
+remaining helper side. P5's p50 / p95 budget still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 81)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `bac67baa`), then `scripts/dev/dev-local.sh` as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening81 --test polish_set -- --nocapture`:
+   eight budget medians well under 0.5 ms (box 0.11-0.12 ms), "polish set: 164/168 exact", regressions 0, all pass.
+3. Hold fn and say "What time's the meeting tomorrow" in a flat voice and let go right after "tomorrow": it types
+   "What time's the meeting tomorrow?". Then "How long'll it take to get there" → "…there?"; "Hey what time's the
+   dinner tonight" → "Hey, what time's the dinner tonight?".
+4. Statements keep their period: "Next time's on me for sure" → "…sure."; "What time's the meeting depends on the
+   client" → "…client.".
+5. If Parakeet already ends it with "?" for you, nothing changes. If anything reads worse, `git revert bac67baa`
+   (talk-only) and tell Echo the dictation.
