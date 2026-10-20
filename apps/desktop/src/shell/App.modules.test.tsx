@@ -37,7 +37,7 @@ vi.mock('./subapps', async () => {
 const { routes } = await import('./App');
 
 describe('module switches (ADR 0146)', () => {
-  it('a switched-off module has no tab, and its route falls back to the qrtz page', async () => {
+  it('a switched-off module has no tab, and its route falls back to the top sidebar app', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/note/meetings/m1'],
     });
@@ -53,8 +53,8 @@ describe('module switches (ADR 0146)', () => {
     expect(q('nav-talk')).not.toBeNull();
     expect(q('nav-apps')).not.toBeNull();
     expect(q('view-note')).toBeNull();
-    expect(router.state.location.pathname).toBe('/qrtz');
-    expect(q('view-marketplace')).not.toBeNull();
+    expect(router.state.location.pathname).toBe('/talk');
+    expect(q('view-talk')).not.toBeNull();
     root.unmount();
   });
 });

@@ -37,6 +37,7 @@ import {
   joinRoute,
   navTarget,
   pageOf,
+  homeRoute,
   resolveRoute,
   splitRoute,
 } from './routes';
@@ -132,10 +133,20 @@ export function Shell() {
         .filter((id) => !QRTZ_PAGE_PARTS.has(id)),
     [visible],
   );
+  // QRT-269: the default page is the top app in the sidebar (nothing remembered, nothing hardcoded).
+  const home = useMemo(
+    () =>
+      homeRoute(
+        sidebarItems(visible)
+          .filter((r) => r.group === 'main')
+          .map((r) => r.id),
+      ),
+    [visible],
+  );
   const updateDot = useAppUpdateDot();
   const location = useLocation();
   const navigate = useNavigate();
-  const path = resolveRoute(location.pathname, apps);
+  const path = resolveRoute(location.pathname, apps, home);
   const { app: page, sub: pageSub } = splitRoute(path);
   // The sub app showing this page: on the qrtz page, the app manager or (at /qrtz/settings) the settings.
   const { host: active, sub } = hostOf(page, pageSub);
@@ -216,9 +227,11 @@ export function Shell() {
   useEffect(
     () =>
       onNavigateRequest((r) =>
-        r.onboarding ? setReopened(true) : void navigate(navTarget(r, apps)),
+        r.onboarding
+          ? setReopened(true)
+          : void navigate(navTarget(r, apps, home)),
       ),
-    [navigate, apps],
+    [navigate, apps, home],
   );
   const theme = useConfigTheme();
   const [onboarded, setOnboarded] = useOnboarded();

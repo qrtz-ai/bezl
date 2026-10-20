@@ -9,10 +9,10 @@ import {
 /**
  * The main window's routes (ADR 0091), under a hash router (`index.html#/…`; the Tauri custom protocol has no
  * server to answer deep paths):
- *   /qrtz                                   the qrtz page: the app manager (installed, available); the default
+ *   /qrtz                                   the qrtz page: the app manager (installed, available); the default only when no app is on
  *   /qrtz/item/:name                        the qrtz page with that app's detail modal open
  *   /qrtz/settings                          qrtz's own (global) settings, behind the qrtz page's gear
- *   /<app id>                               a sub app; `/` and anything unknown → /qrtz
+ *   /<app id>                               a sub app; `/` and anything unknown → the top sidebar app (homeRoute)
  *   /note/meetings/:meetingId/:tab?         a meeting; tab ∈ transcript (default) | summary | notes
  *   /talk|note|ctrl|snap/settings           a module's view with its opts modal open (ADR 0161)
  * The old /marketplace… and /settings routes redirect to the qrtz page. Other sub apps have one view each, so
@@ -41,12 +41,20 @@ function qrtzRoute(rest: readonly string[]): string {
 }
 
 /**
+ * The default page: the top app in the sidebar (`navApps` in sidebar order), or the apps page (/qrtz, where
+ * apps are turned on) when no app is on.
+ */
+export const homeRoute = (navApps: readonly string[]): string =>
+  navApps[0] ? `/${navApps[0]}` : '/qrtz';
+
+/**
  * The canonical path for `pathname`; equal to it when it's already a valid route. `apps` are the sub apps the
  * sidebar shows below qrtz (the qrtz page itself is always there).
  */
 export function resolveRoute(
   pathname: string,
   apps: readonly string[],
+  home = '/qrtz',
 ): string {
   const [app, ...rest] = pathname.split('/').filter(Boolean);
   if (app === QRTZ) return qrtzRoute(rest);
@@ -54,7 +62,9 @@ export function resolveRoute(
   if (app === 'marketplace')
     return rest[0] === 'item' ? qrtzRoute(rest) : '/qrtz';
   if (app === 'settings') return '/qrtz/settings';
-  if (!app || isPart(app) || !apps.includes(app)) return '/qrtz';
+  if (isPart(app ?? '')) return '/qrtz';
+  // `/`, an unknown app and an app that was just switched off land on the default page.
+  if (!app || !apps.includes(app)) return home;
   if (rest.length === 0) return `/${app}`;
   if (
     rest.length === 1 &&
@@ -104,13 +114,17 @@ export function pageOf(host: string, sub: string): string {
 }
 
 /** Where a navigation request (palette, tray, notification, a sub app) goes. */
-export function navTarget(r: NavRequest, apps: readonly string[]): string {
+export function navTarget(
+  r: NavRequest,
+  apps: readonly string[],
+  home = '/qrtz',
+): string {
   if (r.app === QRTZ || r.app === 'marketplace') {
     if (r.settings) return '/qrtz/settings';
     return r.item ? qrtzRoute(['item', r.item]) : '/qrtz';
   }
   if (r.app === 'settings') return '/qrtz/settings';
-  if (!apps.includes(r.app)) return '/qrtz';
+  if (!apps.includes(r.app)) return home;
   if (r.app === 'note' && r.meetingId)
     return joinRoute('note', meetingPath(r.meetingId, r.tab));
   if (r.settings) return resolveRoute(joinRoute(r.app, SETTINGS_PATH), apps);

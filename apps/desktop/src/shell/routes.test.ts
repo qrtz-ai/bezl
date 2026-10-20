@@ -7,6 +7,7 @@ import {
   resolveRoute,
   splitRoute,
 } from './routes';
+import { homeRoute } from './routes';
 
 const apps = ['note', 'talk'];
 
@@ -129,5 +130,27 @@ describe('the qrtz page (app manager + its settings) and module settings routes'
     expect(pageOf('marketplace', 'item/nano')).toBe('/qrtz/item/nano');
     expect(pageOf('settings', '')).toBe('/qrtz/settings');
     expect(pageOf('note', 'meetings/m1')).toBe('/note/meetings/m1');
+  });
+});
+
+describe('the default page (QRT-269)', () => {
+  const apps = ['talk', 'note', 'ctrl'];
+  it('is the top sidebar app, whatever it is', () => {
+    expect(homeRoute(['note', 'talk'])).toBe('/note');
+    expect(homeRoute(['ctrl'])).toBe('/ctrl');
+  });
+  it('is the apps page when no app is on', () => {
+    expect(homeRoute([])).toBe('/qrtz');
+    expect(resolveRoute('/', [], homeRoute([]))).toBe('/qrtz');
+  });
+  it('catches /, unknown and switched-off apps; explicit qrtz routes stay', () => {
+    const home = homeRoute(['note', 'talk']);
+    expect(resolveRoute('/', apps, home)).toBe('/note');
+    expect(resolveRoute('/nope/x', apps, home)).toBe('/note');
+    expect(resolveRoute('/snap', apps, home)).toBe('/note');
+    expect(resolveRoute('/qrtz', apps, home)).toBe('/qrtz');
+    expect(resolveRoute('/settings', apps, home)).toBe('/qrtz/settings');
+    expect(resolveRoute('/marketplace', apps, home)).toBe('/qrtz');
+    expect(navTarget({ app: 'snap' }, apps, home)).toBe('/note');
   });
 });

@@ -122,10 +122,10 @@ describe('shell routing (ADR 0091)', () => {
     act(() => root.unmount());
   });
 
-  it('unknown routes go to the qrtz page; navigation requests go through the router with the meeting', async () => {
+  it('unknown routes go to the top sidebar app; navigation requests go through the router with the meeting', async () => {
     const { router, root, q, click } = await boot('/nope/x');
-    expect(router.state.location.pathname).toBe('/qrtz');
-    expect(q('path-marketplace')!.textContent).toBe('');
+    expect(router.state.location.pathname).toBe('/note');
+    expect(q('path-note')!.textContent).toBe('');
 
     await act(async () =>
       requestNavigate({ app: 'note', meetingId: 'm9', tab: 'notes' }),
@@ -165,8 +165,9 @@ describe('shell routing (ADR 0091)', () => {
     expect(q('nav-qrtz')).toBeNull();
     expect(q('nav-marketplace')).toBeNull();
     expect(q('nav-settings')).toBeNull();
-    // apps (the qrtz page) is the landing route.
-    expect(q('nav-apps')!.getAttribute('aria-current')).toBe('page');
+    // QRT-269: the top sidebar app (note) is the landing route, not the apps page.
+    expect(q('nav-note')!.getAttribute('aria-current')).toBe('page');
+    expect(q('nav-apps')!.getAttribute('aria-current')).toBeNull();
     expect(q('nav-opts')!.getAttribute('aria-current')).toBeNull();
     act(() => root.unmount());
   });
