@@ -2563,6 +2563,56 @@ fn remove_fillers(src: &str) -> String {
     out
 }
 
+/// ADR 0235: a filler said as its own sentence ("Thanks. Um. Can you send it", "Um. Hello") loses its mark with it.
+/// The filler goes anyway; its own "." / "?" / "!" (or run of them) used to stay and land on the sentence mark before it
+/// ("Thanks.. Can you send it?", "Really?. I doubt it.") or open the text (". Hello."). Only when the filler starts the
+/// text or follows a sentence mark and ASCII blanks, is a whole run of ASCII letters that [`is_filler_word`] takes,
+/// is not a kept capital filler ([`keeps_filler`]: "UM.") and its mark run ends the text or meets ASCII blanks and
+/// then, unless the filler opens the text, no lowercase letter (after "Done. Um. can you" the recogniser's lowercase
+/// makes the sentence end unclear, ADR 0120). A
+/// filler after a comma ("So, um. Next") and one with a comma after it ("Thanks. Um, can you") are left as they were
+/// (the second is a segment cut as often as a sentence; ADR 0235 records why). The pattern
+/// `(?<=^|[.!?])([ \t\n\r]+)(<filler>)[.!?]+(?=[ \t\n\r]|$)` in cleanup.ts (no lowercase letter next), the mark
+/// run dropped.
+fn opening_filler_marks(s: &str) -> String {
+    let b = s.as_bytes();
+    let blank = |c: u8| matches!(c, b' ' | b'\t' | b'\n' | b'\r');
+    let mark = |c: u8| matches!(c, b'.' | b'!' | b'?');
+    let mut out = String::new();
+    let (mut last, mut p) = (0, 0);
+    while p < b.len() {
+        if !blank(b[p]) || (p > 0 && !mark(b[p - 1])) {
+            p += 1;
+            continue;
+        }
+        let i = p + run_len(&s[p..], |c| c.is_ascii() && blank(c as u8));
+        let j = i + run_len(&s[i..], |c| c.is_ascii_alphabetic());
+        let k = j + run_len(&s[j..], |c| c.is_ascii() && mark(c as u8));
+        let next = k + run_len(&s[k..], |c| c.is_ascii() && blank(c as u8));
+        if j > i
+            && k > j
+            && b.get(k).is_none_or(|&c| blank(c))
+            && (p == 0 || !b.get(next).is_some_and(u8::is_ascii_lowercase))
+            && is_filler_word(&s[i..j])
+            && !keeps_filler(&s[i..j], &s[p..j], &s[..p])
+        {
+            if out.is_empty() {
+                out.reserve(s.len());
+            }
+            out.push_str(&s[last..j]);
+            last = k;
+            p = k;
+        } else {
+            p = i;
+        }
+    }
+    if last == 0 {
+        return s.to_string();
+    }
+    out.push_str(&s[last..]);
+    out
+}
+
 /// On-device cleanup: spoken commands, fillers (ADR 0192: with the comma before them where none belongs), stutters,
 /// spacing, "Scratch that" (ADR 0186), a final spoken "question mark" / "exclamation point" (ADR 0189),
 /// capitalization, terminal punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation; ADR 0188:
@@ -2574,6 +2624,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(NEW_PARAGRAPH, &t, "\n\n");
     t = layout_command(NEW_LINE, &t, "\n");
+    t = opening_filler_marks(&t);
     t = remove_fillers(&t);
     t = collapse_repeats(&t);
     t = collapse_blanks(&t);

@@ -159,4 +159,28 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
     let out = cleanup_dictation(&text, &dictionary(), true).text;
     assert!(out.ends_with("I spoke with Mr. Patel about the lease.") && !out.contains("Mister"));
     assert_fits_budget(&text, " with spoken titles");
+    // ADR 0235: a filler sentence ("Um.") before every sentence of the dictation that starts with a capital, so the
+    // opening-filler scan fires all through the text.
+    let mut body = String::new();
+    for (i, part) in long_dictation().split(". ").enumerate() {
+        if i > 0 {
+            body.push_str(if part.starts_with(|c: char| c.is_ascii_uppercase()) {
+                ". Um. "
+            } else {
+                ". "
+            });
+        }
+        body.push_str(part);
+    }
+    let text = format!("Um. {body} Thanks. Um. Can you send it");
+    let out = cleanup_dictation(&text, &dictionary(), true).text;
+    let plain = cleanup_dictation(
+        &format!("{} Thanks. Can you send it", long_dictation()),
+        &dictionary(),
+        true,
+    )
+    .text;
+    assert!(text.matches("Um. ").count() > 20);
+    assert_eq!(out, plain);
+    assert_fits_budget(&text, " with filler sentences");
 }

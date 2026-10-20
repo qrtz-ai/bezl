@@ -874,6 +874,28 @@ const FILLERS =
  * number ("a 35 mm lens"). ("err" never matches: `e+r` is one "r".)
  * Same rule in cleanup.rs.
  */
+/**
+ * ADR 0235: a filler said as its own sentence ("Thanks. Um. Can you send it", "Um. Hello") loses its mark with it,
+ * instead of leaving "Thanks.. Can you send it?" or ". Hello.". Only at the text's start or after a sentence mark and
+ * ASCII blanks, and only when the mark run ends the text or meets ASCII blanks and then, unless the filler opens the
+ * text, no lowercase letter ("Done. Um. can you" stays: the recogniser's lowercase makes the sentence end unclear).
+ * Same scan in cleanup.rs
+ * (`opening_filler_marks`).
+ */
+const OPENING_FILLER_MARKS =
+  /(?<=^|[.!?])([ \t\n\r]+)(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)[.!?]+(?=[ \t\n\r]|$)/gi;
+
+function openingFillerMarks(t: string): string {
+  return t.replace(
+    OPENING_FILLER_MARKS,
+    (all: string, blanks: string, word: string, at: number, src: string) =>
+      keepsFiller(word, blanks + word, src.slice(0, at)) ||
+      (at > 0 && /^[ \t\n\r]*[a-z]/.test(src.slice(at + all.length)))
+        ? all
+        : blanks + word,
+  );
+}
+
 function keepsFiller(word: string, all: string, before: string): boolean {
   if (word.length >= 2 && /^[A-Z]+$/.test(word)) return true;
   return (
@@ -2004,6 +2026,7 @@ export function ruleCleanup(
   t = t
     .replace(/\s*\bnew paragraph\b[,.]?\s*/gi, layoutCommand('\n\n'))
     .replace(/\s*\bnew line\b[,.]?\s*/gi, layoutCommand('\n'));
+  t = openingFillerMarks(t);
   t = t.replace(
     FILLERS,
     (

@@ -4651,6 +4651,111 @@
       "raw": "Mister Smith?",
       "dict": false,
       "expect": "Mr. Smith?"
+    },
+    {
+      "raw": "Thanks. Um. Can you send it",
+      "dict": false,
+      "expect": "Thanks. Can you send it?"
+    },
+    {
+      "raw": "Done. Uh. Next thing is the deck",
+      "dict": false,
+      "expect": "Done. Next thing is the deck."
+    },
+    {
+      "raw": "Really? Uh. I doubt it",
+      "dict": false,
+      "expect": "Really? I doubt it."
+    },
+    {
+      "raw": "Wow! Um. That was great",
+      "dict": false,
+      "expect": "Wow! That was great."
+    },
+    {
+      "raw": "at 3 p.m. Um. Then we leave",
+      "dict": false,
+      "expect": "At 3 p.m. Then we leave."
+    },
+    {
+      "raw": "Um. Hello there my good friend.",
+      "dict": false,
+      "expect": "Hello there my good friend."
+    },
+    {
+      "raw": "The dove sang like music in the air. Ah.",
+      "dict": false,
+      "expect": "The dove sang like music in the air."
+    },
+    {
+      "raw": "Thanks. Hmm. Okay",
+      "dict": false,
+      "expect": "Thanks. Okay."
+    },
+    {
+      "raw": "Thanks. Um. Uh. Can you send it",
+      "dict": false,
+      "expect": "Thanks. Can you send it?"
+    },
+    {
+      "raw": "Okay. Um.",
+      "dict": false,
+      "expect": "Okay"
+    },
+    {
+      "raw": "Um.",
+      "dict": false,
+      "expect": ""
+    },
+    {
+      "raw": "Uh. Okay.",
+      "dict": false,
+      "expect": "Okay"
+    },
+    {
+      "raw": "Um... so what do you think",
+      "dict": false,
+      "expect": "So what do you think?"
+    },
+    {
+      "raw": "We shipped it. Erm?! Anyway, next topic",
+      "dict": false,
+      "expect": "We shipped it. Anyway, next topic."
+    },
+    {
+      "raw": "It works. UM. Okay",
+      "dict": false,
+      "expect": "It works. UM. Okay."
+    },
+    {
+      "raw": "a 35 mm. Lens",
+      "dict": false,
+      "expect": "A 35 mm. Lens."
+    },
+    {
+      "raw": "run 0..10 in the loop",
+      "dict": false,
+      "expect": "Run 0..10 in the loop."
+    },
+    {
+      "raw": "Done. Umami is the fifth taste.",
+      "dict": false,
+      "expect": "Done. Umami is the fifth taste."
+    },
+    {
+      "raw": "Okay. Uhura is my favorite character.",
+      "dict": false,
+      "expect": "Okay. Uhura is my favorite character."
+    },
+    {
+      "raw": "The tuple is (1,2,3) in the test.",
+      "dict": false,
+      "expect": "The tuple is (1,2,3) in the test."
+    },
+    {
+      "raw": "Over 1,000 people signed up last week.",
+      "dict": false,
+      "expect": "Over 1,000 people signed up last week."
     }
   ],
   "dictionaryOnly": [

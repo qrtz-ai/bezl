@@ -1121,6 +1121,54 @@
       "category": "itn-title",
       "raw": "Attendees new line Mister Hall new line Missus Grant",
       "ideal": "Attendees\nMr. Hall\nMrs. Grant"
+    },
+    {
+      "id": "p183",
+      "category": "filler-sentence",
+      "raw": "Thanks for the update. Um. Can you send me the deck tonight",
+      "ideal": "Thanks for the update. Can you send me the deck tonight?"
+    },
+    {
+      "id": "p184",
+      "category": "filler-sentence",
+      "raw": "Um. I think we should push the launch to next week",
+      "ideal": "I think we should push the launch to next week."
+    },
+    {
+      "id": "p185",
+      "category": "filler-sentence",
+      "raw": "The build is green now. Uh. Let's ship it after lunch",
+      "ideal": "The build is green now. Let's ship it after lunch."
+    },
+    {
+      "id": "p186",
+      "category": "filler-sentence",
+      "raw": "Are you coming to the offsite? Hmm. Let me know by Friday",
+      "ideal": "Are you coming to the offsite? Let me know by Friday."
+    },
+    {
+      "id": "p187",
+      "category": "filler-sentence",
+      "raw": "That demo went really well! Um. Thanks everyone for staying late",
+      "ideal": "That demo went really well! Thanks everyone for staying late."
+    },
+    {
+      "id": "p188",
+      "category": "filler-sentence",
+      "raw": "I'll review the pull request tonight. Uh.",
+      "ideal": "I'll review the pull request tonight."
+    },
+    {
+      "id": "p189",
+      "category": "filler-sentence",
+      "raw": "Okay, so the plan is set. Um... Let's meet again on Monday",
+      "ideal": "Okay, so the plan is set. Let's meet again on Monday."
+    },
+    {
+      "id": "p190",
+      "category": "filler-sentence",
+      "raw": "We need to fix the login bug first. Um. Uh. Then we can look at the dashboard",
+      "ideal": "We need to fix the login bug first. Then we can look at the dashboard."
     }
   ],
   "keep": [
@@ -3815,6 +3863,90 @@
       "rule": "title",
       "raw": "Hey Mister, Sam says hi.",
       "expect": "Hey Mister, Sam says hi."
+    },
+    {
+      "id": "k445",
+      "rule": "filler-sentence",
+      "raw": "Which school did you pick? UM. Go Blue!",
+      "expect": "Which school did you pick? UM. Go Blue!"
+    },
+    {
+      "id": "k446",
+      "rule": "filler-sentence",
+      "raw": "Where does she work now? ER. She took the night shift.",
+      "expect": "Where does she work now? ER. She took the night shift."
+    },
+    {
+      "id": "k447",
+      "rule": "filler-sentence",
+      "raw": "Use the range 0..10 in the loop.",
+      "expect": "Use the range 0..10 in the loop."
+    },
+    {
+      "id": "k448",
+      "rule": "filler-sentence",
+      "raw": "Grab the umbrella. Umbrella stands are by the door.",
+      "expect": "Grab the umbrella. Umbrella stands are by the door."
+    },
+    {
+      "id": "k449",
+      "rule": "filler-sentence",
+      "raw": "We'll meet at 3 p.m. Then we'll head out.",
+      "expect": "We'll meet at 3 p.m. Then we'll head out."
+    },
+    {
+      "id": "k450",
+      "rule": "filler-sentence",
+      "raw": "Wait... What did you say?",
+      "expect": "Wait... What did you say?"
+    },
+    {
+      "id": "k451",
+      "rule": "filler-sentence",
+      "raw": "Turn left. Ahead is the parking garage.",
+      "expect": "Turn left. Ahead is the parking garage."
+    },
+    {
+      "id": "k452",
+      "rule": "filler-sentence",
+      "raw": "Visit qrtz.ai. The docs are there.",
+      "expect": "Visit qrtz.ai. The docs are there."
+    },
+    {
+      "id": "k453",
+      "rule": "filler-sentence",
+      "raw": "Errands. That's all I did today.",
+      "expect": "Errands. That's all I did today."
+    },
+    {
+      "id": "k454",
+      "rule": "filler-sentence",
+      "raw": "She works in the ER. Mostly nights.",
+      "expect": "She works in the ER. Mostly nights."
+    },
+    {
+      "id": "k455",
+      "rule": "filler-sentence",
+      "raw": "Okay. Uhura is my favorite character.",
+      "expect": "Okay. Uhura is my favorite character."
+    },
+    {
+      "id": "k456",
+      "rule": "filler-sentence",
+      "raw": "Done. Umami is the fifth taste.",
+      "expect": "Done. Umami is the fifth taste."
+    },
+    {
+      "id": "k457",
+      "rule": "filler-sentence",
+      "raw": "Is it you? Erma! Come in.",
+      "expect": "Is it you? Erma! Come in."
+    },
+    {
+      "id": "k458",
+      "rule": "filler-sentence",
+      "raw": "Run npm install. Then run the build.",
+      "expect": "Run npm install. Then run the build."
     }
   ]
 }

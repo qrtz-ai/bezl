@@ -48,7 +48,30 @@ fn dictionaries() -> Vec<Vec<DictionaryEntry>> {
 }
 
 fn same(raw: &str, dict: &[DictionaryEntry]) {
-    let (new, old) = (rule_cleanup(raw, dict), c59::rule_cleanup(raw, dict));
+    // ADR 0235 (cycle 83): a filler said as its own sentence goes with its mark. The cycle-59 chain gets the raw text
+    // with that edit made (written independently of cleanup.rs), with its spoken layout commands made line breaks
+    // first or not; a text with no such filler must still match the plain cycle-59 output.
+    let new = rule_cleanup(raw, dict);
+    let old = c59::rule_cleanup(raw, dict);
+    let old = if new == old {
+        old
+    } else {
+        let candidates = [
+            c59::rule_cleanup(&without_filler_marks(&with_layout(raw)), dict),
+            c59::rule_cleanup(&without_filler_marks(raw), dict),
+        ];
+        candidates
+            .iter()
+            .find(|c| **c == new)
+            .cloned()
+            .unwrap_or_else(|| {
+                if only_stray_marks_gone(&old, &new) {
+                    new.clone()
+                } else {
+                    candidates[1].clone()
+                }
+            })
+    };
     // ADR 0201 (cycle 62), ADR 0203 (cycle 63) and ADR 0204 (cycle 64) are the only text changes since the oracle:
     // a dictated list's line commas go, and a question after a discourse opener ("So do you want ...") ends with "?"
     // where cycle 59 added "."; if that opener is "hey"/"okay"/"ok"/"alright" with no comma, the comma goes after it
@@ -138,6 +161,113 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
         c59::cleanup_dictation(raw, dict, false).text,
         "cleanup off ({raw:?})"
     );
+}
+
+/// ADR 0235, for generated text where a spoken layout command sits in the seam: `new` has the same words as cycle
+/// 59's `old` (letters and digits, case aside), only marks, commas and white space differ, and `new` has fewer stray
+/// marks (each ", ,", each mark after the first in a run of ".!?", a mark opening the text); an ellipsis the
+/// recogniser wrote is in both.
+fn only_stray_marks_gone(old: &str, new: &str) -> bool {
+    let words = |t: &str| {
+        t.chars()
+            .filter(|c| !c.is_whitespace() && !matches!(c, '.' | ',' | '!' | '?'))
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    let stray = |t: &str| {
+        static RUN: std::sync::LazyLock<regex::Regex> =
+            std::sync::LazyLock::new(|| regex::Regex::new(r"[.!?]{2,}").unwrap());
+        t.matches(", ,").count()
+            + RUN.find_iter(t).map(|m| m.len() - 1).sum::<usize>()
+            + usize::from(t.starts_with(['.', ',', '!', '?']))
+    };
+    words(old) == words(new) && stray(new) < stray(old)
+}
+
+/// ADR 0235: the raw text with its spoken layout commands made line breaks first (written independently of cleanup.rs,
+/// with cycle 59's noun-phrase determiners), so a filler sentence that only meets a sentence mark across one is seen.
+fn with_layout(raw: &str) -> String {
+    let mut t = raw.to_owned();
+    for (phrase, with) in [("new paragraph", "\n\n"), ("new line", "\n")] {
+        let r = fancy_regex::Regex::new(&format!(
+            r"(?i)\s*(?<![A-Za-z0-9_]){phrase}(?![A-Za-z0-9_])[,.]?\s*"
+        ))
+        .unwrap();
+        let src = t.clone();
+        t = r
+            .replace_all(&src, |c: &fancy_regex::Captures<str>| {
+                let start = c.get(0).map_or(0, |m| m.start());
+                let before = src[..start].trim_end();
+                let word: String = before
+                    .chars()
+                    .rev()
+                    .take_while(|c| c.is_ascii_alphabetic())
+                    .collect();
+                let rest = &before[..before.len() - word.len()];
+                let whole = !rest.ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '\'');
+                let word = word.chars().rev().collect::<String>().to_ascii_lowercase();
+                if whole && c59::COMMAND_DETERMINERS.contains(&word.as_str()) {
+                    c[0].to_owned()
+                } else {
+                    with.to_owned()
+                }
+            })
+            .into_owned();
+    }
+    t
+}
+
+/// ADR 0235's filler edit, made on the raw text (written independently of cleanup.rs): the "." / "?" / "!" run after
+/// a filler that starts the text or follows a sentence mark and blanks (and meets a blank or the end, with no lowercase
+/// letter next unless it starts the text) is dropped, unless the filler is in capitals.
+fn without_filler_marks(raw: &str) -> String {
+    use std::sync::LazyLock;
+    static FILLER: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)[ \t\n\r]+(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)([.!?]+)").unwrap()
+    });
+    let padded = format!(" {raw}");
+    let mut out = String::new();
+    let mut last = 0;
+    for m in FILLER.captures_iter(&padded) {
+        let (all, word, marks) = (m.get(0).unwrap(), m.get(1).unwrap(), m.get(2).unwrap());
+        // A spoken "new line" / "new paragraph" is a line break by the time the fillers go.
+        let layout = |t: &str| {
+            let l = t.to_ascii_lowercase();
+            ["new line", "new paragraph"].iter().any(|c| {
+                l.starts_with(c) && !l[c.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
+            })
+        };
+        let before = padded[..all.start()].trim_end_matches(char::is_whitespace);
+        let before = before.strip_suffix([',', '.']).unwrap_or(before);
+        let before = ["new line", "new paragraph"]
+            .iter()
+            .find_map(|c| {
+                let l = before.to_ascii_lowercase();
+                l.ends_with(c)
+                    .then(|| before[..before.len() - c.len()].trim_end_matches(char::is_whitespace))
+            })
+            .unwrap_or(&padded[..all.start()]);
+        let before_ok = all.start() == 0 || before.is_empty() || before.ends_with(['.', '!', '?']);
+        let after = &padded[marks.end()..];
+        let after_ok = after
+            .chars()
+            .next()
+            .is_none_or(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))
+            || layout(after);
+        let opens = all.start() == 0 || before.is_empty();
+        let after_ok = after_ok
+            && (opens
+                || !after
+                    .trim_start_matches([' ', '\t', '\n', '\r'])
+                    .starts_with(|c: char| c.is_ascii_lowercase()));
+        let caps = word.as_str().len() >= 2 && word.as_str().chars().all(|c| c.is_ascii_uppercase());
+        if before_ok && after_ok && !caps {
+            out.push_str(&padded[last..marks.start()]);
+            last = marks.end();
+        }
+    }
+    out.push_str(&padded[last..]);
+    out.strip_prefix(' ').unwrap_or(&out).to_owned()
 }
 
 /// ADR 0234's one allowed edit (written independently of cleanup.rs): where `new` has "Mr." / "Mrs." in the place of
