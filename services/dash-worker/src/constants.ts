@@ -21,6 +21,8 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 /** Bozniak M2: wrong enrollment codes, dashboard-wide per minute, and in total before a forced rotation. */
 export const ENROLL_FAILS_PER_MIN = 10;
 export const ENROLL_FAILS_BEFORE_ROTATION = 50;
+/** Server only (QRT-284): wrong secrets on one code id before that code is dead. */
+export const ENROLL_CODE_STRIKES = 5;
 /** Server only: the same limits per client IP (a wrong code can't be pinned on a dashboard), lockout length. */
 export const ENROLL_IP_FAILS_PER_MIN = 10;
 export const ENROLL_IP_FAILS_BEFORE_LOCK = 50;
