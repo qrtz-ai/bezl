@@ -25,10 +25,12 @@ dash.qrtz.ai route.
 4. Run `bun run --cwd services/dash-worker token`. Then in the app, open Dash › settings › server, paste the token and connect. The helper
    saves the owner key in the Keychain item `qrtz-dash-dev`, never in the real `ai.qrtz.dash-net` item. The token
    works once. A second setup answers 410.
-5. Get an enrollment code. Codes issued in the app start with `ENR-`. For a test-only code, call the endpoint that
+5. Get an enrollment code. Codes look like `ENR-<id>.<secret>` (QRT-284): an 8-character id, a dot, and a
+   17-character secret (about 83 bits). Codes issued in the app start with `ENR-`. For a test-only code, call the endpoint that
    exists only in local mode (production answers it with 404). It needs the owner key, which lives in the helper's
    Keychain item, so `e2e` shows the whole flow on its own server. Enroll an agent with a code, for example:
-   `curl -s -X POST http://127.0.0.1:8799/v1/enroll -H 'content-type: application/json' -d '{"code":"ENR-…","name":"test bot"}'`
+   `curl -s -X POST http://127.0.0.1:8799/v1/enroll -H 'content-type: application/json' -d '{"code":"ENR-…….…","name":"test bot"}'`
+   Five wrong secrets on one id kill that code. An unknown id, a wrong secret and a dead code all answer the same `401`.
 6. The agent shows as pending. Approve it in the app. Its heartbeats and widgets then appear, for example:
    `curl -s -X POST http://127.0.0.1:8799/v1/widgets -H "authorization: Bearer <agent_token>" -H 'content-type: application/json' -d '{"key":"t","type":"list","title":"links","state":{"items":[{"text":"qrtz","url":"https://qrtz.ai"}]}}'`
 7. Disconnect in the app. That deletes the `qrtz-dash-dev` Keychain item.
@@ -44,6 +46,11 @@ dash.qrtz.ai route.
 
   Production answers http with 400, answers `/v1/owner/test-codes` with 404, and refuses `TST-` codes down the
   normal path (lock check first, then counted as a wrong code). The enroll limits are unchanged, and the scanner and scrubbing stay on.
+
+- **Enrollment codes** (QRT-284): only `HMAC-SHA256(DASH_ENROLL_KEY, id.secret)` is stored, compared in constant time.
+  `DASH_ENROLL_KEY` is a Worker secret of its own (64 hex), separate from `DASH_PEPPER`. Locally it is a throwaway value in
+  `.dev.vars` (`dev:local` adds one to an older file), the e2e writes its own, and the tests use a fixed placeholder.
+  Production sets it with `wrangler secret put DASH_ENROLL_KEY` before deploy; without it, issuing and enrolling answer 503.
 
 - **App** (`crates/qrtz-dash-net`): `QRTZ_DASH_ORIGIN` is read only in debug builds with the `dev-local` feature.
   Release builds have no override code at all, which a test checks with `--release`. The only value accepted is

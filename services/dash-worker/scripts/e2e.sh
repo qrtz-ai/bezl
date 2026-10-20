@@ -27,7 +27,20 @@ check "$(req POST /v1/owner/codes -H "authorization: Bearer $OWNER")" 201 "app e
 check "$(req POST /v1/owner/test-codes -H "authorization: Bearer $OWNER")" 201 "issue test code (local mode only)"
 CODE="$(j code <"$tmp/out")"
 [[ "$CODE" == TST-* ]] && echo "ok   code is a test code (TST-)" || { echo "FAIL code prefix: ${CODE:0:4}"; exit 1; }
-check "$(req POST /v1/enroll -d '{"code":"ENR-AAAA-BBBB","name":"x"}')" 401 "wrong code"
+[[ "$CODE" =~ ^TST-[2-9A-HJKMNP-TV-Z]{8}\.[2-9A-HJKMNP-TV-Z]{17}$ ]] && echo "ok   code is <id>.<secret> (QRT-284)" || { echo "FAIL code format"; exit 1; }
+check "$(req POST /v1/enroll -d '{"code":"ENR-AAAA-BBBB","name":"x"}')" 401 "malformed code"
+WRONG401="$(cat "$tmp/out")"
+# QRT-284: 5 wrong secrets on one id kill that code; unknown, wrong and dead all answer the same 401.
+check "$(req POST /v1/owner/test-codes -H "authorization: Bearer $OWNER")" 201 "issue a code to kill"
+KILL="$(j code <"$tmp/out")"; KID="${KILL%%.*}"
+for i in 1 2 3 4 5; do
+  check "$(req POST /v1/enroll -d "{\"code\":\"$KID.22222222222222222\",\"name\":\"x\"}")" 401 "wrong secret $i/5"
+  [[ "$(cat "$tmp/out")" == "$WRONG401" ]] || { echo "FAIL wrong-secret body differs"; exit 1; }
+done
+check "$(req POST /v1/enroll -d "{\"code\":\"$KILL\",\"name\":\"dead bot\"}")" 401 "right secret after 5 strikes: dead"
+[[ "$(cat "$tmp/out")" == "$WRONG401" ]] && echo "ok   dead code answers like a wrong code" || { echo "FAIL dead body differs"; exit 1; }
+check "$(req POST /v1/enroll -d '{"code":"TST-22222222.33333333333333333","name":"x"}')" 401 "unknown id"
+[[ "$(cat "$tmp/out")" == "$WRONG401" ]] && echo "ok   unknown id answers like a wrong code" || { echo "FAIL unknown body differs"; exit 1; }
 check "$(req POST /v1/enroll -d "{\"code\":\"$CODE\",\"name\":\"smoke bot\",\"description\":\"local smoke\"}")" 201 "enroll"
 AID="$(j agent_id <"$tmp/out")"; TOK="$(j agent_token <"$tmp/out")"
 check "$(req POST /v1/enroll -d "{\"code\":\"$CODE\",\"name\":\"again\"}")" 401 "code is single use"
