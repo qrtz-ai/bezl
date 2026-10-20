@@ -108,12 +108,14 @@ async function enroll(req: Request, env: Env): Promise<Out> {
     .toUpperCase();
   const codeHash = await hmacHex(env.DASH_PEPPER, code);
   const dir = env.ENROLL.getByName('enroll');
-  // A test code outside local test mode: the same answer as a wrong code, and counted as one.
-  if (code.startsWith(TEST_CODE_PREFIX) && !dev) {
-    await dir.fail(src);
-    return fail(401, 'enrollment code is used, expired or wrong');
-  }
-  const claim = await dir.claim(src, codeHash);
+  // A test code outside local test mode goes down the normal path with a hash that can never match: the same
+  // lock check first (429 when locked), then counted as a wrong code and the same 401.
+  const claim = await dir.claim(
+    src,
+    code.startsWith(TEST_CODE_PREFIX) && !dev
+      ? `refused:${codeHash}`
+      : codeHash,
+  );
   if (!claim.ok) {
     if (claim.status === 429)
       return out(429, {
@@ -214,7 +216,13 @@ async function owner(
   const text = await readCapped(req, C.MAX_BODY_BYTES);
   if (typeof text !== 'string') return text;
   return unwire(
-    await stub.owner({ ownerHash, method: req.method, path, body: text }),
+    await stub.owner({
+      ownerHash,
+      method: req.method,
+      path,
+      body: text,
+      testCodes: path === '/v1/owner/test-codes' && devLocal(env, req),
+    }),
   );
 }
 
@@ -239,6 +247,9 @@ async function route(req: Request, env: Env): Promise<Out | Response> {
   if (req.method === 'POST' && path === '/v1/enroll') return enroll(req, env);
   if (req.method === 'POST' && path === '/v1/owner/setup')
     return setup(req, env);
+  // TST- codes come only from this endpoint, and it exists only in local test mode (404 otherwise, before auth).
+  if (path === '/v1/owner/test-codes' && !devLocal(env, req))
+    return fail(404, 'no such endpoint');
   if (path.startsWith('/v1/owner/')) return owner(req, env, path);
   if (path.startsWith('/v1/')) return agent(req, env, path);
   return fail(404, 'no such endpoint');

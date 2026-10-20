@@ -85,3 +85,43 @@ describe('local test mode gate', () => {
     expect(await tst.text()).toBe(await wrong.text());
   });
 });
+
+describe('test-code endpoint and locked sources (item 3)', () => {
+  it('POST /v1/owner/test-codes is 404 in production, with or without an owner key', async () => {
+    for (const headers of <Record<string, string>[]>[
+      {},
+      { authorization: 'Bearer ok_' + '0'.repeat(32) + '_' + '0'.repeat(64) },
+    ]) {
+      const r = await exports.default.fetch(
+        new Request('https://dash.qrtz.ai/v1/owner/test-codes', {
+          method: 'POST',
+          headers: { 'cf-connecting-ip': '203.0.113.50', ...headers },
+        }),
+      );
+      expect(r.status).toBe(404);
+    }
+  });
+
+  it('a locked source gets the same 429 for a TST- code as for a normal code', async () => {
+    const ip = '192.0.2.233';
+    const post = (code: string) =>
+      exports.default.fetch(
+        new Request('https://dash.qrtz.ai/v1/enroll', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'cf-connecting-ip': ip,
+          },
+          body: JSON.stringify({ code, name: 'x' }),
+        }),
+      );
+    let last = 0;
+    for (let i = 0; i < 12; i++)
+      last = (await post(`ENR-AAAA-AAA${i % 10}`)).status;
+    expect(last).toBe(429);
+    const tst = await post(`${TEST_CODE_PREFIX}ABCD-EFGH`);
+    const enr = await post('ENR-ZZZZ-ZZZZ');
+    expect(tst.status).toBe(429);
+    expect(enr.status).toBe(429);
+  });
+});

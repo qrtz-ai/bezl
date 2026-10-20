@@ -13,5 +13,5 @@ vars="$worker/.dev.vars" state="$worker/.wrangler/state"
 if [[ $wipe == 1 ]]; then rm -rf "$state" "$vars"; say "wiped local dash state and .dev.vars"; fi
 if [[ ! -f "$vars" ]]; then write_vars "$vars"; rm -rf "$state"; say "wrote fresh local secrets to services/dash-worker/.dev.vars (not printed)"; fi
 grep -q '^DASH_DEV_LOCAL=1$' "$vars" || die ".dev.vars has no DASH_DEV_LOCAL=1 (rerun with --wipe)"
-say "dash server: http://127.0.0.1:8799  (Ctrl-C to stop; enrollment codes it issues start with TST-)"
+say "dash server: http://127.0.0.1:8799  (Ctrl-C to stop; test codes: POST /v1/owner/test-codes gives TST-)"
 run_wrangler 8799 "$state"
