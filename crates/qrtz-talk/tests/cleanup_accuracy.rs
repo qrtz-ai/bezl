@@ -42,7 +42,10 @@ const VECTORS: &[(&str, &str)] = &[
     ("price 3.50", "Price 3.50"),
     ("open config.json and fix it", "Open config.json and fix it."),
     ("the site is qrtz.ai now", "The site is qrtz.ai now."),
-    ("email jlgrimes@users.noreply.github.com today", "Email jlgrimes@users.noreply.github.com today"),
+    (
+        "email jlgrimes@users.noreply.github.com today",
+        "Email jlgrimes@users.noreply.github.com today",
+    ),
     (
         "go to https://qrtz.ai/docs please",
         "Go to https://qrtz.ai/docs please.",

@@ -162,7 +162,6 @@ jobs:
       - name: cargo test (workspace)
         run: cargo test --workspace
 
-
   # Unsigned release build on macOS. Named "release", so no restored caches: always a cold, reproducible build.
   release-unsigned:
     name: macOS · unsigned release build · verify-bundle (no Developer ID)

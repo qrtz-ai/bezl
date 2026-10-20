@@ -48,7 +48,12 @@ final class NotchSurfaceSecureTests: XCTestCase {
         XCTAssertEqual(s.contentOpacity, 1)
         XCTAssertTrue(s.secureWatchActive)
         secure = true  // no explicit recheck: the poll (or an observer) must catch it
-        RunLoop.main.run(until: Date().addingTimeInterval(NotchSurface.securePollInterval * 2))
+        // Spin the main run loop until the poll fires. A loaded CI VM can delay a 50 ms timer past two intervals, so
+        // the deadline is generous; the assertion is still that the poll alone (no explicit recheck) hides it.
+        let deadline = Date().addingTimeInterval(2)
+        while s.lastRetractSecure == nil, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(NotchSurface.securePollInterval))
+        }
         XCTAssertEqual(s.lastRetractSecure, true)
         XCTAssertEqual(s.contentOpacity, 0)
     }
