@@ -354,7 +354,7 @@ pub fn select(root: &Path, bundled_version: &str, requirement: &str, check: &dyn
                     program: bundle.join(ECHO_EXE),
                     bundle,
                     version: v,
-                    min_version: min_version.clone(),
+                    min_version,
                 };
                 break;
             }
@@ -823,17 +823,11 @@ mod tests {
     }
     impl BundleCheck for Fake {
         fn check_install(&self, bundle: &Path, requirement: &str) -> Result<(), String> {
-            *self
-                .installs
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+            *self.installs.lock().unwrap() += 1;
             Self::verdict(bundle, requirement)
         }
         fn check_launch(&self, bundle: &Path, requirement: &str) -> Result<(), String> {
-            *self
-                .launches
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+            *self.launches.lock().unwrap() += 1;
             Self::verdict(bundle, requirement)
         }
     }
@@ -920,18 +914,8 @@ mod tests {
             matches!(select(&root, "1.2.0", REQ, &f), Pick::Installed { version, .. } if version == "1.4.0")
         );
         // P3.1: launches use only the launch check; each install ran the install check once.
-        assert_eq!(
-            *f.installs
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            2
-        );
-        assert!(
-            *f.launches
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                >= 2
-        );
+        assert_eq!(*f.installs.lock().unwrap(), 2);
+        assert!(*f.launches.lock().unwrap() >= 2);
     }
 
     #[test]

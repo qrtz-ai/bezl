@@ -39,6 +39,11 @@ pub struct Hosts {
 }
 
 impl Hosts {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+    )]
     pub fn pinned() -> Self {
         serde_json::from_str(HOSTS).expect("module_hosts.json")
     }

@@ -108,6 +108,11 @@ pub fn sync(file: &Path, cfg: &Value) {
 
 /// Follow `config:changed` on its own thread until the app's events end, rewriting the file when the theme changes.
 /// Events missed (`Lagged`) re-sync from `config_now`, the current config.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "thread spawn only fails when the OS is out of threads at startup"
+)]
 pub fn follow(
     file: PathBuf,
     mut rx: tokio::sync::broadcast::Receiver<(String, Value)>,

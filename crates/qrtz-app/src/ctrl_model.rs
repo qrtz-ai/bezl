@@ -37,6 +37,11 @@ pub struct CtrlManifest {
 }
 
 impl CtrlManifest {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+    )]
     pub fn pinned() -> CtrlManifest {
         serde_json::from_str(MANIFEST).expect("ctrl_laya_model.json")
     }
@@ -78,6 +83,11 @@ impl CtrlLayaModel {
         Self::with_manifest(models_root, ctrl_dir, CtrlManifest::pinned(), base)
     }
 
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "the pinned manifest always has one set with one file; checked by ctrl_model tests"
+    )]
     pub fn with_manifest(
         models_root: impl Into<PathBuf>,
         ctrl_dir: &Path,

@@ -50,7 +50,7 @@ impl qrtz_ctrl::helper::Wire for SupervisorWire {
         let mut lines = self.sup.subscribe_lines();
         let (tx, rx) = std::sync::mpsc::channel::<String>();
         let timeout = self.timeout;
-        let w = want.clone();
+        let w = want;
         self.rt.spawn(async move {
             let wait = async {
                 loop {
