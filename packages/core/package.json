@@ -11,6 +11,10 @@
     "./react": "./src/react.tsx",
     "./ipc/samples": "./src/ipc/samples.ts"
   },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1"
+  },
   "peerDependencies": {
     "react": "^19.3.0"
   },
