@@ -2075,8 +2075,19 @@ fn qrtz_app_own_graph_reaches_no_network_crate_but_the_speech_channel() {
 #[test]
 fn every_network_role_names_an_adr_that_names_its_crate() {
     let adrs = root().join("docs/adr");
+    // The ADRs stayed internal when the repo went public: every role must still name its ADR, and the files are
+    // checked wherever docs/adr exists (the internal checkout).
+    let have_adrs = adrs.is_dir();
+    if !have_adrs {
+        eprintln!(
+            "docs/adr is not in this checkout (public repo): checking only that every role names an ADR"
+        );
+    }
     for (c, rule) in network_roles() {
         let n = rule["adr"].as_str().unwrap_or_else(|| panic!("{c}: no adr"));
+        if !have_adrs {
+            continue;
+        }
         let files: Vec<PathBuf> = std::fs::read_dir(&adrs)
             .unwrap()
             .flatten()
