@@ -4,8 +4,9 @@ The goal is a signed, notarized qrtz that opens without Gatekeeper warnings. The
 bundler signs, then `scripts/release/sign-mac.sh` re-signs the nested executables (the bundler gives every one the
 app's entitlements; ADR 0162), reseals, notarizes and staples.
 
-CI builds, signs, notarizes and (with the app-update key) publishes qrtz.app (`.github/workflows/app-release.yml`,
-"qrtz.app releases" below, ADR 0181); the steps below are the local, signed path, the same scripts.
+CI builds, signs, notarizes and publishes qrtz.app and every package to GitHub Releases
+(`.github/workflows/release.yml`, "Releases on GitHub" below, QRT-297); the steps below are the local, signed path,
+the same scripts.
 
 Step by step, with the exact commands and checks: [docs/modules/production-setup.md](modules/production-setup.md) Part A.
 
@@ -81,123 +82,70 @@ with `Package.swift` required to say `exact:`), `qrtz_<v>_build-scripts.tar.gz` 
 lockfiles, `tauri.conf.json`, this file) and `qrtz_<v>_source.sha256`. It reads no key. The app's settings → system →
 "open-source licenses" shows `THIRD_PARTY_NOTICES.md`, whose "Source code" section says where these are.
 
-## Module releases in CI (ADR 0179)
+## Releases on GitHub (QRT-297)
 
-nano, ctrl and snap release from GitHub Actions on GitHub-hosted macOS runners, with the release secrets in the
-repo's GitHub secrets. The Mac path (`scripts/modules/publish.sh --release`) still works and is what CI runs.
+Every release builds, signs, notarizes and publishes in GitHub Actions (`.github/workflows/release.yml`) and is
+hosted on GitHub Releases. Cloudflare R2 is no longer used. The setup steps (environments, the exact
+`gh secret set --env release …` commands, notifications) are in
+[docs/modules/production-setup.md](modules/production-setup.md#releases-on-github-qrt-297).
 
-- **`.github/workflows/modules-release.yml`**: on a push to main touching `modules/**`, the helper's Swift sources /
-  `Package.swift` / `Package.resolved` / entitlements, `crates/qrtz-modules`, `tools/qrtz-publish`, the model pins or
-  the publish scripts, plus "Run workflow" (`gh workflow run modules-release.yml [-f force_bump=true]`). One publish at a
-  time (concurrency group `modules-publish`, shared with the timestamp job, never cancelled).
-  1. `plan` (Linux, cheap): `scripts/ci/release-plan.sh` reads `version.mjs plan`, the `<m>-v<x.y.z>` tags and the
-     live index. Nothing changed → no Mac starts. Some modules unchanged → all three are bumped (`--force-bump`),
-     because `publish.sh --release` republishes every package and a rebuilt binary never matches the live one. A
-     version that is live but untagged stops the run (tag it first). Missing secrets → a warning, nothing runs.
-  2. `release` (macos-latest = macOS 26, arm64): Rust, bun, SwiftPM and model-hash caches;
-     `scripts/ci/macos-signing.sh setup` imports the Developer ID identity into a temporary keychain, stores a
-     `qrtz-notary` notarytool profile in it (Apple ID + app-specific password by default, or the App Store Connect API
-     key) and writes `index.key` / `timestamp.key` 0600 into `$RUNNER_TEMP`; `scripts/ci/hydrate-out.sh` mirrors the
-     bucket's `v1/` into a fresh output dir (the build continues from the live index); `publish.sh --release` bumps,
-     commits and pushes `modules: release …`, builds, notarizes, signs, uploads through the R2 S3 credentials and
-     tags + pushes `<m>-v<version>`; `scripts/ci/verify-live.sh` fetches every signed object back from
-     modules.qrtz.ai, compares hashes and runs `qrtz-publish verify` on the fresh copy; an `always()` step deletes the
-     keychain and every key file.
-  - Loop guard: the bump commit is pushed with `GITHUB_TOKEN` (which never starts a workflow), and a head commit
-    starting `modules: release ` or containing `[skip ci]` is skipped anyway.
-- **`.github/workflows/modules-timestamp.yml`**: every day at 16:00 UTC (09:00 PDT / 08:00 PST) and on demand, on
-  Linux: only the timestamp key, hydrate, `publish.sh --timestamp`, verify-live. The Mac launchd job
-  (`timestamp-job.sh`) can stay as a backup; it now skips itself when the live timestamp isn't the one in its own
-  `~/qrtz-publish-out` (CI published since), so a stale Mac never rolls the store back. Retire it with
-  `scripts/modules/timestamp-job.sh uninstall` once CI has run green for a week.
+- **Tags.** `v<x.y.z>` releases qrtz.app (tauri.conf.json must say `x.y.z`); `nano-v<x.y.z>`, `ctrl-v<x.y.z>`,
+  `snap-v<x.y.z>` release one package (its `modules/<m>/qrtz.json` must say `x.y.z`). Only a tag whose commit is on
+  main is signed or published. "Run workflow" with `tag=<tag>` re-runs one; `tag=timestamp` and `tag=feed-refresh`
+  re-sign the index timestamp and qrtz.app's update feed.
+- **Jobs.** `build` compiles on macOS with no secrets and a read-only token and hands over the unsigned bundle or
+  package. `sign` runs in the `release` environment (Jared approves each run), re-signs every executable inside out
+  with the Developer ID (`scripts/release/sign-notarize.sh --app`, or `build-packages.sh --sign-only`), notarizes and
+  staples, signs the update archive and feed (`TAURI_SIGNING_PRIVATE_KEY`) or the package index and timestamp
+  (`QRTZ_INDEX_KEY`, `QRTZ_TIMESTAMP_KEY`), uploads, and checks what GitHub serves (`scripts/app/verify-live.sh`,
+  `scripts/ci/verify-live.sh`). `timestamp` runs daily at 16:00 UTC with only the timestamp key, in the
+  `release-timestamp` environment. Every action is pinned to a commit SHA; `scripts/release/release-workflow.test.mjs`
+  checks these rules on every CI run.
+- **Hosting.** The tag's own GitHub release carries the dmg or the package for people. The app reads only the fixed
+  `index` release by direct download URL (`https://github.com/qrtz-ai/qrtz/releases/download/index/<asset>`, never
+  `api.github.com`): layout path `v1/a/b` is the asset `v1.a.b` (`scripts/release/gh-store.sh`,
+  `qrtz_modules::index::layout::on_host`). Content-addressed assets are never replaced; only `v1.timestamp.json`
+  (+ `.sig`), `v1.app.latest.json` and `v1.app.qrtz-latest.dmg` are, each uploaded last.
+- **Secrets** (environment `release`): `APPLE_CERT_P12_BASE64`, `APPLE_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`,
+  `APPLE_APP_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `QRTZ_INDEX_KEY`,
+  `QRTZ_TIMESTAMP_KEY`; environment `release-timestamp`: `QRTZ_TIMESTAMP_KEY` only. The offline root keys are never
+  secrets. `scripts/ci/macos-signing.sh` puts the identity and notary profile in a temporary keychain and deletes it
+  in an `always()` step.
 
-### Secrets
+## qrtz.app updates (ADR 0181)
 
-Set once (and on rotation) with `scripts/ci/setup-secrets.sh` in Terminal on the release Mac. Each value goes from its
-source straight into `gh secret set` on stdin; nothing is printed or written to disk.
+qrtz updates itself from settings → qrtz: it checks the update feed (`v1.app.latest.json` on the `index` release)
+quietly at launch (after a minute) and every 6 hours, a dot on the sidebar's qrtz row says a newer qrtz is there,
+"update" downloads it with progress, and "restart to update" relaunches into it (ADR 0172's restart). Before swapping
+the bundle the app checks the archive's size and sha256 (the feed's), its minisign signature against the app-update
+public key compiled in (`crates/qrtz-app/src/app_update_key.pub`, its trusted comment naming the same version), that
+the new qrtz.app is `ai.qrtz.desktop` at that version, signed by Developer ID team MR26CCZ496 and notarized, and that
+the version is above both this build and the highest one it ever accepted. Never a downgrade, never a reinstall.
+`latest.json` expires 30 days after it was signed: a release re-signs it, and so does `release.yml` with
+`tag=feed-refresh` (or `scripts/app/publish-local.sh --refresh` on the Mac).
 
-| Secret                                                      | Source                                                                                                |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`                     | the login keychain's `Developer ID Application: … (MR26CCZ496)` only, repacked with a random password |
-| `AC_APPLE_ID`, `AC_APP_PASSWORD`, `AC_TEAM_ID`              | prompt (default): Apple ID + an app-specific password (account.apple.com)                             |
-| `AC_API_KEY`, `AC_KEY_ID`, `AC_ISSUER_ID`                   | prompt (alternative): App Store Connect API key `.p8`, key id, issuer id                              |
-| `QRTZ_INDEX_KEY`, `QRTZ_TIMESTAMP_KEY`                      | `~/.qrtz-keys/index.key`, `~/.qrtz-keys/timestamp.key` (the online keys)                              |
-| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID` | the keychain item `qrtz-r2` (account = access key id); account id `177665085902fbdae8b82993bb7a0b91`  |
+| Asset on the `index` release                    | Replaced?             |
+| ----------------------------------------------- | --------------------- |
+| `v1.app.<v>.qrtz_<v>_aarch64.app.tar.gz{,.sig}` | never                 |
+| `v1.app.<v>.qrtz_<v>_aarch64.dmg`               | never                 |
+| `v1.app.qrtz-latest.dmg` (the download link)    | each release          |
+| `v1.app.latest.json` (uploaded last)            | each release, refresh |
 
-The offline root keys (`~/qrtz-root-a`, keychain `qrtz-root-b`) are never secrets; the script refuses them. The
-`qrtz-notary` profile itself can't be exported from the keychain, so its credentials are entered again. Rotation:
-ADR 0179.
+To cut a release: `node scripts/app/version.mjs bump`, commit, push to main, then `git tag v<v> && git push origin
+v<v>` and approve the run. echo is part of qrtz.app (ADR 0174): a change to echo is a qrtz release.
 
-The workflows need a push from a token with the `workflow` scope (`gh auth refresh -s workflow`).
+### Publishing from the Mac (`scripts/app/publish-local.sh`, fallback)
 
-## qrtz.app releases (ADR 0181)
-
-qrtz updates itself from settings → qrtz: it checks `https://modules.qrtz.ai/v1/app/latest.json` quietly at launch
-(after a minute) and every 6 hours, a dot on the sidebar's qrtz row says a newer qrtz is there, "update" downloads it
-with progress, and "restart to update" relaunches into it (ADR 0172's restart). Before swapping the bundle the app
-checks the archive's size and sha256 (the feed's), its minisign signature against the app-update public key compiled
-in (`crates/qrtz-app/src/app_update_key.pub`, its trusted comment naming the same version), that the new qrtz.app is
-`ai.qrtz.desktop` at that version, signed by Developer ID team MR26CCZ496 and notarized (`codesign -R … and
-notarized`, `spctl`), and that the version is above both this build and the highest one it ever accepted (the
-high-water mark in its data dir). Never a downgrade, never a reinstall. `latest.json` is signed by the app-update
-key and expires 30 days after it was signed; `app-feed-refresh.yml` re-signs it every Monday. If that workflow stops,
-update checks fail quietly ("expired") until it runs again: run it by hand with `gh workflow run app-feed-refresh.yml`,
-or, while Actions is off, `scripts/app/publish-local.sh --refresh` on the Mac (below).
-
-On R2 (bucket `qrtz-modules`, never touched by the module publish: hydrate-out.sh and publish.sh exclude `app/**`):
-
-| Object                                          | Cache             |
-| ----------------------------------------------- | ----------------- |
-| `v1/app/<v>/qrtz_<v>_aarch64.app.tar.gz{,.sig}` | 1 year, immutable |
-| `v1/app/<v>/qrtz_<v>_aarch64.dmg`               | 1 year, immutable |
-| `v1/app/qrtz-latest.dmg` (the download link)    | 60 s              |
-| `v1/app/latest.json` (uploaded last)            | 60 s              |
-
-To cut a release: `node scripts/app/version.mjs bump` (patch: tauri.conf.json, both package.json, the workspace
-Cargo.toml and Cargo.lock, CHANGELOG `## Unreleased` → `## <v> (<date>)`), commit, push to main. app-release.yml does
-the rest and tags `app-v<v>`. echo is part of qrtz.app (ADR 0174): a change to echo is a qrtz release.
-
-One-time, on the release Mac: `scripts/ci/setup-secrets.sh app-update` makes `~/.qrtz-keys/app-update.key` (0600,
-no password) with `tauri signer generate`, sets the `APP_UPDATE_KEY` secret from it (stdin, never printed), writes
-the public key into `crates/qrtz-app/src/app_update_key.pub` and prints only the public key. Commit that file. Until
-then builds say "updates aren't set up in this build yet" and app-release.yml publishes nothing.
-
-### Publishing from the Mac (`scripts/app/publish-local.sh`)
-
-While GitHub Actions is off, the Mac publishes with the same steps app-release.yml runs after its build. Jared approved
-app-feed signing on his Mac (Oct 19, 2026) with `~/.qrtz-keys/app-update.key`; it never runs on a server-side box.
-
-```sh
-node scripts/app/version.mjs bump && git commit … && git push   # the release commit, on main
-bun install --frozen-lockfile && bun run release:mac            # build, sign, notarize, staple qrtz.app and the dmg
-scripts/app/publish-local.sh --dry-run                          # the checks, then the plan; nothing is done
-scripts/app/publish-local.sh                                    # archive, sign, feed, upload, verify, tag app-v<v>
-scripts/app/publish-local.sh --refresh                          # re-sign the live latest.json, 30 days out
-```
-
-- It refuses a dirty tree, a HEAD that isn't on origin's main, an existing `app-v<v>` (here or on origin), a live
-  `latest.json` already at or above `<v>`, and anything already under `v1/app/<v>/`. Objects are immutable: a version
-  that went up, even partly, is never published again; bump instead.
-- The bundle is found in `$CARGO_TARGET_DIR`, `target/` or `apps/desktop/src-tauri/target/`
-  (`release/bundle/macos/qrtz.app`, the dmg `qrtz_<v>_aarch64.dmg` next to it), or pass `--app <qrtz.app>` and
-  `--dmg <dmg>`. It must be qrtz `<v>` with echo, signed by MR26CCZ496 and notarized (the app-release.yml checks). The
-  update archive is made from that notarized bundle, not from `tauri build`.
-- Steps: `tar` (COPYFILE_DISABLE=1), `tauri signer sign --app-version <v>`, minisign check against
-  `crates/qrtz-app/src/app_update_key.pub`, `feed.mjs --expires-days 30`, `sign-feed.sh`, `upload.sh` (latest.json last),
-  `verify-live.sh`, then `version.mjs tag --push` (skip it with `--no-tag`).
-- Secrets: `TAURI_SIGNING_PRIVATE_KEY` is read from `$QRTZ_APP_UPDATE_KEY` (default `~/.qrtz-keys/app-update.key`, 0600,
-  empty password as in CI) into the environment of the two signing commands only. The R2 variables are used when set,
-  otherwise read from the keychain item `qrtz-r2` (account = access key id) and `~/.qrtz-keys/r2-account-id` (or the
-  default account id above) for the upload only. Nothing is printed or traced.
-- `--refresh` is app-feed-refresh.yml: it checks that the live feed verifies against the committed key, re-signs it
-  unchanged but for a new `expires`, uploads `latest.json` and waits until it's live. Run it before the feed is 30 days old.
-- A failed run keeps its work dir (only files that go public) and says where. Never re-sign what's already up.
-- Tests: `scripts/app/publish-local.test.mjs` (dry run against a throwaway clone; upload order with rclone stubbed).
+The Mac can still publish with the same steps the `sign` job runs, using your own `gh` login for the upload (no other
+credential): `bun run release:mac`, then `scripts/app/publish-local.sh --dry-run` and `scripts/app/publish-local.sh`
+(`--refresh` re-signs the live feed). It refuses a dirty tree, a HEAD that isn't on origin's main, an existing
+`app-v<v>`, a live feed at or above `<v>` and anything already up for `<v>`. Tests:
+`scripts/app/publish-local.test.mjs` (dry run against a throwaway clone; upload order with gh stubbed).
 
 ## Updates and diagnostics
 
-Package hosting is `modules.qrtz.ai` only (Cloudflare R2; ADR 0167 — no Backblaze B2 mirror). Publish with
-`scripts/modules/publish.sh`; setup in [docs/modules/production-setup.md](modules/production-setup.md) Part B.
+Package hosting is the `index` GitHub release only (QRT-297; ADR 0167: no mirror). Publish with a `<m>-v<x.y.z>` tag
+(release.yml) or `scripts/modules/publish.sh` on the Mac.
 
 - **Check for updates** (settings → qrtz) is qrtz's own updater (ADR 0181, above). `packages:check-update` (the
   signed index's newest `qrtz`) stays as a channel; settings no longer calls it.

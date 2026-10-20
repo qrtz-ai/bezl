@@ -3,42 +3,17 @@
 The code side is done ([ADR 0153](../adr/0153-module-hosting-the-signed-index-and-sideloads.md), and the package
 manager on top of it, [ADR 0157](../adr/0157-qrtz-is-its-own-package-manager.md)): the signed index, the installer,
 the `qrtz` command, the `.qrtzpkg` sideload and the `qrtz-publish` tool. Nothing is published and no key exists yet.
-These steps need your accounts and your hands. They take about an hour; nothing here costs money until real
-traffic (R2: 10 GB storage and 10M reads a month free, no egress fees).
+QRT-297: the package host is the fixed `index` GitHub release of qrtz-ai/qrtz (it replaced Cloudflare R2 on
+2026-10-20); publishing and the daily re-sign run in `.github/workflows/release.yml`. The setup is in
+[production-setup.md](production-setup.md#releases-on-github-qrt-297). This page keeps the format and the manual steps.
 
 Never paste a private key (`*.key`) into chat, a ticket, the repo, CI or a shared drive. Public keys (`*.pub`) and
 the root sha256 are fine to share.
 
-## 1. Cloudflare account and the qrtz.ai zone
-
-1. Create an account at <https://dash.cloudflare.com/sign-up> (turn on two-factor auth).
-2. **Add a site** → `qrtz.ai` → Free plan. Cloudflare scans the existing DNS records; check every record it found
-   against your current DNS (website, mail MX/TXT/SPF/DKIM) before continuing.
-3. At your registrar, replace the nameservers with the two Cloudflare shows. Wait until the zone says **Active**
-   (minutes to a few hours).
-
-## 2. The R2 bucket
-
-1. **R2 Object Storage** → enable R2 (it asks for a card; the free tier covers this).
-2. **Create bucket**: name `qrtz-modules`, location automatic (or Eastern North America), storage class Standard.
-3. Bucket → **Settings**:
-   - **Public access → Custom domains → Connect domain**: `modules.qrtz.ai`. Cloudflare adds the DNS record and the
-     certificate itself. Leave the `r2.dev` URL **disabled**.
-   - Leave CORS empty (the app isn't a browser).
-4. Zone `qrtz.ai` → **Caching → Cache Rules** → create a rule for hostname `modules.qrtz.ai`:
-   - URI path starts with `/v1/timestamp.json`: eligible for cache, edge TTL 5 minutes.
-   - everything else under `/v1/`: eligible for cache, edge TTL 1 year (those objects never change).
-   - Files are whole objects now (no chunks, ADR 0157 §5). Cloudflare doesn't edge-cache an object above 512 MB (the
-     Nemotron encoder is 589 MB); it's still served from R2, in byte ranges, so nothing to configure.
-5. Privacy: zone → **Analytics & Logs**: don't enable Logpush or Web Analytics for `modules.qrtz.ai`. Don't add
-   Workers, Page Rules that set cookies, or Bot Fight Mode on that hostname (the app sends no cookies).
-6. **R2 → Manage API tokens → Create API token**: permission **Object Read & Write**, only bucket `qrtz-modules`.
-   Keep the access key id and secret in your password manager; they go into `rclone` on the release machine only.
-
 ## 3. No package-host mirror (ADR 0167)
 
-Jared decided (2026-10-18) not to run a Backblaze B2 mirror. `modules.qrtz.ai` (Cloudflare R2, bucket
-`qrtz-modules`) is the sole package host. `module_hosts.json` pins only that primary (`mirrors: []`). Model files
+Jared decided (2026-10-18) not to run a Backblaze B2 mirror. The `index` GitHub release is the sole package host
+(QRT-297). `module_hosts.json` pins only that primary (`mirrors: []`) and the hosts its redirects may reach. Model files
 are never on it (ADR 0171): the signed tree gives each one a Hugging Face URL at a pinned commit, the client fetches
 it only from there and checks it against the signed sha256 and size. Proposal §4's B2 cold-copy plan is withdrawn; see [ADR 0167](../adr/0167-no-backblaze-b2-package-host-mirror.md).
 
@@ -80,22 +55,14 @@ Each key file is 0600; `qrtz-publish` refuses one that isn't. Instead of `--keys
 `QRTZ_PUBLISH_INDEX_KEY` / `QRTZ_PUBLISH_TIMESTAMP_KEY` (and `QRTZ_PUBLISH_ROOT_KEYS`) work, e.g. read from the
 macOS Keychain in a shell; never put them in a file in the repo.
 
-## 5. rclone on the release machine
-
-```sh
-brew install rclone
-rclone config   # add "r2": type s3, provider Cloudflare, the R2 token, endpoint https://<account-id>.r2.cloudflarestorage.com
-```
-
 ## 6. Each publish
 
 ```sh
 P=target/release/qrtz-publish
 $P build --out ~/qrtz-publish-out --spec publish.json --keys ~/.qrtz-keys
 $P verify --out ~/qrtz-publish-out --root-sha256 <root 1 sha256>
-# immutable objects first, the timestamp last, never --delete:
-rclone copy ~/qrtz-publish-out r2:qrtz-modules --exclude v1/timestamp.json --exclude v1/timestamp.json.sig --immutable
-rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
+# new immutable objects first, the timestamp pair last (as release assets v1.a.b), never a delete:
+scripts/release/gh-store.sh upload ~/qrtz-publish-out
 ```
 
 `publish.json` (paths relative to it):
@@ -123,7 +90,8 @@ rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
   pin in the `pinnedModels` file, and the published package is exactly the tree the app pins (same sha256). The
   files are only hashed (ADR 0171): the output dir gets the model's `qrtz.json` and tree, the app downloads the files
   from their pinned Hugging Face URLs, and qrtz-publish keeps a copy in `<out>.model-blobs/` for offline packs.
-- Keep `~/qrtz-publish-out` (or back it up): it's the record of everything published.
+- The `index` release is the record of everything published (`scripts/ci/hydrate-out.sh <dir>` rebuilds an output
+  dir from it).
 
 ## 7. Weekly
 
@@ -131,12 +99,11 @@ The timestamp expires 7 days after it's signed; after 8 days every installed qrt
 (modules already installed keep working). Re-sign at least weekly:
 
 ```sh
-$P timestamp --out ~/qrtz-publish-out --keys ~/.qrtz-keys && rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
+scripts/modules/publish.sh --timestamp   # re-hydrates from the index release, re-signs, uploads only the pair
 ```
 
-`scripts/modules/timestamp-job.sh install` does this automatically: a launchd job on the release Mac, daily at 09:00
-and after a missed run, with the R2 key from the login keychain and only the timestamp key. Later it can move to
-CI once GitHub billing is fixed (then the timestamp key moves to a CI secret, and only that key).
+`release.yml`'s `timestamp` job does this every day at 16:00 UTC, with only the timestamp key (environment
+`release-timestamp`).
 
 ## 8. Pulling a bad release
 
