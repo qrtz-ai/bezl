@@ -639,8 +639,10 @@ impl Helper {
                     AppError::new(ErrorCode::NotFound, "no dash server connected").retryable(false)
                 })?;
                 let mut v = self.send(plan.method, &plan.path, &key, plan.body).await?;
-                if channel == "dash:view" {
+                if channel == "dash:view" && v.is_object() {
                     v["connected"] = json!(true);
+                    // QRT-298: the origin this helper actually talks to, not the server's own constant.
+                    v["origin"] = json!(origin());
                 }
                 Ok(v)
             }

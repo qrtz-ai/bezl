@@ -23,7 +23,7 @@ export { Dashboard } from './dashboard';
 import { unwire } from './dashboard';
 export { EnrollDirectory } from './directory';
 import { sourceOf } from './ip';
-import { devLocal, TEST_CODE_PREFIX } from './dev';
+import { devLocal, devOrigin, readmeFor, TEST_CODE_PREFIX } from './dev';
 
 const AGENT_TOKEN = /^at_([0-9a-f]{32})_[0-9a-f]{64}$/;
 const OWNER_KEY = /^ok_([0-9a-f]{32})_[0-9a-f]{64}$/;
@@ -237,7 +237,8 @@ async function route(req: Request, env: Env): Promise<Out | Response> {
   // Nothing is selected by query string, and tokens never go in URLs.
   const path = url.pathname;
   if (req.method === 'GET' && path === '/v1/readme')
-    return new Response(README_MD, {
+    // QRT-298: local test mode names its own origin in rule 1; production is unchanged.
+    return new Response(readmeFor(README_MD, devOrigin(env, req)), {
       headers: {
         ...SECURITY_HEADERS,
         'content-type': 'text/markdown; charset=utf-8',
