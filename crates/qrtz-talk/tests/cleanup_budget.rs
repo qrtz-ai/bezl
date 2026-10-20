@@ -144,4 +144,10 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("What's the plan for tonight?"));
     assert_fits_budget(&text, " ending in a wh-contraction question");
+    // ADR 0233: ending in a question whose auxiliary is contracted onto the modifier ("What time's").
+    let text = format!("{}Thanks. What time's the meeting tomorrow", long_dictation());
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("What time's the meeting tomorrow?"));
+    assert_fits_budget(&text, " ending in a modifier-contraction question");
 }

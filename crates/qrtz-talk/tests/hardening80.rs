@@ -115,10 +115,9 @@ fn a_statement_or_an_unsure_shape_keeps_its_period() {
         "Well what's the plan for tonight",
         "Where's Waldo is my favorite book",
         "What's mine stays mine",
-        // Shapes left out on purpose (ADR 0232): no subject after it, a modifier before it, a second apostrophe,
+        // Shapes left out on purpose (ADR 0232): no subject after it, a second apostrophe,
         // a comma, a second clause, "ever", subject agreement, two contractions in one word.
         "Who's coming to the party on Saturday",
-        "What time's the meeting tomorrow",
         "What\u{2019}s up with that",
         "What's the deal with Sam's car",
         "What's the plan, Sam",

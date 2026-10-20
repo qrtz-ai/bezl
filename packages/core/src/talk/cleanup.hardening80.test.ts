@@ -77,7 +77,6 @@ describe('ADR 0232 a question opening with a wh-contraction ends with "?"', () =
     "Where's Waldo is my favorite book",
     "What's mine stays mine",
     "Who's coming to the party on Saturday",
-    "What time's the meeting tomorrow",
     'What\u2019s up with that',
     "What's the deal with Sam's car",
     "What's the plan, Sam",

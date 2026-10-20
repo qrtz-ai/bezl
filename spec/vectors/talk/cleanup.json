@@ -3505,7 +3505,7 @@
     {
       "raw": "What time's the meeting tomorrow",
       "dict": false,
-      "expect": "What time's the meeting tomorrow."
+      "expect": "What time's the meeting tomorrow?"
     },
     {
       "raw": "What’s up with that",
@@ -3611,6 +3611,466 @@
       "raw": "Where've he gone this time",
       "dict": false,
       "expect": "Where've he gone this time."
+    },
+    {
+      "raw": "How long's the flight to Denver",
+      "dict": false,
+      "expect": "How long's the flight to Denver?"
+    },
+    {
+      "raw": "How long'll it take to get there",
+      "dict": false,
+      "expect": "How long'll it take to get there?"
+    },
+    {
+      "raw": "How much'll it cost to fix the car",
+      "dict": false,
+      "expect": "How much'll it cost to fix the car?"
+    },
+    {
+      "raw": "How long've you been waiting here",
+      "dict": false,
+      "expect": "How long've you been waiting here?"
+    },
+    {
+      "raw": "How far's the drive from the airport",
+      "dict": false,
+      "expect": "How far's the drive from the airport?"
+    },
+    {
+      "raw": "How old's your daughter now",
+      "dict": false,
+      "expect": "How old's your daughter now?"
+    },
+    {
+      "raw": "What day's the party this week",
+      "dict": false,
+      "expect": "What day's the party this week?"
+    },
+    {
+      "raw": "How much'd you pay for the tickets",
+      "dict": false,
+      "expect": "How much'd you pay for the tickets?"
+    },
+    {
+      "raw": "What time'd you get home last night",
+      "dict": false,
+      "expect": "What time'd you get home last night?"
+    },
+    {
+      "raw": "Hey what time's the dinner tonight",
+      "dict": false,
+      "expect": "Hey, what time's the dinner tonight?"
+    },
+    {
+      "raw": "So how long's the drive from here",
+      "dict": false,
+      "expect": "So how long's the drive from here?"
+    },
+    {
+      "raw": "I just parked. How long'll you be",
+      "dict": false,
+      "expect": "I just parked. How long'll you be?"
+    },
+    {
+      "raw": "What time’s the game on Sunday",
+      "dict": false,
+      "expect": "What time’s the game on Sunday?"
+    },
+    {
+      "raw": "What time's best depends on your schedule",
+      "dict": true,
+      "expect": "What time's best depends on your schedule."
+    },
+    {
+      "raw": "What time's best depends on your schedule",
+      "dict": false,
+      "expect": "What time's best depends on your schedule."
+    },
+    {
+      "raw": "What time's the meeting depends on the client",
+      "dict": true,
+      "expect": "What time's the meeting depends on the client."
+    },
+    {
+      "raw": "What time's the meeting depends on the client",
+      "dict": false,
+      "expect": "What time's the meeting depends on the client."
+    },
+    {
+      "raw": "How long's the flight matters less than the price",
+      "dict": true,
+      "expect": "How long's the flight matters less than the price."
+    },
+    {
+      "raw": "How long's the flight matters less than the price",
+      "dict": false,
+      "expect": "How long's the flight matters less than the price."
+    },
+    {
+      "raw": "How old's the house doesn't matter to me",
+      "dict": true,
+      "expect": "How old's the house doesn't matter to me."
+    },
+    {
+      "raw": "How old's the house doesn't matter to me",
+      "dict": false,
+      "expect": "How old's the house doesn't matter to me."
+    },
+    {
+      "raw": "What day's the deadline is up to the manager",
+      "dict": true,
+      "expect": "What day's the deadline is up to the manager."
+    },
+    {
+      "raw": "What day's the deadline is up to the manager",
+      "dict": false,
+      "expect": "What day's the deadline is up to the manager."
+    },
+    {
+      "raw": "How far's the drive will decide where we stay",
+      "dict": true,
+      "expect": "How far's the drive will decide where we stay."
+    },
+    {
+      "raw": "How far's the drive will decide where we stay",
+      "dict": false,
+      "expect": "How far's the drive will decide where we stay."
+    },
+    {
+      "raw": "How much's the ticket varies by the day",
+      "dict": true,
+      "expect": "How much's the ticket varies by the day."
+    },
+    {
+      "raw": "How much's the ticket varies by the day",
+      "dict": false,
+      "expect": "How much's the ticket varies by the day."
+    },
+    {
+      "raw": "How long's the line is the real question",
+      "dict": true,
+      "expect": "How long's the line is the real question."
+    },
+    {
+      "raw": "How long's the line is the real question",
+      "dict": false,
+      "expect": "How long's the line is the real question."
+    },
+    {
+      "raw": "How much's the rent determines where we live",
+      "dict": true,
+      "expect": "How much's the rent determines where we live."
+    },
+    {
+      "raw": "How much's the rent determines where we live",
+      "dict": false,
+      "expect": "How much's the rent determines where we live."
+    },
+    {
+      "raw": "How far's the hotel changes the whole plan",
+      "dict": true,
+      "expect": "How far's the hotel changes the whole plan."
+    },
+    {
+      "raw": "How far's the hotel changes the whole plan",
+      "dict": false,
+      "expect": "How far's the hotel changes the whole plan."
+    },
+    {
+      "raw": "What time's the show remains a mystery",
+      "dict": true,
+      "expect": "What time's the show remains a mystery."
+    },
+    {
+      "raw": "What time's the show remains a mystery",
+      "dict": false,
+      "expect": "What time's the show remains a mystery."
+    },
+    {
+      "raw": "How soon's the launch seems up in the air",
+      "dict": true,
+      "expect": "How soon's the launch seems up in the air."
+    },
+    {
+      "raw": "How soon's the launch seems up in the air",
+      "dict": false,
+      "expect": "How soon's the launch seems up in the air."
+    },
+    {
+      "raw": "How long's the meeting has nothing to do with it",
+      "dict": true,
+      "expect": "How long's the meeting has nothing to do with it."
+    },
+    {
+      "raw": "How long's the meeting has nothing to do with it",
+      "dict": false,
+      "expect": "How long's the meeting has nothing to do with it."
+    },
+    {
+      "raw": "What time's the train makes no difference",
+      "dict": true,
+      "expect": "What time's the train makes no difference."
+    },
+    {
+      "raw": "What time's the train makes no difference",
+      "dict": false,
+      "expect": "What time's the train makes no difference."
+    },
+    {
+      "raw": "How old's your car tells you a lot about it",
+      "dict": true,
+      "expect": "How old's your car tells you a lot about it."
+    },
+    {
+      "raw": "How old's your car tells you a lot about it",
+      "dict": false,
+      "expect": "How old's your car tells you a lot about it."
+    },
+    {
+      "raw": "That time's the best one for me",
+      "dict": true,
+      "expect": "That time's the best one for me."
+    },
+    {
+      "raw": "That time's the best one for me",
+      "dict": false,
+      "expect": "That time's the best one for me."
+    },
+    {
+      "raw": "This time's going to be different",
+      "dict": true,
+      "expect": "This time's going to be different."
+    },
+    {
+      "raw": "This time's going to be different",
+      "dict": false,
+      "expect": "This time's going to be different."
+    },
+    {
+      "raw": "Next time's on me for sure",
+      "dict": true,
+      "expect": "Next time's on me for sure."
+    },
+    {
+      "raw": "Next time's on me for sure",
+      "dict": false,
+      "expect": "Next time's on me for sure."
+    },
+    {
+      "raw": "Last time's meeting ran over by an hour",
+      "dict": true,
+      "expect": "Last time's meeting ran over by an hour."
+    },
+    {
+      "raw": "Last time's meeting ran over by an hour",
+      "dict": false,
+      "expect": "Last time's meeting ran over by an hour."
+    },
+    {
+      "raw": "Any time's fine with me this week",
+      "dict": true,
+      "expect": "Any time's fine with me this week."
+    },
+    {
+      "raw": "Any time's fine with me this week",
+      "dict": false,
+      "expect": "Any time's fine with me this week."
+    },
+    {
+      "raw": "When time's up we stop writing",
+      "dict": true,
+      "expect": "When time's up we stop writing."
+    },
+    {
+      "raw": "When time's up we stop writing",
+      "dict": false,
+      "expect": "When time's up we stop writing."
+    },
+    {
+      "raw": "Half time's the best part of the game",
+      "dict": true,
+      "expect": "Half time's the best part of the game."
+    },
+    {
+      "raw": "Half time's the best part of the game",
+      "dict": false,
+      "expect": "Half time's the best part of the game."
+    },
+    {
+      "raw": "Dinner time's at seven for the kids",
+      "dict": true,
+      "expect": "Dinner time's at seven for the kids."
+    },
+    {
+      "raw": "Dinner time's at seven for the kids",
+      "dict": false,
+      "expect": "Dinner time's at seven for the kids."
+    },
+    {
+      "raw": "Show time's at eight tonight",
+      "dict": true,
+      "expect": "Show time's at eight tonight."
+    },
+    {
+      "raw": "Show time's at eight tonight",
+      "dict": false,
+      "expect": "Show time's at eight tonight."
+    },
+    {
+      "raw": "Some time's better than no time at all",
+      "dict": true,
+      "expect": "Some time's better than no time at all."
+    },
+    {
+      "raw": "Some time's better than no time at all",
+      "dict": false,
+      "expect": "Some time's better than no time at all."
+    },
+    {
+      "raw": "Every day's a new chance to get it right",
+      "dict": true,
+      "expect": "Every day's a new chance to get it right."
+    },
+    {
+      "raw": "Every day's a new chance to get it right",
+      "dict": false,
+      "expect": "Every day's a new chance to get it right."
+    },
+    {
+      "raw": "She asked how long's the drive",
+      "dict": true,
+      "expect": "She asked how long's the drive."
+    },
+    {
+      "raw": "She asked how long's the drive",
+      "dict": false,
+      "expect": "She asked how long's the drive."
+    },
+    {
+      "raw": "Hey Priya what time's the dinner tonight",
+      "dict": true,
+      "expect": "Hey Priya what time's the dinner tonight."
+    },
+    {
+      "raw": "What time's the meeting tomorrow.",
+      "dict": true,
+      "expect": "What time's the meeting tomorrow."
+    },
+    {
+      "raw": "What time's the meeting tomorrow.",
+      "dict": false,
+      "expect": "What time's the meeting tomorrow."
+    },
+    {
+      "raw": "How long's the flight to Denver!",
+      "dict": true,
+      "expect": "How long's the flight to Denver!"
+    },
+    {
+      "raw": "How long's the flight to Denver!",
+      "dict": false,
+      "expect": "How long's the flight to Denver!"
+    },
+    {
+      "raw": "How much's left in the budget",
+      "dict": false,
+      "expect": "How much's left in the budget."
+    },
+    {
+      "raw": "How long's left on the timer",
+      "dict": false,
+      "expect": "How long's left on the timer."
+    },
+    {
+      "raw": "What time's good for you",
+      "dict": false,
+      "expect": "What time's good for you."
+    },
+    {
+      "raw": "How long's it been since we talked",
+      "dict": false,
+      "expect": "How long's it been since we talked."
+    },
+    {
+      "raw": "What time's the meeting, Sam",
+      "dict": false,
+      "expect": "What time's the meeting, Sam."
+    },
+    {
+      "raw": "What size's the problem we're facing",
+      "dict": false,
+      "expect": "What size's the problem we're facing."
+    },
+    {
+      "raw": "What else's on the list today",
+      "dict": false,
+      "expect": "What else's on the list today."
+    },
+    {
+      "raw": "What kind's the best for us",
+      "dict": false,
+      "expect": "What kind's the best for us."
+    },
+    {
+      "raw": "How long's he ever been late",
+      "dict": false,
+      "expect": "How long's he ever been late."
+    },
+    {
+      "raw": "Who time's the meeting tomorrow",
+      "dict": false,
+      "expect": "Who time's the meeting tomorrow."
+    },
+    {
+      "raw": "Why long's the meeting tomorrow",
+      "dict": false,
+      "expect": "Why long's the meeting tomorrow."
+    },
+    {
+      "raw": "What time's'll the meeting be",
+      "dict": false,
+      "expect": "What time's'll the meeting be."
+    },
+    {
+      "raw": "How long're he staying with us",
+      "dict": false,
+      "expect": "How long're he staying with us."
+    },
+    {
+      "raw": "How long've she been waiting here",
+      "dict": false,
+      "expect": "How long've she been waiting here."
+    },
+    {
+      "raw": "What time's they arriving tonight",
+      "dict": false,
+      "expect": "What time's they arriving tonight."
+    },
+    {
+      "raw": "Well what time's the meeting tomorrow",
+      "dict": false,
+      "expect": "Well what time's the meeting tomorrow."
+    },
+    {
+      "raw": "How time's the meeting tomorrow",
+      "dict": false,
+      "expect": "How time's the meeting tomorrow."
+    },
+    {
+      "raw": "What long's the flight to Denver",
+      "dict": false,
+      "expect": "What long's the flight to Denver."
+    },
+    {
+      "raw": "How long's the flight to Denver is that right",
+      "dict": false,
+      "expect": "How long's the flight to Denver is that right."
+    },
+    {
+      "raw": "How long'm I supposed to wait here",
+      "dict": false,
+      "expect": "How long'm I supposed to wait here."
     }
   ],
   "dictionaryOnly": [

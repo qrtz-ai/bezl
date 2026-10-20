@@ -1751,8 +1751,9 @@ const SO_QUESTION_VERBS: &[&str] = &[
 /// "When'll it be ready", "What've you got"). "'s" takes only singular subjects and determiners (not "I" / "you" /
 /// "we" / "they"); "'re" only plural ones; "'ve" only "I" / "you" / "we" / "they". "'s" is read as "is" and "'d" as
 /// "would" for the later checks ("ever" refuses after both). Not here: "his" / "her" after "What's" (not in
-/// [`WH_SUBJECTS`]: "What's his name called me" is the placeholder name), a modifier before the contraction ("What
-/// time's"), "'d" + "you know", and any other contraction or apostrophe. Same table in cleanup.ts.
+/// [`WH_SUBJECTS`]: "What's his name called me" is the placeholder name), "'d" + "you know", and any other
+/// contraction or apostrophe. A modifier before the contraction ("What time's") is ADR 0233's
+/// [`WH_MODIFIER_CONTRACTIONS`]. Same table in cleanup.ts.
 pub const WH_CONTRACTIONS: &[(&str, &str, &[&str])] = &[
     (
         "s",
@@ -1800,6 +1801,28 @@ fn wh_contraction(word: &str) -> Option<(&'static str, &'static str, &'static [&
     Some((wh, aux, agree))
 }
 
+/// ADR 0233: the modifiers a contraction may sit on, per wh-word ("What time's the meeting", "How long'll it take",
+/// "How long've you been here"): the [`WH_MODIFIERS`] that make a wh-question opening with "what" or "how". Same table
+/// in cleanup.ts.
+pub const WH_MODIFIER_CONTRACTIONS: &[(&str, &[&str])] = &[
+    ("what", &["time", "day", "size"]),
+    ("how", &["long", "much", "often", "far", "old", "soon"]),
+];
+
+/// ADR 0233: `wh` + `word` (lowercased) as a wh-word and its modifier with the auxiliary contracted onto the modifier:
+/// ("how", "long'll") → (wh-word, modifier, auxiliary, subjects). The tails and their subjects are
+/// [`WH_CONTRACTIONS`]'s.
+fn modifier_contraction(
+    wh: &str,
+    word: &str,
+) -> Option<(&'static str, &'static str, &'static str, &'static [&'static str])> {
+    let (wh, modifiers) = WH_MODIFIER_CONTRACTIONS.iter().find(|(w, _)| *w == wh)?;
+    let (modifier, tail) = word.split_once(['\'', '\u{2019}'])?;
+    let modifier = modifiers.iter().find(|m| **m == modifier)?;
+    let (_, aux, agree) = WH_CONTRACTIONS.iter().find(|(t, _, _)| *t == tail)?;
+    Some((wh, modifier, aux, agree))
+}
+
 /// ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Its opening is a yes/no
 /// question's ([`yes_no_opening`], the auxiliary capitalised as a sentence start) or a wh-question's, it has 3 to
 /// [`QUESTION_MAX_WORDS`] words, no comma, colon, semicolon, quote, bracket or apostrophe, and nothing after the
@@ -1811,7 +1834,9 @@ fn wh_contraction(word: &str) -> Option<(&'static str, &'static str, &'static [&
 /// then run on the words after it, which must still be 3 or more. ADR 0232: that first word (after any opener) may
 /// be a wh-word with its auxiliary contracted ([`wh_contraction`]: "What's the plan for tonight", "How'd it go
 /// with the client"), the only apostrophe allowed; it is read as the two words, its subject checked against the
-/// contraction's own list.
+/// contraction's own list. ADR 0233: or that second word, after "what" / "how", may be a modifier with the
+/// auxiliary contracted onto it ([`modifier_contraction`]: "What time's the meeting tomorrow", "How long'll it
+/// take"), read as the three words and checked the same way.
 fn unmarked_question(t: &str) -> bool {
     let line = &t[t.rfind('\n').map_or(0, |i| i + 1)..];
     let s = match INNER_END.find_iter(line).flatten().last() {
@@ -1845,16 +1870,28 @@ fn unmarked_question(t: &str) -> bool {
     let mut subjects: &[&str] = WH_SUBJECTS;
     let spelled: Vec<&str>;
     let w = if apostrophes == 1 {
-        let Some((wh, aux, agree)) = wh_contraction(w[0]) else {
-            return false;
-        };
-        if (wh == "what" && aux == "would" && w[1..] == ["you", "know"])
-            || w[1..].iter().any(|x| EMBEDDED_PREDICATES.contains(x))
-        {
-            return false;
+        if let Some((wh, aux, agree)) = wh_contraction(w[0]) {
+            if (wh == "what" && aux == "would" && w[1..] == ["you", "know"])
+                || w[1..].iter().any(|x| EMBEDDED_PREDICATES.contains(x))
+            {
+                return false;
+            }
+            subjects = agree;
+            spelled = [wh, aux].into_iter().chain(w[1..].iter().copied()).collect();
+        } else {
+            // ADR 0233: "What time's the meeting" reads as "what time is the meeting".
+            let Some((wh, modifier, aux, agree)) = modifier_contraction(w[0], w[1]) else {
+                return false;
+            };
+            if w[2..].iter().any(|x| EMBEDDED_PREDICATES.contains(x)) {
+                return false;
+            }
+            subjects = agree;
+            spelled = [wh, modifier, aux]
+                .into_iter()
+                .chain(w[2..].iter().copied())
+                .collect();
         }
-        subjects = agree;
-        spelled = [wh, aux].into_iter().chain(w[1..].iter().copied()).collect();
         &spelled[..]
     } else {
         w

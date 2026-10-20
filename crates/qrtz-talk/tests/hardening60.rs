@@ -59,6 +59,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0229 (cycle 78): so may one opening with "Let's" / "Please" and ending in ", shall we" / ", <modal> you".
     // ADR 0230 (cycle 79): a month's ordinal day may be written as a figure ("on October 21st").
     // ADR 0232 (cycle 80): a question opening with a wh-contraction ("What's the plan") may end with "?".
+    // ADR 0233 (cycle 81): so may one with the contraction on the wh-word's modifier ("What time's the meeting").
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -112,11 +113,12 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
                     } else {
                         first
                     };
+                    let second = w.next().unwrap_or_default();
                     ["what", "where", "when", "why", "how", "who"].iter().any(|wh| {
                         first
                             .strip_prefix(wh)
                             .is_some_and(|t| t.starts_with(['\'', '\u{2019}']))
-                    })
+                    }) || (matches!(first.as_str(), "what" | "how") && second.contains(['\'', '\u{2019}']))
                 })
         });
         assert!(

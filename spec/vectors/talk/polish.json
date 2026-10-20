@@ -953,6 +953,90 @@
       "category": "question",
       "raw": "I just got back. What's the plan now",
       "ideal": "I just got back. What's the plan now?"
+    },
+    {
+      "id": "p155",
+      "category": "question",
+      "raw": "What time's the meeting tomorrow",
+      "ideal": "What time's the meeting tomorrow?"
+    },
+    {
+      "id": "p156",
+      "category": "question",
+      "raw": "How long's the flight to Denver",
+      "ideal": "How long's the flight to Denver?"
+    },
+    {
+      "id": "p157",
+      "category": "question",
+      "raw": "How long'll it take to get there",
+      "ideal": "How long'll it take to get there?"
+    },
+    {
+      "id": "p158",
+      "category": "question",
+      "raw": "How much'll it cost to fix the car",
+      "ideal": "How much'll it cost to fix the car?"
+    },
+    {
+      "id": "p159",
+      "category": "question",
+      "raw": "How long've you been waiting here",
+      "ideal": "How long've you been waiting here?"
+    },
+    {
+      "id": "p160",
+      "category": "question",
+      "raw": "How far's the drive from the airport",
+      "ideal": "How far's the drive from the airport?"
+    },
+    {
+      "id": "p161",
+      "category": "question",
+      "raw": "How old's your daughter now",
+      "ideal": "How old's your daughter now?"
+    },
+    {
+      "id": "p162",
+      "category": "question",
+      "raw": "What day's the party this week",
+      "ideal": "What day's the party this week?"
+    },
+    {
+      "id": "p163",
+      "category": "question",
+      "raw": "How much'd you pay for the tickets",
+      "ideal": "How much'd you pay for the tickets?"
+    },
+    {
+      "id": "p164",
+      "category": "question",
+      "raw": "What time'd you get home last night",
+      "ideal": "What time'd you get home last night?"
+    },
+    {
+      "id": "p165",
+      "category": "question",
+      "raw": "Hey what time's the dinner tonight",
+      "ideal": "Hey, what time's the dinner tonight?"
+    },
+    {
+      "id": "p166",
+      "category": "question",
+      "raw": "So how long's the drive from here",
+      "ideal": "So how long's the drive from here?"
+    },
+    {
+      "id": "p167",
+      "category": "question",
+      "raw": "I just parked. How long'll you be",
+      "ideal": "I just parked. How long'll you be?"
+    },
+    {
+      "id": "p168",
+      "category": "question",
+      "raw": "What time’s the game on Sunday",
+      "ideal": "What time’s the game on Sunday?"
     }
   ],
   "keep": [
@@ -3287,6 +3371,186 @@
       "rule": "question-contraction",
       "raw": "Where's the line between work and life is a good question",
       "expect": "Where's the line between work and life is a good question."
+    },
+    {
+      "id": "k385",
+      "rule": "question-modifier-contraction",
+      "raw": "What time's best depends on your schedule",
+      "expect": "What time's best depends on your schedule."
+    },
+    {
+      "id": "k386",
+      "rule": "question-modifier-contraction",
+      "raw": "What time's the meeting depends on the client",
+      "expect": "What time's the meeting depends on the client."
+    },
+    {
+      "id": "k387",
+      "rule": "question-modifier-contraction",
+      "raw": "How long's the flight matters less than the price",
+      "expect": "How long's the flight matters less than the price."
+    },
+    {
+      "id": "k388",
+      "rule": "question-modifier-contraction",
+      "raw": "How old's the house doesn't matter to me",
+      "expect": "How old's the house doesn't matter to me."
+    },
+    {
+      "id": "k389",
+      "rule": "question-modifier-contraction",
+      "raw": "What day's the deadline is up to the manager",
+      "expect": "What day's the deadline is up to the manager."
+    },
+    {
+      "id": "k390",
+      "rule": "question-modifier-contraction",
+      "raw": "How far's the drive will decide where we stay",
+      "expect": "How far's the drive will decide where we stay."
+    },
+    {
+      "id": "k391",
+      "rule": "question-modifier-contraction",
+      "raw": "How much's the ticket varies by the day",
+      "expect": "How much's the ticket varies by the day."
+    },
+    {
+      "id": "k392",
+      "rule": "question-modifier-contraction",
+      "raw": "How long's the line is the real question",
+      "expect": "How long's the line is the real question."
+    },
+    {
+      "id": "k393",
+      "rule": "question-modifier-contraction",
+      "raw": "How much's the rent determines where we live",
+      "expect": "How much's the rent determines where we live."
+    },
+    {
+      "id": "k394",
+      "rule": "question-modifier-contraction",
+      "raw": "How far's the hotel changes the whole plan",
+      "expect": "How far's the hotel changes the whole plan."
+    },
+    {
+      "id": "k395",
+      "rule": "question-modifier-contraction",
+      "raw": "What time's the show remains a mystery",
+      "expect": "What time's the show remains a mystery."
+    },
+    {
+      "id": "k396",
+      "rule": "question-modifier-contraction",
+      "raw": "How soon's the launch seems up in the air",
+      "expect": "How soon's the launch seems up in the air."
+    },
+    {
+      "id": "k397",
+      "rule": "question-modifier-contraction",
+      "raw": "How long's the meeting has nothing to do with it",
+      "expect": "How long's the meeting has nothing to do with it."
+    },
+    {
+      "id": "k398",
+      "rule": "question-modifier-contraction",
+      "raw": "What time's the train makes no difference",
+      "expect": "What time's the train makes no difference."
+    },
+    {
+      "id": "k399",
+      "rule": "question-modifier-contraction",
+      "raw": "How old's your car tells you a lot about it",
+      "expect": "How old's your car tells you a lot about it."
+    },
+    {
+      "id": "k400",
+      "rule": "question-modifier-contraction",
+      "raw": "That time's the best one for me",
+      "expect": "That time's the best one for me."
+    },
+    {
+      "id": "k401",
+      "rule": "question-modifier-contraction",
+      "raw": "This time's going to be different",
+      "expect": "This time's going to be different."
+    },
+    {
+      "id": "k402",
+      "rule": "question-modifier-contraction",
+      "raw": "Next time's on me for sure",
+      "expect": "Next time's on me for sure."
+    },
+    {
+      "id": "k403",
+      "rule": "question-modifier-contraction",
+      "raw": "Last time's meeting ran over by an hour",
+      "expect": "Last time's meeting ran over by an hour."
+    },
+    {
+      "id": "k404",
+      "rule": "question-modifier-contraction",
+      "raw": "Any time's fine with me this week",
+      "expect": "Any time's fine with me this week."
+    },
+    {
+      "id": "k405",
+      "rule": "question-modifier-contraction",
+      "raw": "When time's up we stop writing",
+      "expect": "When time's up we stop writing."
+    },
+    {
+      "id": "k406",
+      "rule": "question-modifier-contraction",
+      "raw": "Half time's the best part of the game",
+      "expect": "Half time's the best part of the game."
+    },
+    {
+      "id": "k407",
+      "rule": "question-modifier-contraction",
+      "raw": "Dinner time's at seven for the kids",
+      "expect": "Dinner time's at seven for the kids."
+    },
+    {
+      "id": "k408",
+      "rule": "question-modifier-contraction",
+      "raw": "Show time's at eight tonight",
+      "expect": "Show time's at eight tonight."
+    },
+    {
+      "id": "k409",
+      "rule": "question-modifier-contraction",
+      "raw": "Some time's better than no time at all",
+      "expect": "Some time's better than no time at all."
+    },
+    {
+      "id": "k410",
+      "rule": "question-modifier-contraction",
+      "raw": "Every day's a new chance to get it right",
+      "expect": "Every day's a new chance to get it right."
+    },
+    {
+      "id": "k411",
+      "rule": "question-modifier-contraction",
+      "raw": "She asked how long's the drive",
+      "expect": "She asked how long's the drive."
+    },
+    {
+      "id": "k412",
+      "rule": "question-modifier-contraction",
+      "raw": "Hey Priya what time's the dinner tonight",
+      "expect": "Hey Priya what time's the dinner tonight."
+    },
+    {
+      "id": "k413",
+      "rule": "question-modifier-contraction",
+      "raw": "What time's the meeting tomorrow.",
+      "expect": "What time's the meeting tomorrow."
+    },
+    {
+      "id": "k414",
+      "rule": "question-modifier-contraction",
+      "raw": "How long's the flight to Denver!",
+      "expect": "How long's the flight to Denver!"
     }
   ]
 }

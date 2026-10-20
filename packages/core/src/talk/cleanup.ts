@@ -436,6 +436,32 @@ function whContraction(
   return c ? [wh, c[1], c[2]] : null;
 }
 
+/** ADR 0233: the modifiers a contraction may sit on, per wh-word ("What time's the meeting", "How long'll it
+ * take"). Same table as cleanup.rs WH_MODIFIER_CONTRACTIONS. */
+export const WH_MODIFIER_CONTRACTIONS: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['what', ['time', 'day', 'size']],
+  ['how', ['long', 'much', 'often', 'far', 'old', 'soon']],
+];
+
+/** ADR 0233: a wh-word and its modifier with the auxiliary contracted onto the modifier ("how", "long'll"), as
+ * [wh-word, modifier, auxiliary, subjects], or null. Same as cleanup.rs modifier_contraction. */
+function modifierContraction(
+  wh: string,
+  word: string,
+): readonly [string, string, string, readonly string[]] | null {
+  const m = WH_MODIFIER_CONTRACTIONS.find(([w]) => w === wh);
+  if (!m) return null;
+  const at = word.search(/['\u2019]/);
+  if (at < 0) return null;
+  const modifier = word.slice(0, at);
+  const tail = word.slice(at + 1);
+  if (!m[1].includes(modifier)) return null;
+  const c = WH_CONTRACTIONS.find(([t]) => t === tail);
+  return c ? [wh, modifier, c[1], c[2]] : null;
+}
+
 function unmarkedQuestion(t: string): boolean {
   const line = t.slice(t.lastIndexOf('\n') + 1);
   let s = line;
@@ -467,17 +493,26 @@ function unmarkedQuestion(t: string): boolean {
   let subjects: readonly string[] = WH_SUBJECTS;
   if (apostrophes === 1) {
     const c = whContraction(w[0]);
-    if (c === null) return false;
-    const [wh, aux, agree] = c;
-    if (
-      (wh === 'what' &&
-        aux === 'would' &&
-        w.slice(1).join(' ') === 'you know') ||
-      w.slice(1).some((x) => EMBEDDED_PREDICATES.includes(x))
-    )
-      return false;
-    subjects = agree;
-    w = [wh, aux, ...w.slice(1)];
+    if (c !== null) {
+      const [wh, aux, agree] = c;
+      if (
+        (wh === 'what' &&
+          aux === 'would' &&
+          w.slice(1).join(' ') === 'you know') ||
+        w.slice(1).some((x) => EMBEDDED_PREDICATES.includes(x))
+      )
+        return false;
+      subjects = agree;
+      w = [wh, aux, ...w.slice(1)];
+    } else {
+      // ADR 0233: "What time's the meeting" reads as "what time is the meeting".
+      const m = modifierContraction(w[0], w[1]);
+      if (m === null) return false;
+      const [wh, modifier, aux, agree] = m;
+      if (w.slice(2).some((x) => EMBEDDED_PREDICATES.includes(x))) return false;
+      subjects = agree;
+      w = [wh, modifier, aux, ...w.slice(2)];
+    }
   }
   let auxAt = 0;
   let opening: boolean;
