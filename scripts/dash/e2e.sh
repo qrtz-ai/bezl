@@ -22,7 +22,9 @@ check "$(req POST /v1/owner/setup -H 'authorization: Bearer nope')" 401 "setup w
 check "$(req POST /v1/owner/setup -H "authorization: Bearer $SETUP")" 201 "setup"
 OWNER="$(j owner_key <"$tmp/out")"
 check "$(req POST /v1/owner/setup -H "authorization: Bearer $SETUP")" 410 "setup is one-time"
-check "$(req POST /v1/owner/codes -H "authorization: Bearer $OWNER")" 201 "issue enroll code"
+check "$(req POST /v1/owner/codes -H "authorization: Bearer $OWNER")" 201 "app endpoint issues a normal code"
+[[ "$(j code <"$tmp/out")" == ENR-* ]] && echo "ok   /v1/owner/codes gives ENR-" || { echo "FAIL /v1/owner/codes prefix"; exit 1; }
+check "$(req POST /v1/owner/test-codes -H "authorization: Bearer $OWNER")" 201 "issue test code (local mode only)"
 CODE="$(j code <"$tmp/out")"
 [[ "$CODE" == TST-* ]] && echo "ok   code is a test code (TST-)" || { echo "FAIL code prefix: ${CODE:0:4}"; exit 1; }
 check "$(req POST /v1/enroll -d '{"code":"ENR-AAAA-BBBB","name":"x"}')" 401 "wrong code"

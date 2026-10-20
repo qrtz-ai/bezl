@@ -25,24 +25,25 @@ dash.qrtz.ai route.
 4. Run `bun run dash:token`. Then in the app, open Dash › settings › server, paste the token and connect. The helper
    saves the owner key in the Keychain item `qrtz-dash-dev`, never in the real `ai.qrtz.dash-net` item. The token
    works once. A second setup answers 410.
-5. Issue an enrollment code in the app. The local server's codes start with `TST-`, and production refuses that
-   prefix. Enroll an agent with the code, for example:
-   `curl -s -X POST http://127.0.0.1:8799/v1/enroll -H 'content-type: application/json' -d '{"code":"TST-…","name":"test bot"}'`
+5. Get an enrollment code. Codes issued in the app start with `ENR-`. For a test-only code, call the endpoint that
+   exists only in local mode (production answers it with 404). It needs the owner key, which lives in the helper's
+   Keychain item, so `dash:e2e` shows the whole flow on its own server. Enroll an agent with a code, for example:
+   `curl -s -X POST http://127.0.0.1:8799/v1/enroll -H 'content-type: application/json' -d '{"code":"ENR-…","name":"test bot"}'`
 6. The agent shows as pending. Approve it in the app. Its heartbeats and widgets then appear, for example:
    `curl -s -X POST http://127.0.0.1:8799/v1/widgets -H "authorization: Bearer <agent_token>" -H 'content-type: application/json' -d '{"key":"t","type":"list","title":"links","state":{"items":[{"text":"qrtz","url":"https://qrtz.ai"}]}}'`
 7. Disconnect in the app. That deletes the `qrtz-dash-dev` Keychain item.
 
 ## What keeps this local (for review)
 
-- **Server** (`services/dash-worker/src/dev.ts`): local test mode accepts plain http and issues `TST-` codes. It
+- **Server** (`services/dash-worker/src/dev.ts`): local test mode accepts plain http and serves `POST /v1/owner/test-codes` (`TST-` codes). It
   turns on only when all three of these hold:
   - `DASH_DEV_LOCAL=1` is set. That variable exists only in the gitignored `.dev.vars` (mode 600) that `dash:dev`
     writes. `wrangler.toml` never sets it, and a test checks that.
   - The peer is loopback.
   - The host is `127.0.0.1`.
 
-  Production answers http with 400 and refuses `TST-` codes the same way it refuses a wrong code, counting them as
-  wrong codes too. The enroll limits are unchanged, and the scanner and scrubbing stay on.
+  Production answers http with 400, answers `/v1/owner/test-codes` with 404, and refuses `TST-` codes down the
+  normal path (lock check first, then counted as a wrong code). The enroll limits are unchanged, and the scanner and scrubbing stay on.
 
 - **App** (`crates/qrtz-dash-net`): `QRTZ_DASH_ORIGIN` is read only in debug builds with the `dev-local` feature.
   Release builds have no override code at all, which a test checks with `--release`. The only value accepted is

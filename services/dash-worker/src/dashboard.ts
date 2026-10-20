@@ -65,6 +65,8 @@ export interface OwnerCall {
   path: string;
   body: string;
   now?: number;
+  /** Set by the Worker only for POST /v1/owner/test-codes in local test mode (src/dev.ts). */
+  testCodes?: boolean;
 }
 
 export type Wire = { status: number; json: string };
@@ -598,6 +600,11 @@ export class Dashboard extends DurableObject<Env> {
         return out(200, this.view(now));
       if (m === 'POST' && p[2] === 'codes' && p.length === 3)
         return await this.issueCode(now);
+      // Local test mode only: the Worker sets testCodes after devLocal(); anything else is 'no such endpoint'.
+      if (m === 'POST' && p[2] === 'test-codes' && p.length === 3)
+        return c.testCodes === true && devCodes(this.env)
+          ? await this.issueCode(now, TEST_CODE_PREFIX)
+          : fail(404, 'no such endpoint');
       if (
         m === 'POST' &&
         p[2] === 'codes' &&
@@ -633,9 +640,9 @@ export class Dashboard extends DurableObject<Env> {
   }
 
   /** A single-use code, 15 minutes. Only its HMAC is stored, here and in the enroll directory. */
-  private async issueCode(now: number): Promise<Out> {
+  private async issueCode(now: number, prefix = 'ENR-'): Promise<Out> {
     if (this.deleted) return fail(422, 'this dashboard was deleted');
-    const code = newCode(devCodes(this.env) ? TEST_CODE_PREFIX : 'ENR-');
+    const code = newCode(prefix);
     const hash = await hmacHex(this.env.DASH_PEPPER, code);
     const expiresAt = now + C.ENROLL_TTL_MS;
     this.sql.exec(
