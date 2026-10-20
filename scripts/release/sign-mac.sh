@@ -39,7 +39,7 @@ qrtz ai.qrtz.cli none
 "
 # shellcheck source=bundled-helpers.sh
 source "$repo/scripts/release/bundled-helpers.sh"
-helpers="$(bundled_helpers "$repo/modules")" || exit 1
+helpers="$(bundled_helpers "$repo/modules" "$team")" || exit 1  # also refuses a requirement that doesn't pin $team
 # name identifier entitlements requirement, tab-separated: the NESTED rows get the default Developer ID requirement.
 default_dr() { echo "identifier \"$1\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"$team\""; }
 SIGN=""
@@ -48,7 +48,6 @@ while read -r name id ent; do
 done <<<"$NESTED"
 while IFS=$'\t' read -r name id ent req; do
   [[ -n "$name" ]] || continue
-  [[ "$req" == *"certificate leaf[subject.OU] = \"$team\""* ]] || { echo "$name: module.json requirement does not pin team $team" >&2; exit 1; }
   SIGN+="$name"$'\t'"$id"$'\t'"$ent"$'\t'"$req"$'\n'
 done <<<"$helpers"
 
