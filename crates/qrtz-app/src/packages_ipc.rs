@@ -88,7 +88,7 @@ pub fn catalog(index: &Index) -> Vec<Value> {
             .map(|m| {
                 m.permissions
                     .iter()
-                    .map(|p| serde_json::to_value(p).unwrap())
+                    .filter_map(|p| serde_json::to_value(p).ok())
                     .collect()
             })
             .unwrap_or_default();

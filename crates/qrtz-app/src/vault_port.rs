@@ -54,6 +54,11 @@ fn s<'a>(p: &'a Value, k: &str) -> Result<&'a str, AppError> {
     p[k].as_str().ok_or_else(|| bad(&format!("{k} is required")))
 }
 
+/// `ensure()` succeeded but the vault was closed again before we read it.
+fn unavailable() -> AppError {
+    AppError::new(ErrorCode::Internal, "notes folder unavailable".to_owned())
+}
+
 fn to<T: serde::Serialize>(d: T) -> Result<Value, AppError> {
     serde_json::to_value(d).map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))
 }
@@ -222,7 +227,7 @@ impl NotesVault {
                     .open
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                Ok(self.info(g.as_ref().expect("opened")))
+                Ok(self.info(g.as_ref().ok_or_else(unavailable)?))
             }
             "vault:choose" => {
                 let sh = self.shell.clone();
@@ -236,7 +241,7 @@ impl NotesVault {
                         .open
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    let mut v = self.info(g.as_ref().expect("opened"));
+                    let mut v = self.info(g.as_ref().ok_or_else(unavailable)?);
                     v["canceled"] = json!(true);
                     return Ok(v);
                 };
@@ -245,7 +250,7 @@ impl NotesVault {
                     .open
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let mut v = self.info(g.as_ref().expect("opened"));
+                let mut v = self.info(g.as_ref().ok_or_else(unavailable)?);
                 v["canceled"] = json!(false);
                 Ok(v)
             }

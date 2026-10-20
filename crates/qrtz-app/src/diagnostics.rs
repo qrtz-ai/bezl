@@ -171,7 +171,7 @@ mod tests {
         let dest = tmp.path().join("out.txt");
         let e = export_to(
             &logs,
-            &[reports.clone(), tmp.path().join("missing")],
+            &[reports, tmp.path().join("missing")],
             &dest,
             "qrtz test\n",
         )

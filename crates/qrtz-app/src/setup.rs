@@ -214,7 +214,9 @@ impl SpeechManager {
     fn set_marker(&self, m: Option<Marker>) {
         let Some(p) = self.marker_path() else { return };
         let r = match m {
-            Some(m) => qrtz_speech::fsx::write_private_atomic(&p, &serde_json::to_vec(&m).unwrap()),
+            Some(m) => serde_json::to_vec(&m)
+                .map_err(std::io::Error::other)
+                .and_then(|b| qrtz_speech::fsx::write_private_atomic(&p, &b)),
             None => match std::fs::remove_file(&p) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
                 _ => Ok(()),

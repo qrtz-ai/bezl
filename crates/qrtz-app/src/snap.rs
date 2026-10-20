@@ -404,7 +404,7 @@ mod tests {
         let on = json!({"modules": {"enabled": true, "snap": {"enabled": true}}, "snap": {}});
         assert!(h.apply(&on));
         assert!(!h.apply(&on), "an unrelated config:set changes nothing");
-        let mut changed = on.clone();
+        let mut changed = on;
         changed["snap"]["statusItem"] = json!(false);
         assert!(h.apply(&changed));
         let off =

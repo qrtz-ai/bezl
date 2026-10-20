@@ -678,7 +678,7 @@ impl OnDeviceSummaries {
                 group.push(r);
             }
             if group.len() == 1 && !next.is_empty() {
-                next.push(group.pop().expect("one"));
+                next.extend(group.pop());
             } else if !group.is_empty() {
                 next.push(self.reduce_group(c, group, until).await?);
             }
@@ -727,7 +727,7 @@ impl OnDeviceSummaries {
         } else {
             let mut replies = self.map_all(&c, &m.id, parts, until).await?;
             if replies.len() == 1 {
-                replies.pop().expect("one")
+                replies.swap_remove(0)
             } else {
                 self.reduce(&c, replies, until).await?
             }
