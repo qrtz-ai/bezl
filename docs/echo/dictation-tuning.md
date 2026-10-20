@@ -1946,8 +1946,8 @@ ADR 0223. So the cycle took the next talk-side backlog item: P5's bench-compare 
   the pill text and `cleanup_ms` keep `cleaned.text`; the cleanup chain (the polish output) runs before and is
   untouched, so polish scores can't move. ctrl+fn returns before the insert (l.1623) and gets no space. The helper
   inserts the string as given (Talk.swift `axSetSelectedText` / `axInsertIntoValue`, no smart spacing), so a second
-  dictation gets no double space. Tests pin `""`, `"hi "`, `"hi\n"`, `"hi there."`. **N199 (new, open, low,
-  Jared's call):** ADR 0101 keeps a short (≤ 3 word) dictation bare for search boxes, PINs, domains and file names;
+  dictation gets no double space. Tests pin `""`, `"hi "`, `"hi\n"`, `"hi there."`. **N199 (closed
+  2026-10-20, Jared's call: keep the trailing space as is; see section 56):** ADR 0101 keeps a short (≤ 3 word) dictation bare for search boxes, PINs, domains and file names;
   the trailing space now follows those too ("qrtz.ai " in a Save dialog's name field or a code field; a clipboard
   paste into a secure field would carry it too). Options: skip the space when `is_short` holds and there is no
   terminal mark, or leave it. Not changed here (service.rs is Bobs's in-flight file, and it's a product choice).
@@ -2574,3 +2574,12 @@ it; then P7 (idle memory / CPU on the Mac first) or P6's remaining helper side. 
    after a pause or an "um" between two commas is gone.
 4. Unchanged: "Over 1,000 people signed up" keeps "1,000"; "Well, well, well, look who it is" keeps every comma.
 5. If anything reads worse, `git revert 1d1b362a` (talk-only) and tell Echo the dictation.
+
+## 56. 2026-10-20: N199 closed (Jared's call)
+
+Jared decided on 2026-10-20 that the trailing space after a short (≤ 3 word) dictation stays as it is: every
+dictation that doesn't already end in whitespace gets the one trailing space from `8d23033`, including the short ones
+ADR 0101 keeps bare of a final mark ("qrtz.ai " in a name field). N199 is closed with no code change; the other open
+findings (N197, N203, N205) and the next steps in section 55 are unchanged. Don't reopen this from the box alone;
+only a real dictation where the space breaks something (a secure field, a PIN box) would bring it back, as part of
+P6's helper-side insert work.
