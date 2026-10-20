@@ -39,7 +39,7 @@ ok() { echo "verify-bundle: ok: $*"; }
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=bundled-helpers.sh
 source "$repo/scripts/release/bundled-helpers.sh"
-helpers="$(bundled_helpers "$repo/modules")" || { echo "verify-bundle: FAIL: can't read the bundled helpers from $repo/modules/*/module.json" >&2; exit 1; }
+helpers="$(bundled_helpers "$repo/modules" "$team")" || { echo "verify-bundle: FAIL: can't read the bundled helpers from $repo/modules/*/module.json" >&2; exit 1; }
 helper_field() { awk -F'\t' -v n="$1" -v c="$2" '$1 == n { print $c; exit }' <<<"$helpers"; }
 helper_names() { cut -f1 <<<"$helpers"; }
 ident_for() {
