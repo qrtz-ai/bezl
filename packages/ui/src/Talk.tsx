@@ -51,30 +51,35 @@ export function TalkPill({
       aria-label={failed ? message : PILL_STATUS[phase]}
       style={{
         boxSizing: 'border-box',
-        height: inline ? 44 : '100vh',
-        width: inline ? 220 : '100%',
+        // QRT-291: inside a page a failed pill grows to fit its reason (it wraps, never cut off).
+        height: inline ? (failed ? 'auto' : 44) : '100vh',
+        minHeight: inline ? 44 : undefined,
+        width: inline ? (failed ? 'fit-content' : 220) : '100%',
         maxWidth: '100%',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: t.space[2],
-        padding: `0 ${t.space[4]}`,
+        padding:
+          inline && failed ? `${t.space[2]} ${t.space[4]}` : `0 ${t.space[4]}`,
         background: t.color.surface,
         border: `1px solid ${t.color.borderStrong}`,
-        borderRadius: 999,
+        borderRadius: inline && failed ? t.radius.lg : 999,
         overflow: 'hidden',
       }}
     >
       {failed ? (
         <>
-          <Icon name="alert" size="sm" />
+          <span style={{ flex: 'none', display: 'flex' }}>
+            <Icon name="alert" size="sm" />
+          </span>
           <span
             data-testid="talk-pill-error"
             style={{
               minWidth: 0,
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
+              // Wraps onto as many lines as the reason needs ("…isn't running, so the mic can't open (echo: …)").
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
               ...typeStyle('bodySm', t),
               color: t.color.text,
             }}

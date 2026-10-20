@@ -51,6 +51,48 @@ export const Pill: S = {
   ),
 };
 
+const HELPER_FAILED =
+  "the capture helper isn't running, so the mic can't open (echo: signature mismatch: the helper isn't signed with qrtz's Developer ID identity)";
+
+/** QRT-291: echo's helper gave up (Failed); the pill says why, in full. */
+export const HelperFailed: S = {
+  name: 'helper failed: reason',
+  render: () => (
+    <TalkPill inline phase="error" level={0} error={HELPER_FAILED} />
+  ),
+};
+
+/** QRT-291: the longest fixed reason still reads in full. */
+export const HelperFailedLong: S = {
+  name: 'helper failed: long reason',
+  render: () => (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <TalkPill
+        inline
+        phase="error"
+        level={0}
+        error="the capture helper isn't running, so the mic can't open (echo: signing requirement mismatch: the expected requirement isn't qrtz's Developer ID one)"
+      />
+      <TalkPill
+        inline
+        phase="error"
+        level={0}
+        error="the capture helper isn't running, so the mic can't open (echo: launch refused: a launch check failed (see the log))"
+      />
+    </div>
+  ),
+};
+
+/** QRT-291: in a narrow column the reason wraps onto more lines instead of being cut off. */
+export const HelperFailedWrap: S = {
+  name: 'helper failed: wrapping',
+  render: () => (
+    <div style={{ width: 260 }} data-testid="pill-narrow">
+      <TalkPill inline phase="error" level={0} error={HELPER_FAILED} />
+    </div>
+  ),
+};
+
 export const History: S = {
   name: 'history, dictionary',
   render: () => (
