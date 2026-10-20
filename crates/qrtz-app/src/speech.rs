@@ -475,6 +475,42 @@ mod tests {
         assert!(a.waiters.lock().unwrap().is_empty());
     }
 
+    /// QRT-275: a root key that is empty, not hex, the wrong length, not a curve point or a weak (small-order) point
+    /// never yields a speech store; the build fails instead of trusting it.
+    #[test]
+    fn an_empty_or_bogus_root_key_never_yields_a_speech_store() {
+        // The Ed25519 base point: a valid, non-weak key.
+        const GOOD: &str = "5866666666666666666666666666666666666666666666666666666666666666";
+        // The identity point (small order): decodes, but is weak.
+        const IDENTITY: &str = "0100000000000000000000000000000000000000000000000000000000000000";
+        let dir = tempfile::tempdir().unwrap();
+        let setup = |root: &str| {
+            SpeechSetup::from_vars(dir.path(), "0.0.0", |k| {
+                Some(
+                    match k {
+                        "QRTZ_SPEECH_URL" => "https://example.invalid/speech",
+                        "QRTZ_SPEECH_KEY_ID" | "QRTZ_SPEECH_ROOT_KEY_ID" => "k1",
+                        "QRTZ_SPEECH_KEY" => GOOD,
+                        "QRTZ_SPEECH_ROOT_KEY" => root,
+                        _ => return None,
+                    }
+                    .to_owned(),
+                )
+            })
+        };
+        assert!(matches!(setup(GOOD), Ok(Some(_))), "the control key must work");
+        for bad in ["", "zz", "00", &"ab".repeat(33), IDENTITY, &"00".repeat(32)] {
+            assert!(
+                !matches!(setup(bad), Ok(Some(_))),
+                "root key {bad:?} yielded a speech store"
+            );
+        }
+        assert!(qrtz_speech::bundle::PinnedKey::from_hex("k1", IDENTITY)
+            .unwrap_err()
+            .to_string()
+            .contains("weak"));
+    }
+
     /// N96: an expired revocation list asks to connect (stale), it is not a revoked release.
     #[test]
     fn an_expired_revocation_list_reads_as_stale() {
