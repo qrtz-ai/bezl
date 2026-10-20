@@ -2503,3 +2503,74 @@ scripts/echo-timing-report.mjs` output from the Mac.
    the launch." with no leading ".".
 5. Unchanged: "um, can you …" after a sentence still types as before (ADR 0235 leaves it). If anything reads worse,
    `git revert 7cb8629c` (talk-only) and tell Echo the dictation.
+
+## 55. Cycle 84: a run of commas types as one comma (ADR 0236, `1d1b362a`)
+
+Polish first. N204 (section 54): cleanup typed ", , " wherever the recogniser wrote two commas in a row or a filler
+sat between two spaced commas. The space after each "," (`SPACE_AFTER_PUNCT`, cleanup.rs:36) went in before the
+comma-run collapse (`COMMAS`, cleanup.rs:37, at cleanup.rs:2695), so ",," already read ", ," and never collapsed. The
+cached hypotheses on the box have it once ("…an obvious exception to this rule,, but it will appear…" typed "…rule, ,
+but…"), and the oldest cleanup vector pinned it ("one,, two,,, three" → "One, , two, , , three."). Now, as the very
+last step (`comma_runs`, cleanup.rs:1489), a run of commas between a word and a space and a word keeps only its first
+comma; nothing else in the text changes, and no other step sees a different text.
+
+| Run                                     | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| --------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`190bf681`), the 190 cases | 186 / 190 | 42 chars (0.62 % of 6776)  | 0           | 0 / 457             |
+| `1d1b362a`, the 190 cases               | 186 / 190 | 42 chars (no case changes) | 0           | 0 / 457             |
+| old cleanup, 201 cases (+11 comma run)  | 186 / 201 | 68 chars                   | -           | 0 / 473             |
+| `1d1b362a`, 201 cases                   | 197 / 201 | 42 chars (0.57 % of 7307)  | 0           | 0 / 473             |
+
+- **Examples:** "We could ship it on Friday,, but the tests are still red" → "We could ship it on Friday, but the tests are
+  still red." (was "Friday, , but"); "So , um , we should probably wait until Monday" → "So, we should probably wait
+  until Monday." (was "So, , we"); "The numbers look good,,, honestly better than last quarter" → "…good, honestly…"
+  (was "good, , , honestly"); "We met at the café,, then walked home" → "…café, then…". Kept: "The total came to
+  1,,000 dollars." (before a digit), "The plan,; but nobody read it." (a semicolon), "Okay, , . Next" (a mark), "We
+  tried it,, (twice)…" (no space before "("), a run at a line end, "東京,," (outside ASCII and Latin letters), a
+  dictionary term that holds ", ,", and every plain comma ("Well, well, well, look who it is.", "Over 1,000 people,
+  and 2,500 more, signed up.").
+- **False-positive evidence:** 16 keep vectors against 11 positives, 13 refusals in tests/hardening84.rs. Old / new
+  on 525 742 runs (the 2836 cached hypotheses with and without their final mark, every polish / keep / cleanup.json
+  raw, 258 338 generated texts, × 2 dictionaries): 46 576 differ, and **every one equals the old output with only its
+  ", ," pieces taken out** (an independent replace, 0 exceptions); on the real hypotheses only the "rule,, but" text.
+  Rust and TS identical on 1 839 915 runs (367 983 texts × 5 dictionaries, with Latin / Greek / CJK letters, U+00A0,
+  curly quotes). hardening60's oracle takes the same edit on the cycle-59 output; green on 3 000 000 generated texts.
+- **Rejected this cycle** (details in ADR 0236): collapsing the run before the space goes in (it would change what
+  "scratch that", the final mark, the list commas, the question / tag / vocative checks, the dates and the titles
+  decide: "Tuesday. Scratch that,, Wednesday" would start deleting; so "Okay,, so do you want it" now types "Okay, so
+  do you want it." without the "?"), a run before a digit, ",;", a run before a mark, "(" or a quote with no space, a
+  run at a line end, runs after other scripts. **N205 new (open, low, talk):** a comma before a curly closing quote
+  gets a space ("“plan A,” then" types "“plan A, ” then"; `SPACE_AFTER_PUNCT`, cleanup.rs:36, skips `"` `'` `)` `]`
+  but not "”" / "’"); 0 of 2836 hypotheses have a curly quote, so it only reaches text through a dictionary term.
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped (median per round, ms): 495 words 0.116 / 0.118 → 0.116 / 0.119; question 0.121 / 0.124 → 0.122 / 0.121;
+  vocative 0.128 / 0.129 → 0.129 / 0.128; tag 0.120 / 0.121 → 0.120 / 0.120; imperative 0.120 / 0.122 → 0.120 /
+  0.120; date 0.120 / 0.122 → 0.126 / 0.120; wh-contraction 0.120 / 0.120 → 0.120 / 0.120; modifier contraction
+  0.119 / 0.121 → 0.120 / 0.121; titles 0.124 / 0.124 → 0.124 / 0.127; filler sentences 0.122 / 0.122 → 0.123 /
+  0.123; the new 508-word text with every comma doubled 0.146 / 0.145 (its doubled commas give the filler and repeat
+  scans more to read: a build whose `comma_runs` returns at once times it 0.162 ms against 0.155 ms with the rule).
+  Noise; ceiling 2 ms. One `contains(", ,")` on the final text, the scan only when a run is there. Capture,
+  segmenting, the decode schedule, Parakeet's settings, the drain / final pass, insert and the timing log are
+  unchanged.
+- **Dictation path review since `7cb8629c`:** only `190bf681` (cycle 83's docs) landed before this; no change to
+  crates/qrtz-talk, packages/core/src/talk, native/ or the press path besides this rule. N204 **fixed** (`1d1b362a`);
+  N205 new (above); N197 (needs the Mac's device-switch gap), N199 (Jared's call) and N203 stay open.
+- **Nano quick check:** vitest packages/core/src/note 130 passed in 19 files. No Note code changed.
+
+Next: p15 after the Mac check; N205 with its own keep set if a dictionary term shows it; N203 if real dictations show
+it; then P7 (idle memory / CPU on the Mac first) or P6's remaining helper side. P5's p50 / p95 budget still waits on
+`node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 84)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `1d1b362a`), then `scripts/dev/dev-local.sh` as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening84 --test polish_set -- --nocapture`:
+   eleven budget medians well under 0.5 ms (box 0.12-0.15 ms), "polish set: 197/201 exact", regressions 0, all pass.
+3. Hold fn and say "We could ship it on Friday, but the tests are still red" with a clear pause after "Friday": it
+   types one comma, "We could ship it on Friday, but the tests are still red.", never "Friday, , but". The recogniser
+   writes the doubled comma only now and then, so the sure check is step 2; in daily use, any ", ," you used to see
+   after a pause or an "um" between two commas is gone.
+4. Unchanged: "Over 1,000 people signed up" keeps "1,000"; "Well, well, well, look who it is" keeps every comma.
+5. If anything reads worse, `git revert 1d1b362a` (talk-only) and tell Echo the dictation.
