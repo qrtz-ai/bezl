@@ -35,6 +35,7 @@ pub mod pill;
 pub mod pill_theme;
 #[cfg(feature = "runtime")]
 pub mod pm_cli;
+mod poison;
 pub mod ports;
 #[cfg(feature = "runtime")]
 pub mod runtime_port;
