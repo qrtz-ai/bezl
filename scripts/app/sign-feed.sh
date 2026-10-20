@@ -4,10 +4,10 @@
 #   scripts/app/sign-feed.sh <feed.json> <latest.json to write>
 #
 # The signature covers the feed's exact bytes (its expires included); it is checked against the public key the app
-# has compiled in before anything is written. Needs TAURI_SIGNING_PRIVATE_KEY (the APP_UPDATE_KEY secret; empty
-# password), node_modules/.bin/tauri and minisign. Runs in CI (app-release.yml, app-feed-refresh.yml) or on Jared's
-# Mac (scripts/app/publish-local.sh, the key in ~/.qrtz-keys/app-update.key), never on a server-side box: the private
-# key lives only in the APP_UPDATE_KEY secret and on that Mac.
+# has compiled in before anything is written. Needs TAURI_SIGNING_PRIVATE_KEY (the secret of that
+# name in the `release` environment; empty password), node_modules/.bin/tauri and minisign. Runs in CI (release.yml's
+# sign and feed-refresh jobs, QRT-297) or on Jared's Mac (scripts/app/publish-local.sh, the key in
+# ~/.qrtz-keys/app-update.key); the private key lives only in that secret and on that Mac.
 set -euo pipefail
 feed="${1:?usage: sign-feed.sh <feed.json> <latest.json>}"
 out="${2:?usage: sign-feed.sh <feed.json> <latest.json>}"
