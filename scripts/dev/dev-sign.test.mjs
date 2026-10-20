@@ -43,4 +43,10 @@ describe('dev builds are TCC-stable (docs/dev-permissions.md)', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toBe('ok\n');
   });
+  it('only shell-script stubs are skipped, never a Mach-O that mentions the stub mark', () => {
+    const dev = read('scripts/dev/sign.sh');
+    const line = dev.split('\n').find((l) => l.includes('qrtz: dev stub') && l.includes('return 0'));
+    expect(line).toBeDefined();
+    expect(line).toContain("'#!'");
+  });
 });

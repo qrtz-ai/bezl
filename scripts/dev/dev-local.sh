@@ -54,13 +54,18 @@ for id in "${ids[@]}"; do
   [[ -x "$bin/qrtz-$id" ]] || die "$bin/qrtz-$id wasn't built"
   export "$var=$bin/qrtz-$id"; say "$id: $bin/qrtz-$id"
 done
+# 3. Stable signatures (docs/dev-permissions.md): the helpers and target/debug/qrtz-app get fixed identifiers and the
+#    Apple Development certificate (QRTZ_DEV_SIGN_IDENTITY / QRTZ_DEV_SIGN_ID, else the first one in the keychain), so
+#    Accessibility & co. survive rebuilds. tauri dev's cargo runner (scripts/dev/run.sh) re-signs qrtz-app after each
+#    relink with the same identity and the same QRTZ_<ID>_BIN env, and launches it as its own responsible process.
+"$repo/scripts/dev/sign.sh" "${CARGO_TARGET_DIR:-$repo/target}/debug" || say "WARNING: signing failed; privacy grants won't stick for this run"
 say "data dir: $QRTZ_USER_DATA (the real one is never read)"
 
 cat >&2 <<'NOTE'
 [dev-local] ─────────────────────────────────────────────────────────────────────────────────────────────
 [dev-local] HEADS UP: the dev app is a DIFFERENT app to macOS (signed ai.qrtz.desktop.dev, run from target/debug).
 [dev-local] It has none of qrtz's grants: give it its own Accessibility and Microphone grant in System Settings ›
-[dev-local] Privacy & Security when it asks. Running it next to (or instead of) /Applications/qrtz.app breaks echo's
+[dev-local] Privacy & Security when it asks (ONCE: it is signed with your Apple Development cert, so it sticks). Running it next to (or instead of) /Applications/qrtz.app breaks echo's
 [dev-local] fn hotkey for the installed app: both grab fn. Quit the dev app to get your normal dictation back.
 [dev-local] ─────────────────────────────────────────────────────────────────────────────────────────────
 NOTE

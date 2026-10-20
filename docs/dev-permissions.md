@@ -23,7 +23,7 @@ Two things break them for a bare `target/debug/qrtz-app`:
 - launches qrtz-app through `scripts/dev/launch.c`, which disclaims responsibility (as Xcode does), so qrtz-app is
   its own responsible process and its own grant is the one macOS checks.
 
-The signing identity is `QRTZ_DEV_SIGN_ID` if set (`-` forces ad-hoc), else the first `Apple Development:` identity
+The signing identity is `QRTZ_DEV_SIGN_ID` (or `QRTZ_DEV_SIGN_IDENTITY`) if set (`-` forces ad-hoc), else the first `Apple Development:` identity
 in your keychain (`security find-identity -v -p codesigning`), else ad-hoc. Ad-hoc keeps the stable identifier but
 TCC still pins its cdhash, so get an Apple Development certificate (Xcode → Settings → Accounts → Manage
 Certificates) for grants that survive rebuilds. The first signing can show a keychain prompt for `codesign`: choose

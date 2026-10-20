@@ -41,3 +41,17 @@ launch broke dictation once already). The script warns when the installed app is
 - An override skips only the signature and lock-hash check: the module counts as installed in the dev data dir.
   It is never switched on for you; ctrl still asks for consent and its enable prompt (ADR 0216 unchanged).
 - Any failure refuses the start with a `dev-local:` error. No R2, keychain or update key is ever read.
+
+## Privacy grants stick (one-time Accessibility grant)
+
+dev-local signs `target/debug/qrtz-app` (`ai.qrtz.desktop.dev`) and the helpers it runs from
+`native/qrtz-helper/.build/debug` (`ai.qrtz.nano`, `ai.qrtz.snap`, `ai.qrtz.ctrl`, `ai.qrtz.echo`) with your
+**Apple Development** certificate (`QRTZ_DEV_SIGN_IDENTITY`, else the first one `security find-identity -v -p
+codesigning` lists; a Developer ID identity is refused). The app is launched as its own responsible process
+(`scripts/dev/launch.c`) and spawns the helpers, so macOS checks the **dev app's** grant, not your terminal's.
+
+Grant Accessibility (and Microphone) to the dev app once; it survives rebuilds as long as the same certificate signs.
+After switching to this signing the first time, remove the old stale rows once:
+`tccutil reset Accessibility ai.qrtz.desktop.dev`, then grant again. The first signing may show a keychain prompt for
+`codesign`: choose **Always Allow**. With no Apple Development identity it falls back to ad-hoc and warns; grants
+then reset every build. Details: [dev-permissions.md](../dev-permissions.md).
