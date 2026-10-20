@@ -1478,6 +1478,67 @@ fn titles_at(t: String, dict: &[DictionaryEntry]) -> String {
     out
 }
 
+/// ADR 0236: a run of commas ("rule,, but", or the one a filler between two commas leaves, "So , um , we") types as
+/// one comma. The space after "," goes in before the old `,+` collapse, so a run came out as ", , but". This runs last,
+/// on the finished text, so it is the only change: a "," right after a word (an ASCII letter or digit, a Latin letter
+/// U+00C0-U+024F such as "é", or a closing ")" / "]" / quote), then one or more " ," and then a space and an ASCII
+/// letter or digit, keeps only its first ",".
+/// Nothing else is read or rewritten; a run before a digit ("1, ,000"), a line break, a mark or ";" stays, and so does
+/// the whole text when a dictionary term or alias holds ", ,". The pattern
+/// `(?<=[A-Za-z0-9\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u024F)\]"'\u2019\u201D]),(?: ,)+(?= [A-Za-z0-9])` in cleanup.ts.
+fn comma_runs(t: String, dict: &[DictionaryEntry]) -> String {
+    if !t.contains(", ,") {
+        return t;
+    }
+    comma_runs_at(t, dict)
+}
+
+/// [`comma_runs`] past its prefilter, out of line so a text with no run pays one search.
+#[inline(never)]
+fn comma_runs_at(t: String, dict: &[DictionaryEntry]) -> String {
+    let run = |s: &str| s.contains(", ,");
+    if dict
+        .iter()
+        .any(|d| run(&d.term) || d.aliases.iter().any(|a| run(a)))
+    {
+        return t;
+    }
+    let word_end = |c: char| {
+        c.is_ascii_alphanumeric()
+            || matches!(c, '\u{C0}'..='\u{D6}' | '\u{D8}'..='\u{F6}' | '\u{F8}'..='\u{24F}')
+            || matches!(c, ')' | ']' | '"' | '\'' | '\u{2019}' | '\u{201D}')
+    };
+    let b = t.as_bytes();
+    let mut out = String::new();
+    let (mut last, mut p) = (0, 0);
+    while let Some(off) = t[p..].find(',') {
+        let i = p + off;
+        let mut k = i + 1;
+        while b.get(k) == Some(&b' ') && b.get(k + 1) == Some(&b',') {
+            k += 2;
+        }
+        if k > i + 1
+            && char_before(&t, i).is_some_and(word_end)
+            && b.get(k) == Some(&b' ')
+            && b.get(k + 1).is_some_and(u8::is_ascii_alphanumeric)
+        {
+            if out.is_empty() {
+                out.reserve(t.len());
+            }
+            out.push_str(&t[last..=i]);
+            last = k;
+            p = k;
+        } else {
+            p = i + 1;
+        }
+    }
+    if last == 0 {
+        return t;
+    }
+    out.push_str(&t[last..]);
+    out
+}
+
 /// ADR 0101: immediate repeats of a whole word, collapsed where [`collapses`] says so. ADR 0199: a scan for the pattern
 /// `(?i)(?<![\w'])(\w+)(?:[\s,]+\1(?![\w']))+` (ASCII `\w`). The apostrophe is part of a word on both sides, so
 /// "you, you're" and "it, it's" are not repeats. The word is a whole run of word characters (a shorter one would be
@@ -2618,8 +2679,8 @@ fn opening_filler_marks(s: &str) -> String {
 /// capitalization, terminal punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation; ADR 0188:
 /// nor on a list of short lines; ADR 0201: whose line commas go; ADR 0206: "Hey <dictionary name>, <question>?"; ADR
 /// 0227: "..., isn't it?"), then
-/// spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m."), and a spoken date's day as a figure (ADR 0230:
-/// "on October 21st").
+/// spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m."), a spoken date's day as a figure (ADR 0230:
+/// "on October 21st"), a spoken title as its abbreviation (ADR 0234) and, last, a run of commas as one (ADR 0236).
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(NEW_PARAGRAPH, &t, "\n\n");
@@ -2643,8 +2704,11 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = sentence_starts(&t);
     t = lone_i(&t);
     t = apply_dictionary(&t, dict);
-    spoken_titles(
-        spoken_dates(spoken_amounts(terminal_punctuation(t, dict)), dict),
+    comma_runs(
+        spoken_titles(
+            spoken_dates(spoken_amounts(terminal_punctuation(t, dict)), dict),
+            dict,
+        ),
         dict,
     )
 }

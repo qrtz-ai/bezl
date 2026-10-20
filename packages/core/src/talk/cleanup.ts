@@ -1967,6 +1967,21 @@ function titleName(w: string): boolean {
   );
 }
 
+/** ADR 0236: a run of commas ("rule,, but", or the one a filler between two commas leaves, "So , um , we") types
+ * as one comma. Every other step has already run on the text, so this is the only change: ", , " between a word
+ * (an ASCII letter or digit, a Latin letter U+00C0-U+024F such as "é", or a closing ")" / "]" / quote) and a space
+ * and an ASCII letter or digit becomes ", ".
+ * Nothing else is read or rewritten: a run before a digit ("1, ,000"), a line break, a mark or ";" stays, and so does
+ * the whole text when a dictionary term or alias holds ", ,". Same rule as cleanup.rs `comma_runs`; runs last. */
+const COMMA_RUN =
+  /(?<=[A-Za-z0-9\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u024F)\]"'\u2019\u201D]),(?: ,)+(?= [A-Za-z0-9])/g;
+function commaRuns(t: string, dict: readonly DictionaryEntry[]): string {
+  if (!t.includes(', ,')) return t;
+  const run = (s: string) => s.includes(', ,');
+  if (dict.some((d) => run(d.term) || d.aliases.some(run))) return t;
+  return t.replace(COMMA_RUN, ',');
+}
+
 /** ADR 0234: a spoken title before a name written as its abbreviation ("Mister Hopkins" → "Mr. Hopkins"). Same
  * rule as cleanup.rs `spoken_titles`; runs last, after the dates. */
 function spokenTitles(t: string, dict: readonly DictionaryEntry[]): string {
@@ -2078,8 +2093,11 @@ export function ruleCleanup(
   // "i" before a dot only at a sentence end, not the "i" of "i.e." (ADR 0101, N160).
   t = t.replace(/\bi\b(?=[\s,!?']|\.(?![A-Za-z])|$)/g, 'I');
   t = applyDictionary(t, dict);
-  return spokenTitles(
-    spokenDates(spokenAmounts(terminalPunctuation(t, dict)), dict),
+  return commaRuns(
+    spokenTitles(
+      spokenDates(spokenAmounts(terminalPunctuation(t, dict)), dict),
+      dict,
+    ),
     dict,
   );
 }

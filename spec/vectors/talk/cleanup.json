@@ -115,7 +115,7 @@
     {
       "raw": "one,, two,,, three",
       "dict": false,
-      "expect": "One, , two, , , three."
+      "expect": "One, two, three."
     },
     {
       "raw": "this is quartz and Cue Arts and cue-arts",
@@ -4756,6 +4756,106 @@
       "raw": "Over 1,000 people signed up last week.",
       "dict": false,
       "expect": "Over 1,000 people signed up last week."
+    },
+    {
+      "raw": "We could ship it on Friday,, but the tests are still red",
+      "dict": false,
+      "expect": "We could ship it on Friday, but the tests are still red."
+    },
+    {
+      "raw": "I talked to the design team,, and they liked the new layout",
+      "dict": false,
+      "expect": "I talked to the design team, and they liked the new layout."
+    },
+    {
+      "raw": "So , um , we should probably wait until Monday",
+      "dict": false,
+      "expect": "So, we should probably wait until Monday."
+    },
+    {
+      "raw": "The numbers look good,,, honestly better than last quarter",
+      "dict": false,
+      "expect": "The numbers look good, honestly better than last quarter."
+    },
+    {
+      "raw": "Thanks for the notes,, I'll update the doc tonight",
+      "dict": false,
+      "expect": "Thanks for the notes, I'll update the doc tonight."
+    },
+    {
+      "raw": "If the build passes,, , we can cut the release",
+      "dict": false,
+      "expect": "If the build passes, we can cut the release."
+    },
+    {
+      "raw": "My flight lands at six,, so I'll call you after",
+      "dict": false,
+      "expect": "My flight lands at six, so I'll call you after."
+    },
+    {
+      "raw": "We met with Mister Patel,, and he signed the lease",
+      "dict": false,
+      "expect": "We met with Mr. Patel, and he signed the lease."
+    },
+    {
+      "raw": "Let's meet on October twenty first,, after the review",
+      "dict": false,
+      "expect": "Let's meet on October 21st, after the review."
+    },
+    {
+      "raw": "The demo went well,, I think the client is happy",
+      "dict": false,
+      "expect": "The demo went well, I think the client is happy."
+    },
+    {
+      "raw": "We met at the café,, then walked home",
+      "dict": false,
+      "expect": "We met at the café, then walked home."
+    },
+    {
+      "raw": "we could ship it friday,, but not today",
+      "dict": false,
+      "expect": "We could ship it friday, but not today."
+    },
+    {
+      "raw": "Hi Priya,, can you send the deck",
+      "dict": true,
+      "expect": "Hi Priya, can you send the deck."
+    },
+    {
+      "raw": "The total came to 1,,000 dollars.",
+      "dict": false,
+      "expect": "The total came to 1, ,000 dollars."
+    },
+    {
+      "raw": "The plan,; but nobody read it.",
+      "dict": false,
+      "expect": "The plan, ; but nobody read it."
+    },
+    {
+      "raw": "Okay, , . Next",
+      "dict": false,
+      "expect": "Okay, , . Next."
+    },
+    {
+      "raw": "Pick one,\n, then the other",
+      "dict": false,
+      "expect": "Pick one, then the other."
+    },
+    {
+      "raw": "Fill in row a,,b of the sheet",
+      "dict": false,
+      "expect": "Fill in row a, b of the sheet."
+    },
+    {
+      "raw": "We tried it,, (twice) and it failed",
+      "dict": false,
+      "expect": "We tried it, , (twice) and it failed."
+    },
+    {
+      "raw": "Ship it Friday,,, but only if QA passes",
+      "dict": true,
+      "expect": "Ship it Friday, but only if QA passes."
     }
   ],
   "dictionaryOnly": [

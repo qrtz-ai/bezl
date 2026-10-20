@@ -56,10 +56,12 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     let old = if new == old {
         old
     } else {
+        // ADR 0236 (cycle 84): each candidate with its comma runs as one comma, as the last step does.
         let candidates = [
             c59::rule_cleanup(&without_filler_marks(&with_layout(raw)), dict),
             c59::rule_cleanup(&without_filler_marks(raw), dict),
-        ];
+        ]
+        .map(|c| without_comma_runs(&c, dict));
         candidates
             .iter()
             .find(|c| **c == new)
@@ -84,6 +86,9 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0232 (cycle 80): a question opening with a wh-contraction ("What's the plan") may end with "?".
     // ADR 0233 (cycle 81): so may one with the contraction on the wh-word's modifier ("What time's the meeting").
     // ADR 0234 (cycle 82): a spoken title may be written as its abbreviation ("Mister Smith" -> "Mr. Smith").
+    // ADR 0236 (cycle 84): a run of commas between a word and a word types as one comma (taken first here so the
+    // title edit below sees the same words).
+    let old = without_comma_runs(&old, dict);
     let old = with_titles_from(&old, &new);
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
@@ -268,6 +273,33 @@ fn without_filler_marks(raw: &str) -> String {
     }
     out.push_str(&padded[last..]);
     out.strip_prefix(' ').unwrap_or(&out).to_owned()
+}
+
+/// ADR 0236's one allowed edit (written independently of cleanup.rs, with the `regex` crate): ", ," (and longer runs)
+/// after an ASCII letter or digit, a Latin letter U+00C0-U+024F or a closing ")" / "]" / quote, and before a space and
+/// an ASCII letter or digit, becomes ","; not when a dictionary term or alias holds ", ,".
+fn without_comma_runs(old: &str, dict: &[DictionaryEntry]) -> String {
+    use std::sync::LazyLock;
+    static RUN: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"([A-Za-z0-9\x{C0}-\x{D6}\x{D8}-\x{F6}\x{F8}-\x{24F})\]"'\x{2019}\x{201D}]),(?: ,)+ ([A-Za-z0-9])"#,
+        )
+        .unwrap()
+    });
+    if dict
+        .iter()
+        .any(|d| d.term.contains(", ,") || d.aliases.iter().any(|a| a.contains(", ,")))
+    {
+        return old.to_owned();
+    }
+    let mut out = old.to_owned();
+    loop {
+        let next = RUN.replace_all(&out, "$1, $2").into_owned();
+        if next == out {
+            return out;
+        }
+        out = next;
+    }
 }
 
 /// ADR 0234's one allowed edit (written independently of cleanup.rs): where `new` has "Mr." / "Mrs." in the place of

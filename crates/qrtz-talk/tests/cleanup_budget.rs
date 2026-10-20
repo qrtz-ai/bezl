@@ -183,4 +183,20 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
     assert!(text.matches("Um. ").count() > 20);
     assert_eq!(out, plain);
     assert_fits_budget(&text, " with filler sentences");
+    // ADR 0236: every comma of the dictation doubled (",, "), so the comma-run scan fires all through the text; no
+    // ", ," may be left where a word follows.
+    let text = format!(
+        "{} Thanks. We could ship it on Friday,, but the tests are still red",
+        long_dictation().replace(", ", ",, ")
+    );
+    let out = cleanup_dictation(&text, &dictionary(), true).text;
+    assert!(text.matches(",, ").count() > 20);
+    assert!(out.ends_with("We could ship it on Friday, but the tests are still red."));
+    assert!(
+        !out.as_bytes()
+            .windows(4)
+            .any(|w| w[..3] == *b", ," && w[3] == b' '),
+        "{out}"
+    );
+    assert_fits_budget(&text, " with comma runs");
 }

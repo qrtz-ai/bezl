@@ -1169,6 +1169,72 @@
       "category": "filler-sentence",
       "raw": "We need to fix the login bug first. Um. Uh. Then we can look at the dashboard",
       "ideal": "We need to fix the login bug first. Then we can look at the dashboard."
+    },
+    {
+      "id": "p191",
+      "category": "comma-run",
+      "raw": "We could ship it on Friday,, but the tests are still red",
+      "ideal": "We could ship it on Friday, but the tests are still red."
+    },
+    {
+      "id": "p192",
+      "category": "comma-run",
+      "raw": "I talked to the design team,, and they liked the new layout",
+      "ideal": "I talked to the design team, and they liked the new layout."
+    },
+    {
+      "id": "p193",
+      "category": "comma-run",
+      "raw": "So , um , we should probably wait until Monday",
+      "ideal": "So, we should probably wait until Monday."
+    },
+    {
+      "id": "p194",
+      "category": "comma-run",
+      "raw": "The numbers look good,,, honestly better than last quarter",
+      "ideal": "The numbers look good, honestly better than last quarter."
+    },
+    {
+      "id": "p195",
+      "category": "comma-run",
+      "raw": "Thanks for the notes,, I'll update the doc tonight",
+      "ideal": "Thanks for the notes, I'll update the doc tonight."
+    },
+    {
+      "id": "p196",
+      "category": "comma-run",
+      "raw": "If the build passes,, , we can cut the release",
+      "ideal": "If the build passes, we can cut the release."
+    },
+    {
+      "id": "p197",
+      "category": "comma-run",
+      "raw": "My flight lands at six,, so I'll call you after",
+      "ideal": "My flight lands at six, so I'll call you after."
+    },
+    {
+      "id": "p198",
+      "category": "comma-run",
+      "raw": "We met with Mister Patel,, and he signed the lease",
+      "ideal": "We met with Mr. Patel, and he signed the lease."
+    },
+    {
+      "id": "p199",
+      "category": "comma-run",
+      "raw": "Let's meet on October twenty first,, after the review",
+      "ideal": "Let's meet on October 21st, after the review."
+    },
+    {
+      "id": "p200",
+      "category": "comma-run",
+      "raw": "The demo went well,, I think the client is happy",
+      "ideal": "The demo went well, I think the client is happy."
+    },
+    {
+      "id": "p201",
+      "category": "comma-run",
+      "raw": "We met at the café,, then walked home",
+      "ideal": "We met at the café, then walked home."
     }
   ],
   "keep": [
@@ -3947,6 +4013,102 @@
       "rule": "filler-sentence",
       "raw": "Run npm install. Then run the build.",
       "expect": "Run npm install. Then run the build."
+    },
+    {
+      "id": "k459",
+      "rule": "comma-run",
+      "raw": "Well, well, well, look who it is.",
+      "expect": "Well, well, well, look who it is."
+    },
+    {
+      "id": "k460",
+      "rule": "comma-run",
+      "raw": "No, no, no, that is not it.",
+      "expect": "No, no, no, that is not it."
+    },
+    {
+      "id": "k461",
+      "rule": "comma-run",
+      "raw": "Over 1,000 people, and 2,500 more, signed up.",
+      "expect": "Over 1,000 people, and 2,500 more, signed up."
+    },
+    {
+      "id": "k462",
+      "rule": "comma-run",
+      "raw": "Eggs, milk, and bread, please.",
+      "expect": "Eggs, milk, and bread, please."
+    },
+    {
+      "id": "k463",
+      "rule": "comma-run",
+      "raw": "He said \"yes,\" and then left.",
+      "expect": "He said \"yes,\" and then left."
+    },
+    {
+      "id": "k464",
+      "rule": "comma-run",
+      "raw": "Use a semicolon; then a comma, then a period.",
+      "expect": "Use a semicolon; then a comma, then a period."
+    },
+    {
+      "id": "k465",
+      "rule": "comma-run",
+      "raw": "Thanks, Priya, you're the best.",
+      "expect": "Thanks, Priya, you're the best."
+    },
+    {
+      "id": "k466",
+      "rule": "comma-run",
+      "raw": "Done, done, and done.",
+      "expect": "Done, done, and done."
+    },
+    {
+      "id": "k467",
+      "rule": "comma-run",
+      "raw": "She wrote (see page 4), then left.",
+      "expect": "She wrote (see page 4), then left."
+    },
+    {
+      "id": "k468",
+      "rule": "comma-run",
+      "raw": "First, second, third, and fourth.",
+      "expect": "First, second, third, and fourth."
+    },
+    {
+      "id": "k469",
+      "rule": "comma-run",
+      "raw": "Yes, sir, right away.",
+      "expect": "Yes, sir, right away."
+    },
+    {
+      "id": "k470",
+      "rule": "comma-run",
+      "raw": "However, if it rains, we stay in.",
+      "expect": "However, if it rains, we stay in."
+    },
+    {
+      "id": "k471",
+      "rule": "comma-run",
+      "raw": "The list reads: apples, pears, plums.",
+      "expect": "The list reads: apples, pears, plums."
+    },
+    {
+      "id": "k472",
+      "rule": "comma-run",
+      "raw": "Dear team,\nThanks for the help.",
+      "expect": "Dear team,\nThanks for the help."
+    },
+    {
+      "id": "k473",
+      "rule": "comma-run",
+      "raw": "The tuple is (1, 2, 3), right?",
+      "expect": "The tuple is (1, 2, 3), right?"
+    },
+    {
+      "id": "k474",
+      "rule": "comma-run",
+      "raw": "Version 2.0, 2.1, and 2.2 are out.",
+      "expect": "Version 2.0, 2.1, and 2.2 are out."
     }
   ]
 }
