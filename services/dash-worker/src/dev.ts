@@ -1,6 +1,6 @@
 /**
- * Local test mode (docs/dash-local.md, `bun run dash:dev`). FOR BOZNIAK REVIEW (option b). On only when ALL hold:
- * - DASH_DEV_LOCAL is "1". It exists only in the gitignored .dev.vars that scripts/dash-dev.sh writes; wrangler.toml
+ * Local test mode (docs/dash-local.md, `bun run dev:local` in services/dash-worker). FOR BOZNIAK REVIEW (option b). On only when ALL hold:
+ * - DASH_DEV_LOCAL is "1". It exists only in the gitignored .dev.vars that scripts/dev.sh (dev:local) writes; wrangler.toml
  *   never sets it (a test checks), and nothing in a request (header, Host, query) can turn it on.
  * - The connection came from loopback: cf-connecting-ip is 127.0.0.1 or ::1. In production Cloudflare sets that
  *   header to the real client address; locally `wrangler dev --ip 127.0.0.1` only accepts loopback connections.

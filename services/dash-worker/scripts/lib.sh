@@ -1,7 +1,7 @@
-# Shared bits for scripts/dash/*.sh (docs/dash-local.md). Local only: never wrangler deploy, no Cloudflare account.
+# Shared bits for services/dash-worker/scripts/*.sh (docs/dash-local.md). Local only: never wrangler deploy, no Cloudflare account.
 set -euo pipefail
-repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-worker="$repo/services/dash-worker"
+worker="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+repo="$(git -C "$worker" rev-parse --show-toplevel)"
 say() { echo "[dash] $*" >&2; }
 die() { say "error: $*"; exit 1; }
 need_node22() {

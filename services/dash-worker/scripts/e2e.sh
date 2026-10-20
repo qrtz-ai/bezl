@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bun run --cwd services/dash-worker e2e: a self-contained smoke test of the local dash server. Starts its own `wrangler dev --local` on
 # 127.0.0.1:8798 with a THROWAWAY state dir and secrets file (deleted at exit; values never printed; separate from
-# dash:dev's), then runs setup -> code -> enroll -> approve -> heartbeat -> widget -> owner view.
+# dev:local's), then runs setup -> code -> enroll -> approve -> heartbeat -> widget -> owner view.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 need_node22; worker_deps
 PORT="${DASH_E2E_PORT:-8798}"; B="http://127.0.0.1:$PORT"
@@ -37,4 +37,4 @@ check "$(req POST /v1/heartbeat -H "authorization: Bearer $TOK" -d '{"status":"i
 check "$(req POST /v1/widgets -H "authorization: Bearer $TOK" -d '{"key":"smoke","type":"status","title":"Smoke"}')" 201 "create widget"
 check "$(req GET /v1/owner/view -H "authorization: Bearer $OWNER")" 200 "owner view"
 grep -q '"smoke"' "$tmp/out" && echo "ok   widget visible in owner view" || { echo "FAIL widget missing from owner view"; exit 1; }
-echo "dash:e2e: all passed"
+echo "e2e: all passed"

@@ -10,10 +10,10 @@
     "lint": "oxlint -c ../../.oxlintrc.json --deny-warnings src test && oxfmt -c ../../.oxfmtrc.json --check src test",
     "check:build": "bunx --bun wrangler deploy --dry-run --outdir dist",
     "gen:readme": "node scripts/gen-readme.mjs",
-    "dev:local": "bash ../../scripts/dash/dev.sh",
-    "token": "bash ../../scripts/dash/token.sh",
-    "app": "bash ../../scripts/dash/app.sh",
-    "e2e": "bash ../../scripts/dash/e2e.sh"
+    "dev:local": "bash scripts/dev.sh",
+    "token": "bash scripts/token.sh",
+    "app": "bash scripts/app.sh",
+    "e2e": "bash scripts/e2e.sh"
   },
   "dependencies": {
     "zod": "^4.6.7"
