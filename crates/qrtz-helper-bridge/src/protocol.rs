@@ -43,13 +43,30 @@ pub fn protocol() -> &'static Protocol {
     })
 }
 
+/// Why a helper line or host message was refused. The text never carries the message itself (ADR 0083), and is
+/// the same as the strings this used to return.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProtocolError {
+    #[error("empty")]
+    Empty,
+    #[error("invalid json")]
+    InvalidJson,
+    /// `at` is `""` or `" at /<json path>"`.
+    #[error("type {ty} does not match the protocol{at}")]
+    Mismatch { ty: String, at: String },
+    #[error("invalid host→helper message: type {ty} ({bytes} bytes)")]
+    InvalidHostMessage { ty: String, bytes: usize },
+    #[error("{0}")]
+    Encode(String),
+}
+
 /// Parse one helper stdout line (port of parseHelperLine). Never panics.
-pub fn parse_helper_line(line: &str) -> Result<Value, String> {
+pub fn parse_helper_line(line: &str) -> Result<Value, ProtocolError> {
     let t = line.trim();
     if t.is_empty() {
-        return Err("empty".into());
+        return Err(ProtocolError::Empty);
     }
-    let v: Value = serde_json::from_str(t).map_err(|_| "invalid json".to_string())?;
+    let v: Value = serde_json::from_str(t).map_err(|_| ProtocolError::InvalidJson)?;
     let p = protocol();
     if p.helper_to_host.is_valid(&v) {
         Ok(v)
@@ -61,25 +78,34 @@ pub fn parse_helper_line(line: &str) -> Result<Value, String> {
             .next()
             .map(|e| format!(" at /{}", e.instance_path().to_string().trim_start_matches('/')))
             .unwrap_or_default();
-        Err(format!(
-            "type {} does not match the protocol{at}",
-            v.get("type").and_then(Value::as_str).map(short).unwrap_or("?")
-        ))
+        Err(ProtocolError::Mismatch {
+            ty: v
+                .get("type")
+                .and_then(Value::as_str)
+                .map(short)
+                .unwrap_or("?")
+                .to_owned(),
+            at,
+        })
     }
 }
 
 /// Validate and encode a host → helper message as one line (sorted keys, like the golden fixtures).
-pub fn encode_host_message(msg: &Value) -> Result<String, String> {
+pub fn encode_host_message(msg: &Value) -> Result<String, ProtocolError> {
     if !protocol().host_to_helper.is_valid(msg) {
         // ADR 0083: never the message itself (a summarize prompt carries the transcript, dictation.configure the
         // dictionary); this error is logged.
-        return Err(format!(
-            "invalid host→helper message: type {} ({} bytes)",
-            msg.get("type").and_then(Value::as_str).map(short).unwrap_or("?"),
-            msg.to_string().len()
-        ));
+        return Err(ProtocolError::InvalidHostMessage {
+            ty: msg
+                .get("type")
+                .and_then(Value::as_str)
+                .map(short)
+                .unwrap_or("?")
+                .to_owned(),
+            bytes: msg.to_string().len(),
+        });
     }
-    let mut s = serde_json::to_string(msg).map_err(|e| e.to_string())?;
+    let mut s = serde_json::to_string(msg).map_err(|e| ProtocolError::Encode(e.to_string()))?;
     s.push('\n');
     Ok(s)
 }
