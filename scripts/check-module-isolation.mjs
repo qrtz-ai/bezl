@@ -44,8 +44,6 @@ export const PENDING = {
   deps: [
     '@playwright/test',
     'axe-core',
-    '@types/jsdom',
-    'jsdom',
     '@types/react',
     '@types/react-dom',
     'react',
