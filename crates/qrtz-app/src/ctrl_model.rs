@@ -10,9 +10,10 @@
 //! signed revocation list, like code (§6), so the download refreshes the index first and is refused
 //! (`laya.needs_signed_index`) until `modules.qrtz.ai` is live and its root is pinned. The consent is persisted next to
 //! ctrl's store (`<data>/ctrl/laya.json`, 0600); withdrawing it deletes the model. The host hands the installed
-//! model's path to the helper with every `ctrl.laya` question ([`qrtz_ctrl::laya::HelperLaya::path`]); without
-//! consent, without the files, on a placeholder manifest or when the helper can't run it, the deterministic heuristic
-//! scorer answers.
+//! model's path to the helper with every `ctrl.laya` question ([`qrtz_ctrl::laya::HelperLaya::path`]). QRT-293: the
+//! model is required. Without consent, without the files, mid-download, on a sha256 mismatch, on a placeholder
+//! manifest or when the helper can't load it, ctrl decides nothing and takes no action; [`CtrlModelSlot::readiness`]
+//! is the one status the scorer and `ctrl:model` (`status`) both read.
 //!
 //! The pinned manifest (`ctrl_laya_model.json`, ADR 0129) is ctrl's default decision model: FluidInference/laya-coreml
 //! @ 7b8d7a2, the e8 512-token bucket (`laya_multilingual_e8_L512_options32.mlmodelc`, 4 files) plus `tokenizer.json`
@@ -51,8 +52,12 @@ pub struct LayaModelState {
     pub state: &'static str,
     pub size_bytes: u64,
     pub bytes_on_disk: u64,
-    /// `laya` only when the model is consented and installed (and the build has the runtime); else `heuristic`.
+    /// Legacy: `laya` only when `status` is `ready`. `heuristic` now means no model is deciding, so ctrl takes no
+    /// action (QRT-293 removed the rules scorer); read `status` instead.
     pub scorer: &'static str,
+    /// QRT-293: whether ctrl can decide (`ready`), else why not (`not_downloaded`, `downloading`, `hash_mismatch`,
+    /// `load_failed`, `unavailable`): what the "download to start" screen shows.
+    pub status: &'static str,
     /// A short code when the last download failed, never content.
     pub error: Option<String>,
 }
@@ -70,6 +75,9 @@ pub struct CtrlLayaModel {
     set: String,
     /// The first path component in the package, e.g. `laya.mlpackage`.
     entry: PathBuf,
+    /// The package dir whose every file re-hashed to its pinned sha256 in this process (QRT-293: checked once
+    /// before the first decision, then modes and sizes at every question).
+    verified: Mutex<Option<PathBuf>>,
 }
 
 impl CtrlLayaModel {
@@ -99,6 +107,7 @@ impl CtrlLayaModel {
             models: LocalModels::with_manifest(models_root, m.manifest, base)
                 .with_packages_root(ctrl_dir.parent().unwrap_or(ctrl_dir)),
             consent_file: ctrl_dir.join("laya.json"),
+            verified: Mutex::new(None),
         }
     }
 
@@ -161,6 +170,34 @@ impl CtrlLayaModel {
         }
     }
 
+    /// QRT-293: whether the files can decide. `Ready` (with the path) only when consented, installed, every file at
+    /// its pinned size and read-only mode, and (once per process and package dir) every file at its pinned sha256.
+    /// Download state (in flight, a failed checksum) is the slot's; see [`CtrlModelSlot::readiness`].
+    pub fn readiness(&self) -> qrtz_ctrl::laya::Readiness {
+        use qrtz_ctrl::decide::ModelStatus as S;
+        use qrtz_ctrl::laya::Readiness;
+        if self.placeholder {
+            return Readiness::not(S::Unavailable);
+        }
+        if !self.consented() || !self.installed() {
+            return Readiness::not(S::NotDownloaded);
+        }
+        let Some(dir) = self.models.read_dir(&self.set, false) else {
+            return Readiness::not(S::HashMismatch);
+        };
+        let mut v = self.verified.lock().unwrap_or_else(|e| e.into_inner());
+        if v.as_ref() != Some(&dir) {
+            if self.models.read_dir(&self.set, true).as_ref() != Some(&dir) {
+                return Readiness::not(S::HashMismatch);
+            }
+            *v = Some(dir.clone());
+        }
+        Readiness {
+            status: S::Ready,
+            path: Some(dir.join(&self.entry)),
+        }
+    }
+
     pub fn state(&self, runtime: bool) -> LayaModelState {
         let consented = self.consented();
         let installed = self.installed();
@@ -170,18 +207,23 @@ impl CtrlLayaModel {
             (true, false, false) => "not_installed",
             (true, false, true) => "installed",
         };
-        LayaModelState {
+        let mut s = LayaModelState {
             consented,
             state,
             size_bytes: self.models.total_size(),
             bytes_on_disk: self.models.bytes_on_disk(),
-            scorer: if runtime && state == "installed" {
-                "laya"
+            scorer: "heuristic",
+            status: if runtime {
+                self.readiness().status.code()
             } else {
-                "heuristic"
+                qrtz_ctrl::decide::ModelStatus::Unavailable.code()
             },
             error: None,
+        };
+        if s.status == "ready" {
+            s.scorer = "laya";
         }
+        s
     }
 
     /// Fetch the model: only with consent and a real (non-placeholder) manifest; otherwise refused before any
@@ -227,8 +269,29 @@ impl CtrlModelSlot {
         }
     }
 
+    /// QRT-293: the one status ctrl's scorer and `ctrl:model` read: the files' readiness, with the download in
+    /// flight (`downloading`) and a download that failed its sha256 (`hash_mismatch`) on top.
+    pub fn readiness(&self) -> qrtz_ctrl::laya::Readiness {
+        use qrtz_ctrl::decide::ModelStatus as S;
+        let r = self.model.readiness();
+        if r.status == S::Ready {
+            return r;
+        }
+        if self.busy.lock().unwrap().is_some() && self.model.consented() {
+            return qrtz_ctrl::laya::Readiness::not(S::Downloading);
+        }
+        if self.error.lock().unwrap().as_deref() == Some("checksum") {
+            return qrtz_ctrl::laya::Readiness::not(S::HashMismatch);
+        }
+        r
+    }
+
     pub fn state(&self) -> LayaModelState {
         let mut s = self.model.state(qrtz_ctrl::laya::RUNTIME_BUILD);
+        if qrtz_ctrl::laya::RUNTIME_BUILD {
+            s.status = self.readiness().status.code();
+            s.scorer = if s.status == "ready" { "laya" } else { "heuristic" };
+        }
         if self.busy.lock().unwrap().is_some() && s.consented {
             s.state = "downloading";
         }
