@@ -20,17 +20,20 @@ status() {
 
 # 1. README is served over https.
 s="$(status GET "$origin/v1/readme")"
-if [ "$s" = 200 ] && grep -q 'readme_version' "$body_file"; then ok "GET /v1/readme 200"; else bad "GET /v1/readme: $s (want 200)"; fi
+if [ "$s" = 503 ]; then bad "GET /v1/readme: 503 server not configured (missing secret)"
+elif [ "$s" = 200 ] && grep -q 'readme_version' "$body_file"; then ok "GET /v1/readme 200"; else bad "GET /v1/readme: $s (want 200)"; fi
 
 # 2. A wrong code gets the uniform 401. Body built with printf (no escaped quotes inside a command substitution).
 enroll_body="$(printf '{"code":"%s","name":"%s"}' 'ENR-ZZZZ-ZZZZ' 'smoke-test')"
 s="$(status POST "$origin/v1/enroll" -H 'content-type: application/json' --data "$enroll_body")"
 if [ "$s" = 401 ] && grep -q 'used, expired or wrong' "$body_file"; then
   ok "POST /v1/enroll wrong code 401 (uniform text)"
+elif [ "$s" = 503 ]; then
+  bad "POST /v1/enroll: 503 server not configured (missing secret: check npx wrangler secret list for DASH_PEPPER, DASH_ENROLL_KEY)"
 elif [ "$s" = 429 ]; then
   bad "POST /v1/enroll: 429 (this IP is rate limited or locked; retry later from another network)"
 else
-  bad "POST /v1/enroll wrong code: $s (want 401 'used, expired or wrong')"
+  bad "POST /v1/enroll wrong code: $s (want exactly 401 'used, expired or wrong')"
 fi
 
 # 3. Plain http is never served: a redirect to https or the worker's 400 'https only' are both fine; 200 is not.
