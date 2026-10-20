@@ -1,45 +1,42 @@
 import type { ReactNode } from 'react';
-import { IconButton, Page } from './Layout';
+import { IconButton } from './Layout';
+import { Modal } from './Modal';
 import { Text } from './Text';
 
 /**
- * ADR 0146 M1.4: a module's own settings page, shown inside its view (echo, nano, ctrl) in place of the view's
- * content. The global settings keep only what spans every module. `onClose` returns to the view.
+ * ADR 0146 M1.4: a module's own opts, in a modal over its view (echo, nano, ctrl, snap), so the view stays put
+ * underneath. Esc, the scrim and the close button all call `onClose`; focus is trapped inside while it's open.
  */
-export function ModuleSettingsPage({
+export function ModuleSettingsModal({
   module,
+  open,
   onClose,
   children,
-  inset,
+  width = 640,
   'data-testid': testId,
 }: {
-  /** Inside another page's column (nano's detail pane) rather than a page of its own. */
-  inset?: boolean;
   module: string;
+  open: boolean;
   onClose: () => void;
   children: ReactNode;
+  width?: number;
   'data-testid'?: string;
 }) {
   return (
-    <Page
-      data-testid={testId}
-      {...(inset ? { inset } : {})}
+    <Modal
+      open={open}
+      onClose={onClose}
       title={`${module} opts`}
-      actions={
-        <IconButton
-          icon="close"
-          label={`close ${module} opts`}
-          onClick={onClose}
-          data-testid={testId ? `${testId}-close` : undefined}
-        />
-      }
+      closeLabel={`close ${module} opts`}
+      width={width}
+      {...(testId ? { 'data-testid': testId } : {})}
     >
       {children}
-    </Page>
+    </Modal>
   );
 }
 
-/** The gear that opens a module's settings page from its view. */
+/** The gear that opens a module's opts modal from its view. */
 export function ModuleSettingsButton({
   module,
   onClick,

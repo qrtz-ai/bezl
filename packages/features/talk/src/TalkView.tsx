@@ -17,7 +17,7 @@ import {
   useToast,
   SpeechNotice,
   ModuleSettingsButton,
-  ModuleSettingsPage,
+  ModuleSettingsModal,
   Switch,
   ConfirmDialog,
 } from '@qrtz/ui';
@@ -303,16 +303,16 @@ function TalkOn({
     saveDict([...dict, t]);
   };
 
-  if (settingsOpen)
-    return (
-      <ModuleSettingsPage
-        module="echo"
-        onClose={closeSettings}
-        data-testid="talk-settings"
-      >
-        <TalkSettings />
-      </ModuleSettingsPage>
-    );
+  const optsModal = (
+    <ModuleSettingsModal
+      open={settingsOpen}
+      module="echo"
+      onClose={closeSettings}
+      data-testid="talk-settings"
+    >
+      <TalkSettings />
+    </ModuleSettingsModal>
+  );
   return (
     <Page
       data-testid="talk"
@@ -339,6 +339,7 @@ function TalkOn({
         </>
       }
     >
+      {optsModal}
       {dialog}
       {notice}
       {offer}

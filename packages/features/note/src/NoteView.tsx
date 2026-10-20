@@ -14,7 +14,7 @@ import {
   useToast,
   SpeechNotice,
   ModuleSettingsButton,
-  ModuleSettingsPage,
+  ModuleSettingsModal,
 } from '@qrtz/ui';
 import {
   AppError,
@@ -158,22 +158,19 @@ export default function NoteView() {
         setError(e.message);
     });
 
-  if (settingsOpen)
-    // ADR 0146 M1.4: nano's settings take over the whole page, like echo's and ctrl's (Jared, 0.2.4); a recording
-    // keeps running in main and its hud is back on close.
-    return (
-      <ModuleSettingsPage
-        module="nano"
-        onClose={() => {
-          setSettingsOpen(false);
-          if (route.path === SETTINGS_PATH)
-            route.navigate('', { replace: true });
-        }}
-        data-testid="note-settings"
-      >
-        <NoteSettings />
-      </ModuleSettingsPage>
-    );
+  const optsModal = (
+    <ModuleSettingsModal
+      open={settingsOpen}
+      module="nano"
+      onClose={() => {
+        setSettingsOpen(false);
+        if (route.path === SETTINGS_PATH) route.navigate('', { replace: true });
+      }}
+      data-testid="note-settings"
+    >
+      <NoteSettings />
+    </ModuleSettingsModal>
+  );
   const busy =
     isCapturingPhase(session.phase) ||
     session.phase === 'stopping' ||
@@ -221,7 +218,8 @@ export default function NoteView() {
         </>
       }
     >
-      {notesPage && !settingsOpen ? (
+      {optsModal}
+      {notesPage ? (
         <Notes linkable />
       ) : (
         <SplitView

@@ -14,7 +14,7 @@ import {
  *   /qrtz/settings                          qrtz's own (global) settings, behind the qrtz page's gear
  *   /<app id>                               a sub app; `/` and anything unknown → /qrtz
  *   /note/meetings/:meetingId/:tab?         a meeting; tab ∈ transcript (default) | summary | notes
- *   /talk|note|ctrl|snap/settings           a module's own settings page, in its view (ADR 0161)
+ *   /talk|note|ctrl|snap/settings           a module's view with its opts modal open (ADR 0161)
  * The old /marketplace… and /settings routes redirect to the qrtz page. Other sub apps have one view each, so
  * any deeper path goes to `/<app id>`.
  */

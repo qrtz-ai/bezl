@@ -4,7 +4,7 @@ import {
   Callout,
   Kbd,
   ModuleSettingsButton,
-  ModuleSettingsPage,
+  ModuleSettingsModal,
   Page,
   PermissionPrompt,
   SettingRow,
@@ -23,7 +23,7 @@ import SnapSettings from './SnapSettings';
 
 /**
  * qrtz snap (ADR 0159): every Spectacle action with the shortcut qrtz-snap holds for it. The shortcut editor and the
- * options are snap's own settings page (the gear), not the global settings.
+ * options are snap's own opts modal (the gear), not the global settings.
  */
 export default function SnapView() {
   const qrtz = useQrtz();
@@ -62,16 +62,16 @@ export default function SnapView() {
     void qrtz.invoke('snap:request-access').then(load, () => {});
   };
 
-  if (settingsOpen)
-    return (
-      <ModuleSettingsPage
-        module="snap"
-        onClose={closeSettings}
-        data-testid="snap-settings"
-      >
-        <SnapSettings status={status} onSaved={load} />
-      </ModuleSettingsPage>
-    );
+  const optsModal = (
+    <ModuleSettingsModal
+      open={settingsOpen}
+      module="snap"
+      onClose={closeSettings}
+      data-testid="snap-settings"
+    >
+      <SnapSettings status={status} onSaved={load} />
+    </ModuleSettingsModal>
+  );
   return (
     <Page
       data-testid="snap"
@@ -89,6 +89,7 @@ export default function SnapView() {
         </>
       }
     >
+      {optsModal}
       {status && !status.running ? (
         <Callout
           tone="info"

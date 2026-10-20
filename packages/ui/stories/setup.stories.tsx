@@ -3,7 +3,7 @@ import {
   Button,
   ModuleSettingsButton,
   ModuleSettingsEmpty,
-  ModuleSettingsPage,
+  ModuleSettingsModal,
   OnboardingFrame,
   PermissionPrompt,
   PermissionSetupList,
@@ -12,6 +12,7 @@ import {
   Switch,
   Text,
 } from '../src';
+import { useState } from 'react';
 import { Frame, Row, Width, noop } from './_util';
 
 const meta: Meta = { title: 'components/setup and opts' };
@@ -112,16 +113,54 @@ export const ModuleOpts: S = {
       <Row label="button">
         <ModuleSettingsButton module="echo" onClick={noop} />
       </Row>
-      <Frame height={280}>
-        <ModuleSettingsPage module="echo" onClose={noop}>
+      <Frame height={360}>
+        <ModuleSettingsModal module="echo" open onClose={noop}>
           <SettingRow label="add a space after">
             <Switch checked onChange={noop} label="add a space after" />
           </SettingRow>
-        </ModuleSettingsPage>
+        </ModuleSettingsModal>
       </Frame>
       <Row label="empty">
         <ModuleSettingsEmpty>echo has no opts yet.</ModuleSettingsEmpty>
       </Row>
     </>
   ),
+};
+
+function OptsModalDemo() {
+  const [open, setOpen] = useState(false);
+  const [space, setSpace] = useState(true);
+  return (
+    <Frame height={360}>
+      <div style={{ padding: 24 }}>
+        <ModuleSettingsButton module="echo" onClick={() => setOpen(true)} />
+      </div>
+      <ModuleSettingsModal
+        module="echo"
+        open={open}
+        onClose={() => setOpen(false)}
+      >
+        <SettingRow label="add a space after">
+          <Switch
+            checked={space}
+            onChange={setSpace}
+            label="add a space after"
+          />
+        </SettingRow>
+      </ModuleSettingsModal>
+    </Frame>
+  );
+}
+
+/** Click the gear: the opts modal opens over the view; esc, the scrim or the close button closes it. */
+export const ModuleOptsModalDark: S = {
+  name: 'module opts modal, dark',
+  globals: { theme: 'dark' },
+  render: () => <OptsModalDemo />,
+};
+
+export const ModuleOptsModalLight: S = {
+  name: 'module opts modal, light',
+  globals: { theme: 'light' },
+  render: () => <OptsModalDemo />,
 };

@@ -8,7 +8,7 @@ import {
   EmptyState,
   Input,
   ModuleSettingsButton,
-  ModuleSettingsPage,
+  ModuleSettingsModal,
   Page,
   RunHistory,
   RunTimeline,
@@ -116,16 +116,16 @@ export default function CtrlView() {
       if (run?.runId === runId) openRun(runId);
     }, fail);
 
-  if (settingsOpen)
-    return (
-      <ModuleSettingsPage
-        module="ctrl"
-        onClose={closeSettings}
-        data-testid="ctrl-settings"
-      >
-        <CtrlSettings />
-      </ModuleSettingsPage>
-    );
+  const optsModal = (
+    <ModuleSettingsModal
+      open={settingsOpen}
+      module="ctrl"
+      onClose={closeSettings}
+      data-testid="ctrl-settings"
+    >
+      <CtrlSettings />
+    </ModuleSettingsModal>
+  );
   const stoppable =
     busy ?? (run && run.status === 'running' ? run.runId : null);
   return (
@@ -145,6 +145,7 @@ export default function CtrlView() {
         </>
       }
     >
+      {optsModal}
       <Stack
         as="form"
         dir="row"

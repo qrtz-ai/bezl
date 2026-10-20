@@ -44,23 +44,40 @@ async function mount() {
 }
 
 describe("nano's opts", () => {
-  it('take over the whole page and give it back on close', async () => {
+  it('open in a modal over the view and close on the button, esc and the scrim', async () => {
     const v = await mount();
     expect(v.q('note-app')).not.toBeNull();
     await act(async () => v.q('note-settings-open')!.click());
     await v.settle();
-    expect(v.q('note-settings')).not.toBeNull();
-    expect(v.q('note-app')).toBeNull();
-    expect(v.el.querySelector('[aria-label="meetings"]')).toBeNull();
-    expect(v.q('note-record-manual')).toBeNull();
-    expect(
-      v.q('note-settings')!.closest('[data-testid="note-app"]'),
-    ).toBeNull();
+    const dialog = v.q('note-settings')!;
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    // The view stays underneath.
+    expect(v.q('note-app')).not.toBeNull();
+    expect(v.el.querySelector('[aria-label="meetings"]')).not.toBeNull();
     await act(async () => v.q('note-settings-close')!.click());
     await v.settle();
     expect(v.q('note-settings')).toBeNull();
+
+    await act(async () => v.q('note-settings-open')!.click());
+    await v.settle();
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    await v.settle();
+    expect(v.q('note-settings')).toBeNull();
+
+    await act(async () => v.q('note-settings-open')!.click());
+    await v.settle();
+    const scrim = v.q('note-settings-scrim')!;
+    await act(async () => {
+      scrim.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    await v.settle();
+    expect(v.q('note-settings')).toBeNull();
     expect(v.q('note-app')).not.toBeNull();
-    expect(v.el.querySelector('[aria-label="meetings"]')).not.toBeNull();
     v.unmount();
   });
 });
