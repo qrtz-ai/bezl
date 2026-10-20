@@ -165,6 +165,20 @@ jobs:
       - name: cargo test (workspace)
         run: cargo test --workspace
 
+  # QRT-270: echo's warm-up race, scripted (no mic, no Accessibility, no key). Everything it runs lives in
+  # native/qrtz-helper (scripts/echo-warmup-ci.sh); the model is fetched from its pinned revision and sha256s.
+  echo-warmup:
+    name: macOS · echo warm-up race (QRT-270)
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/echo-warmup/models
+          key: echo-asr-${{ hashFiles('crates/qrtz-app/src/local_models.json') }}
+      - run: native/qrtz-helper/scripts/echo-warmup-ci.sh
+
   # QRT-276 (Bozniak-cleared): KeychainStore type-check (debug and release paths) and the real-keychain tests that
   # gate QRT-260, on a THROWAWAY keychain made in this job and always deleted at the end. The login keychain is never
   # read or written: only the throwaway one is on the search list while the tests run. Only test-generated values
