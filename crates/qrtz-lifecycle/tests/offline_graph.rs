@@ -12,8 +12,8 @@
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
 //! 5. ADR 0157 (tightening ADR 0079 and 0153): the downloader's only callers are qrtz-app's `setup.rs` (the signed
 //!    speech bundle, `Downloader` only) and `module_hosting.rs` (the package manager's one fetcher, `fetch_meta` and
-//!    `fetch_range`, to the host pinned in `module_hosts.json`: exactly `https://modules.qrtz.ai` (ADR 0167: no
-//!    Backblaze B2 mirror), and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
+//!    `fetch_range`, to the host pinned in `module_hosts.json`: exactly the `index` GitHub release download base
+//!    (QRT-297; redirects only to the pinned `redirectHosts`; ADR 0167: no mirror), and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
 //!    (`DownloadControl`, `Progress`); naming `Downloader` or any fetch there (the retired direct-HF
 //!    `download_files` path) fails, and `download_files` has no caller outside qrtz-speech's `download_bundle`.
 //!    The pinned models are fixed Hugging Face revisions with sha256s; ctrl's Laya model (ADR 0116) goes through
@@ -499,16 +499,37 @@ fn only_setup_and_the_package_fetcher_call_the_downloader() {
             }
         }
     }
-    // ADR 0153 / ADR 0167: exactly one package host (Cloudflare R2 behind modules.qrtz.ai), no B2 mirror;
-    // https, no path, query or credentials. Adding a host changes this test and the ADR.
+    // ADR 0153 / ADR 0167 / QRT-297: exactly one package host, the fixed `index` GitHub release of qrtz-ai/qrtz
+    // through its direct download URL (never api.github.com), no mirror; https, no query or credentials. Its
+    // redirects may go only to GitHub's release asset CDN. Adding a host changes this test and the ADR.
     let hosts: Value = serde_json::from_str(
         &std::fs::read_to_string(r.join("crates/qrtz-app/src/module_hosts.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(
-        hosts["primary"], "https://modules.qrtz.ai",
+        hosts["primary"], "https://github.com/qrtz-ai/qrtz/releases/download/index",
         "module_hosts.json primary"
     );
+    assert_eq!(
+        hosts["redirectHosts"],
+        serde_json::json!([
+            "objects.githubusercontent.com",
+            "release-assets.githubusercontent.com"
+        ]),
+        "module_hosts.json redirectHosts: GitHub's release asset CDN only"
+    );
+    let all = std::fs::read_to_string(r.join("crates/qrtz-app/src/module_hosts.json")).unwrap();
+    for gone in [
+        "modules.qrtz.ai",
+        "r2.dev",
+        "r2.cloudflarestorage.com",
+        "api.github.com",
+    ] {
+        assert!(
+            !all.contains(gone),
+            "module_hosts.json names {gone} (QRT-297: GitHub releases only)"
+        );
+    }
     let mirrors = hosts["mirrors"].as_array().unwrap();
     assert!(
         mirrors.is_empty(),
@@ -1899,7 +1920,7 @@ fn the_release_team_check_catches_the_placeholder() {
     assert!(out.iter().all(|(_, t)| t != RELEASE_TEAM), "{out:?}");
 }
 
-/// ADR 0171: modules.qrtz.ai never hosts model bytes. The app reaches Hugging Face only (the pinned model mirror),
+/// ADR 0171: the package host never hosts model bytes. The app reaches Hugging Face only (the pinned model mirror),
 /// the publish script uploads only `v1/` of its output (qrtz-publish keeps model files beside it, in
 /// `<out>.model-blobs`, for offline packs) and can write its output without any upload (no rclone, no R2 token).
 #[test]
@@ -1913,15 +1934,20 @@ fn model_files_come_from_hugging_face_and_are_never_uploaded() {
         serde_json::json!(["https://huggingface.co"])
     );
     let s = std::fs::read_to_string(root().join("scripts/modules/publish.sh")).unwrap();
-    let copies: Vec<&str> = s.lines().filter(|l| l.contains("rclone copy")).collect();
-    assert!(!copies.is_empty());
-    for l in &copies {
-        assert!(
-            l.contains("rclone copy \"$out/v1\""),
-            "publish.sh uploads only $out/v1: {l}"
-        );
-        assert!(!l.contains("model-blobs"), "{l}");
-    }
+    // QRT-297: the upload is scripts/release/gh-store.sh (the index GitHub release), which takes only $out/v1.
+    let ups: Vec<&str> = s.lines().filter(|l| l.contains("gh-store.sh\" upload")).collect();
+    assert_eq!(ups.len(), 1, "publish.sh uploads once, through gh-store.sh");
+    assert!(ups[0].contains("upload \"$out\""), "{}", ups[0]);
+    assert!(!s.contains("rclone"), "publish.sh: no rclone (QRT-297)");
+    let g = std::fs::read_to_string(root().join("scripts/release/gh-store.sh")).unwrap();
+    assert!(
+        g.contains("find \"$out/v1\" -type f"),
+        "gh-store.sh uploads only $out/v1"
+    );
+    assert!(
+        !g.contains("model-blobs"),
+        "gh-store.sh never names the model blob dir"
+    );
     assert!(
         !s.contains("model-blobs\" \""),
         "publish.sh never names the model blob dir as a source"

@@ -1,5 +1,5 @@
 // publish.sh --out-only is a dry run: it builds in a mktemp scratch copy and never writes to $QRTZ_PUBLISH_OUT,
-// which must keep mirroring what modules.qrtz.ai serves (timestamp-job.sh skips itself when it doesn't).
+// which must keep mirroring what the index release serves.
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
