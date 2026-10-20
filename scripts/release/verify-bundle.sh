@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The release gate (0.2.4 post-mortem): a qrtz.app is shippable or installable only if this passes. Shared by
 # sign-notarize.sh (release:mac, after notarize and staple), scripts/app/publish-local.sh (before upload) and
-# .github/workflows/app-release.yml, so CI and local check the same thing.
+# .github/workflows/release.yml (QRT-297), so CI and local check the same thing.
 #
 # Checks, each failing nonzero with a message:
 #   - every executable in Contents/MacOS satisfies the requirement a release build launches it under

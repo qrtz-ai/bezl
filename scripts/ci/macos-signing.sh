@@ -13,8 +13,8 @@
 #   scripts/ci/macos-signing.sh cleanup   delete the keychain and every secret file (safe to run twice)
 #
 # Env (GitHub secrets):
-#   MACOS_CERT_P12 (base64 .p12 holding only "Developer ID Application: … (MR26CCZ496)"), MACOS_CERT_PASSWORD
-#   notarization, one of:  AC_APPLE_ID + AC_APP_PASSWORD (+ AC_TEAM_ID, default MR26CCZ496)   [the default]
+#   APPLE_CERT_P12_BASE64 (base64 .p12 holding only "Developer ID Application: … (MR26CCZ496)"), APPLE_CERT_PASSWORD
+#   notarization, one of:  APPLE_ID + APPLE_APP_PASSWORD (+ APPLE_TEAM_ID, default MR26CCZ496)   [the default]
 #                          AC_API_KEY (.p8 contents) + AC_KEY_ID + AC_ISSUER_ID                [App Store Connect API]
 #   QRTZ_INDEX_KEY, QRTZ_TIMESTAMP_KEY (hex Ed25519 seeds; the online keys, never a root key). With `keys`, either
 #   may be absent (the timestamp job gets only the timestamp key).
@@ -23,7 +23,7 @@ die() { echo "macos-signing: $*" >&2; exit 1; }
 tmp="${RUNNER_TEMP:?RUNNER_TEMP is not set (run this in GitHub Actions)}"
 kc="$tmp/qrtz-signing.keychain-db"
 keys="$tmp/qrtz-keys"
-team="${AC_TEAM_ID:-MR26CCZ496}"
+team="${APPLE_TEAM_ID:-MR26CCZ496}"
 genv() { [[ -n "${GITHUB_ENV:-}" ]] && echo "$1=$2" >>"$GITHUB_ENV"; return 0; }
 
 write_keys() {
@@ -52,7 +52,7 @@ write_keys() {
 case "${1:-}" in
   setup | setup-identity)
     [[ "$(uname -s)" == Darwin ]] || die "setup needs macOS"
-    for v in MACOS_CERT_P12 MACOS_CERT_PASSWORD; do [[ -n "${!v:-}" ]] || die "$v is not set"; done
+    for v in APPLE_CERT_P12_BASE64 APPLE_CERT_PASSWORD; do [[ -n "${!v:-}" ]] || die "$v is not set"; done
     umask 077
     kcpw="$(openssl rand -hex 24)"
     echo "::add-mask::$kcpw"
@@ -61,9 +61,9 @@ case "${1:-}" in
     security set-keychain-settings -lut 21600 "$kc"
     security unlock-keychain -p "$kcpw" "$kc"
     p12="$tmp/qrtz-cert.p12"
-    printf '%s' "$MACOS_CERT_P12" | base64 --decode >"$p12"
+    printf '%s' "$APPLE_CERT_P12_BASE64" | base64 --decode >"$p12"
     chmod 600 "$p12"
-    security import "$p12" -k "$kc" -f pkcs12 -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
+    security import "$p12" -k "$kc" -f pkcs12 -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
     rm -f "$p12"
     # The Developer ID intermediate (public), in case the image lacks it.
     if curl -fsS --max-time 30 -o "$tmp/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer; then
@@ -76,17 +76,17 @@ case "${1:-}" in
     # shellcheck disable=SC2086
     security list-keychains -d user -s "$kc" $existing
     id="$(security find-identity -v -p codesigning "$kc" | sed -n "s/.*\"\(Developer ID Application: .* ($team)\)\".*/\1/p" | head -1)"
-    [[ -n "$id" ]] || die "MACOS_CERT_P12 has no valid \"Developer ID Application: … ($team)\" identity"
+    [[ -n "$id" ]] || die "APPLE_CERT_P12_BASE64 has no valid \"Developer ID Application: … ($team)\" identity"
     genv QRTZ_SIGN_ID "$id"
     echo "macos-signing: imported $id"
 
     # notarytool: a profile in the temp keychain (publish.sh and qrtz-publish use --keychain-profile, plus
     # --keychain from QRTZ_NOTARY_KEYCHAIN). store-credentials validates it against Apple first.
     profile=qrtz-notary
-    if [[ -n "${AC_APPLE_ID:-}" ]]; then
-      [[ -n "${AC_APP_PASSWORD:-}" ]] || die "AC_APPLE_ID is set but AC_APP_PASSWORD isn't"
-      xcrun notarytool store-credentials "$profile" --apple-id "$AC_APPLE_ID" --team-id "$team" \
-        --password "$AC_APP_PASSWORD" --keychain "$kc" >/dev/null
+    if [[ -n "${APPLE_ID:-}" ]]; then
+      [[ -n "${APPLE_APP_PASSWORD:-}" ]] || die "APPLE_ID is set but APPLE_APP_PASSWORD isn't"
+      xcrun notarytool store-credentials "$profile" --apple-id "$APPLE_ID" --team-id "$team" \
+        --password "$APPLE_APP_PASSWORD" --keychain "$kc" >/dev/null
       how="Apple ID + app-specific password"
     elif [[ -n "${AC_API_KEY:-}" ]]; then
       for v in AC_KEY_ID AC_ISSUER_ID; do [[ -n "${!v:-}" ]] || die "AC_API_KEY is set but $v isn't"; done
@@ -98,7 +98,7 @@ case "${1:-}" in
       rm -f "$p8"
       how="App Store Connect API key"
     else
-      die "no notarization credentials: set AC_APPLE_ID + AC_APP_PASSWORD (or AC_API_KEY + AC_KEY_ID + AC_ISSUER_ID)"
+      die "no notarization credentials: set APPLE_ID + APPLE_APP_PASSWORD (or AC_API_KEY + AC_KEY_ID + AC_ISSUER_ID)"
     fi
     genv QRTZ_NOTARY_PROFILE "$profile"
     genv QRTZ_NOTARY_KEYCHAIN "$kc"

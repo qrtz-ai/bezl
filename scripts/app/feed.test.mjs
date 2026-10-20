@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  onHost,
   archivePath,
   expiresIn,
   feed,
@@ -30,7 +31,11 @@ describe('scripts/app/feed.mjs', () => {
     expect(f.pub_date).toBe('2026-10-19T05:00:00Z');
     expect(f.expires).toBe('2026-11-18T05:00:00Z');
     expect(p.url).toBe(
-      'https://modules.qrtz.ai/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz',
+      'https://github.com/qrtz-ai/qrtz/releases/download/index/v1.app.0.3.0.qrtz_0.3.0_aarch64.app.tar.gz',
+    );
+    // Any other host (a test server) serves the layout path as it is.
+    expect(onHost('http://127.0.0.1:9', archivePath('0.3.0'))).toBe(
+      archivePath('0.3.0'),
     );
     expect(archivePath('0.3.0')).toBe(
       'v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz',

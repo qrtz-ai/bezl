@@ -35,10 +35,40 @@ pub const MAX_INDEX_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_PACKAGE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const MAX_FILES: usize = 20_000;
 
-/// URL paths relative to a host base (`https://modules.qrtz.ai`). No query strings, ids or tokens: names and
-/// versions appear only inside the signed index.
+/// URL paths relative to a host base (the fixed `index` GitHub release, QRT-297). No query strings, ids or tokens:
+/// names and versions appear only inside the signed index.
 pub mod layout {
     use super::LAYOUT_VERSION;
+    /// QRT-297: a GitHub release holds flat asset names, no directories. A host base that is a release download
+    /// base (`https://github.com/<owner>/<repo>/releases/download/<tag>`) serves layout path `v1/a/b` as the asset
+    /// `v1.a.b`; any other base (a loopback test server, a local dir) serves the path as it is. The bytes are
+    /// checked against the signed index either way, so the name only decides where to look.
+    pub fn on_host(base: &str, path: &str) -> String {
+        if is_release_base(base) {
+            release_asset(path)
+        } else {
+            path.to_owned()
+        }
+    }
+    /// The flat GitHub release asset name of a layout path (`v1/blobs/sha256/<hex>` → `v1.blobs.sha256.<hex>`).
+    pub fn release_asset(path: &str) -> String {
+        path.replace('/', ".")
+    }
+    /// True for `https://github.com/<owner>/<repo>/releases/download/<tag>` (no trailing slash, query or user).
+    pub fn is_release_base(base: &str) -> bool {
+        let Some(rest) = base.strip_prefix("https://github.com/") else {
+            return false;
+        };
+        let parts: Vec<&str> = rest.split('/').collect();
+        parts.len() == 5
+            && parts[2] == "releases"
+            && parts[3] == "download"
+            && parts.iter().all(|p| {
+                !p.is_empty()
+                    && p.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+            })
+    }
     pub fn root(n: u64) -> String {
         format!("{LAYOUT_VERSION}/root/{n}.root.json")
     }
