@@ -10,7 +10,7 @@ import { useTheme } from './theme';
 import { Text } from './Text';
 import { Heading } from './Heading';
 import { Icon, isIconName, type IconName } from './Icon';
-import { transition, typeStyle, type Tokens } from './tokens';
+import { transition, typeStyle, type Tokens, tokens } from './tokens';
 import { lowerTitle } from './case';
 
 type Space = keyof Tokens['space'];
@@ -180,7 +180,7 @@ export type SideNavItem = {
 /**
  * The side nav's width: the original 176px (restored at Jared's request after 23e503d narrowed it to 104).
  */
-export const SIDENAV_WIDTH = 176;
+export const SIDENAV_WIDTH = tokens.layout.sidenav;
 
 /** The app's main navigation: a vertical sidebar of icon + lowercase label rows. Each row gets data-testid `nav-<id>`. */
 export function SideNav({
@@ -259,7 +259,7 @@ export function SideNav({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: tokens.space[0.5],
         width,
         flex: '0 0 auto',
         boxSizing: 'border-box',
@@ -276,7 +276,7 @@ export function SideNav({
             marginTop: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            gap: 2,
+            gap: tokens.space[0.5],
             paddingTop: t.space[2],
           }}
         >
@@ -295,12 +295,12 @@ export function SideNav({
  * that overflows and one that doesn't have the same column).
  */
 export const PAGE = {
-  maxWidth: 880,
+  maxWidth: tokens.layout.pageMax,
   padTop: 40,
   gutter: 32,
   padBottom: 48,
   headerHeight: 40,
-  gap: 24,
+  gap: tokens.space[6],
 } as const;
 
 /**
@@ -353,7 +353,7 @@ export function Page({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: tokens.space[2],
           height: PAGE.headerHeight,
           minHeight: PAGE.headerHeight,
           flex: '0 0 auto',
@@ -378,7 +378,7 @@ export function Page({
               marginLeft: 'auto',
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              gap: tokens.space[2],
               minWidth: 0,
               flex: '0 1 auto',
             }}
@@ -555,7 +555,7 @@ export function IconButton({
             right: -3,
             width: 8,
             height: 8,
-            borderRadius: 4,
+            borderRadius: tokens.radius.sm,
             background: t.color.warning,
             border: `2px solid ${t.color.bg}`,
           }}
@@ -636,7 +636,7 @@ export function ListRow({
           cursor: 'pointer',
           width: '100%',
           display: 'grid',
-          gap: 2,
+          gap: tokens.space[0.5],
           padding: `${t.space[2]} ${t.space[3]}`,
           borderRadius: t.radius.md,
           background: selected ? t.color.accent : 'transparent',
@@ -747,7 +747,7 @@ export function SettingRow({
           minWidth: 0,
           flex: '1 1 auto',
           display: 'grid',
-          gap: 2,
+          gap: tokens.space[0.5],
         }}
       >
         <Text>{lowerTitle(label)}</Text>

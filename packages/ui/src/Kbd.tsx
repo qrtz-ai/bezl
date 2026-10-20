@@ -1,4 +1,4 @@
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 
@@ -8,7 +8,7 @@ export function Kbd({ children }: { children: ReactNode }) {
     <kbd
       style={{
         ...typeStyle('mono', t),
-        padding: '1px 6px',
+        padding: `0 ${tokens.space[1]}`,
         borderRadius: t.radius.sm,
         border: `1px solid ${t.color.border}`,
         borderBottomWidth: 2,

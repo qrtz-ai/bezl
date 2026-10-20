@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useTheme } from './theme';
-import { typeStyle, type TypeVariant } from './tokens';
+import { typeStyle, type TypeVariant, tokens } from './tokens';
 import { lowerTitle } from './case';
 
 /**
@@ -45,7 +45,10 @@ export function Heading({
       {cursor ? (
         <span
           aria-hidden
-          style={{ marginLeft: 2, animation: 'q-blink 1.1s step-end infinite' }}
+          style={{
+            marginLeft: tokens.space[0.5],
+            animation: 'q-blink 1.1s step-end infinite',
+          }}
         >
           _
         </span>

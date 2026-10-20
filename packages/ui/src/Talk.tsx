@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
-import { transition, typeStyle } from './tokens';
+import { transition, typeStyle, tokens } from './tokens';
 import { Text } from './Text';
 import { Icon } from './Icon';
 import { IconButton } from './Layout';
@@ -61,7 +61,7 @@ export function TalkPill({
         padding: `0 ${t.space[4]}`,
         background: t.color.surface,
         border: `1px solid ${t.color.borderStrong}`,
-        borderRadius: 999,
+        borderRadius: tokens.radius.full,
         overflow: 'hidden',
       }}
     >
@@ -188,7 +188,7 @@ export function DictionaryTerm({
         display: 'inline-flex',
         alignItems: 'center',
         gap: t.space[2],
-        padding: `2px ${t.space[1]} 2px ${t.space[2]}`,
+        padding: `${tokens.space[0.5]} ${t.space[1]} ${tokens.space[0.5]} ${t.space[2]}`,
         border: `1px solid ${t.color.border}`,
         borderRadius: t.radius.sm,
       }}

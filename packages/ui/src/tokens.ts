@@ -64,6 +64,7 @@ export const tokens = {
   color: darkColor as Record<keyof typeof darkColor, string>,
   space: {
     0: '0px',
+    0.5: '2px', // hairline gaps inside a row (title over its caption)
     1: '4px',
     2: '8px',
     3: '12px',
@@ -74,7 +75,7 @@ export const tokens = {
     12: '48px',
     16: '64px',
   },
-  radius: { sm: '4px', md: '6px', lg: '8px', full: '9999px' },
+  radius: { xs: '2px', sm: '4px', md: '6px', lg: '8px', full: '9999px' },
   /**
    * One family everywhere: Geist Pixel Square, bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
    * It ships one weight and draws on a 38/1000 em pixel grid, so sizes are multiples of 13.158px (one font
@@ -120,6 +121,20 @@ export const tokens = {
   },
   /** One focus ring everywhere: keyboard focus shows a 2px ring in `color.ring`, offset 2px. */
   focus: { width: '2px', offset: '2px', style: 'solid' },
+  /** The one shadow, for things that float over content (dialog, menu, toast). Everything else uses 1px borders. */
+  shadow: { overlay: '0 12px 32px rgba(0,0,0,0.35)' },
+  /**
+   * The notch is always a black hardware surface, in every theme and contrast mode,
+   * so it has its own fixed on-black palette instead of following `color`.
+   */
+  notch: {
+    bg: '#000000',
+    text: 'rgb(250,250,250)',
+    textMuted: 'rgba(255,255,255,0.55)',
+    track: 'rgba(255,255,255,0.22)',
+  },
+  /** Shared layout geometry (px numbers), used by Page, SideNav and CardGrid. */
+  layout: { pageMax: 880, sidenav: 176, cardMin: 220 },
   z: { base: 0, sticky: 10, overlay: 40, dialog: 50, toast: 60, tooltip: 70 },
 } as const;
 
@@ -171,7 +186,7 @@ export function tokensToCssVars(t: Tokens = tokens): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (obj: Record<string, unknown>, prefix: string) => {
     for (const [k, v] of Object.entries(obj)) {
-      const name = `${prefix}-${kebab(k)}`;
+      const name = `${prefix}-${kebab(k).replace('.', '_')}`; // space 0.5 → --q-space-0_5
       if (typeof v === 'object' && v !== null)
         walk(v as Record<string, unknown>, name);
       else out[name] = String(v);

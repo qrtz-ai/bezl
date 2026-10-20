@@ -1,4 +1,4 @@
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import {
   createContext,
   useCallback,
@@ -66,7 +66,7 @@ export function Dialog({
           background: t.color.surface,
           border: `1px solid ${t.color.borderStrong}`,
           borderRadius: t.radius.lg,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+          boxShadow: tokens.shadow.overlay,
           outline: 'none',
           overflow: 'hidden',
         }}
@@ -136,7 +136,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           bottom: 16,
           zIndex: t.z.toast,
           display: 'grid',
-          gap: 8,
+          gap: tokens.space[2],
         }}
       >
         {items.map((i) => (
@@ -147,9 +147,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
+              gap: tokens.space[3],
               minWidth: 240,
-              padding: '10px 14px',
+              padding: `${tokens.space[2]} ${tokens.space[3]}`,
               background: t.color.surface,
               border: `1px solid ${t.color.borderStrong}`,
               borderRadius: t.radius.md,
@@ -160,7 +160,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               style={{
                 width: 6,
                 height: 6,
-                borderRadius: 3,
+                borderRadius: tokens.radius.sm,
                 background: dot[i.kind],
               }}
             />
@@ -221,7 +221,7 @@ export function Tooltip({
             left: '50%',
             transform: 'translateX(-50%)',
             whiteSpace: 'nowrap',
-            padding: '4px 8px',
+            padding: `${tokens.space[1]} ${tokens.space[2]}`,
             ...typeStyle('caption', t),
             color: t.color.text,
             background: t.color.accent,
@@ -269,7 +269,7 @@ export function Switch({
         cursor: disabled ? 'not-allowed' : 'pointer',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 8,
+        gap: tokens.space[2],
         opacity: disabled ? 0.5 : 1,
       }}
     >
@@ -277,7 +277,7 @@ export function Switch({
         style={{
           width: 32,
           height: 18,
-          borderRadius: 9,
+          borderRadius: tokens.radius.lg,
           background: checked ? t.color.primary : t.color.borderStrong,
           position: 'relative',
           transition: `background ${t.motion.fast}`,
@@ -290,7 +290,7 @@ export function Switch({
             left: checked ? 16 : 2,
             width: 14,
             height: 14,
-            borderRadius: 7,
+            borderRadius: tokens.radius.md,
             background: checked ? t.color.primaryText : t.color.text,
             transition: `left ${t.motion.fast} ${t.motion.easeOut}`,
           }}

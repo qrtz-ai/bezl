@@ -1,5 +1,5 @@
 import { lowerTitle } from './case';
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 
@@ -18,7 +18,7 @@ export function calloutBox(t: Theme, tone: CalloutTone = 'info') {
     danger: t.color.danger,
   }[tone];
   return {
-    padding: '10px 12px',
+    padding: `${tokens.space[2]} ${tokens.space[3]}`,
     border: `1px solid color-mix(in srgb, ${c} 35%, transparent)`,
     background: `color-mix(in srgb, ${c} 8%, transparent)`,
     borderRadius: t.radius.md,
@@ -54,7 +54,7 @@ export function Callout({
       data-testid={testId}
       style={{
         display: 'flex',
-        gap: 12,
+        gap: tokens.space[3],
         alignItems: 'center',
         ...calloutBox(t, tone),
       }}
@@ -64,7 +64,7 @@ export function Callout({
         style={{
           width: 8,
           height: 8,
-          borderRadius: 4,
+          borderRadius: tokens.radius.sm,
           background: c,
           flex: 'none',
         }}
@@ -83,7 +83,7 @@ export function Callout({
             style={{
               color: t.color.textMuted,
               ...typeStyle('bodySm', t),
-              marginTop: 2,
+              marginTop: tokens.space[0.5],
               overflowWrap: 'anywhere',
             }}
           >

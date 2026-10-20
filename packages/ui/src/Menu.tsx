@@ -10,7 +10,7 @@ import { useTheme } from './theme';
 import { Icon, type IconName } from './Icon';
 import { IconButton } from './Layout';
 import { Text } from './Text';
-import { transition } from './tokens';
+import { transition, tokens } from './tokens';
 
 export interface MenuItem {
   id: string;
@@ -136,12 +136,12 @@ export function Menu({
             zIndex: t.z.overlay,
             minWidth: 180,
             display: 'grid',
-            gap: 2,
+            gap: tokens.space[0.5],
             padding: t.space[1],
             background: t.color.surface,
             border: `1px solid ${t.color.borderStrong}`,
             borderRadius: t.radius.md,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            boxShadow: tokens.shadow.overlay,
           }}
         >
           {items.map((it) => (

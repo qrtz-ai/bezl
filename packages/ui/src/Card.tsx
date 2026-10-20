@@ -1,8 +1,9 @@
+import { tokens } from './tokens';
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 import { useTheme } from './theme';
 
 /** A card column's minimum width in a CardGrid: as many columns as fit, never narrower than this. */
-export const CARD_MIN_WIDTH = 220;
+export const CARD_MIN_WIDTH = tokens.layout.cardMin;
 
 /**
  * Cards in a real grid: `repeat(auto-fill, minmax(220px, 1fr))` columns, the spacing token gap, and equal-height

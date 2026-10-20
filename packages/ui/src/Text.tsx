@@ -6,7 +6,13 @@ import type {
   ReactNode,
 } from 'react';
 import { useTheme } from './theme';
-import { transition, typeStyle, type Tokens, type TypeVariant } from './tokens';
+import {
+  transition,
+  typeStyle,
+  type Tokens,
+  type TypeVariant,
+  tokens,
+} from './tokens';
 
 export type TextTone =
   | 'default'
@@ -147,7 +153,12 @@ export function Code({
   ) : (
     <code
       {...rest}
-      style={{ ...base, padding: '0 4px', overflowWrap: 'anywhere', ...style }}
+      style={{
+        ...base,
+        padding: `0 ${tokens.space[1]}`,
+        overflowWrap: 'anywhere',
+        ...style,
+      }}
     >
       {children}
     </code>

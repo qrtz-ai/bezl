@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import { useTheme } from './theme';
 import { Icon } from './Icon';
 import { Button } from './Button';
@@ -368,7 +369,7 @@ export function ModelsPanel({
   const lines = (
     <ul
       aria-label="model sets"
-      style={{ margin: 0, padding: 0, display: 'grid', gap: 2 }}
+      style={{ margin: 0, padding: 0, display: 'grid', gap: tokens.space[0.5] }}
     >
       {sets.map((m) => (
         <li

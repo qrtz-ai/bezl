@@ -5,7 +5,7 @@ import {
 } from './ModelRequirement';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
 import { Button } from './Button';
@@ -115,7 +115,14 @@ export function RunTimeline({
       <Text variant="caption" muted data-testid="ctrl-state">
         step {at} of {events.length} · {summary}
       </Text>
-      <ol style={{ margin: 0, padding: 0, display: 'grid', gap: 2 }}>
+      <ol
+        style={{
+          margin: 0,
+          padding: 0,
+          display: 'grid',
+          gap: tokens.space[0.5],
+        }}
+      >
         {events.map((e, i) => (
           <li
             key={e.seq}
@@ -281,7 +288,14 @@ export function DecisionList({
                 {d.meta}
               </Text>
             </div>
-            <ul style={{ margin: 0, padding: 0, display: 'grid', gap: 2 }}>
+            <ul
+              style={{
+                margin: 0,
+                padding: 0,
+                display: 'grid',
+                gap: tokens.space[0.5],
+              }}
+            >
               {top.map((o) => (
                 <OptionBar key={o.id} o={o} />
               ))}

@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import { useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { ThemeScope, useTheme } from './theme';
@@ -44,7 +45,7 @@ export const NOTCH_GEOMETRY = {
   restRadius: 8,
   expandedRadius: 14,
   expandedEar: 8,
-  padding: 14,
+  padding: 14, // tokens-allow: mirrors the Swift notch geometry (NotchTests)
 } as const;
 
 /** Swift `NotchShape.clamp`. */
@@ -236,7 +237,7 @@ export function NotchSurface({
       }}
     >
       {source ? (
-        <span style={{ color: 'rgba(255,255,255,0.55)' }}>{source} </span>
+        <span style={{ color: tokens.notch.textMuted }}>{source} </span>
       ) : null}
       {s}
     </span>
@@ -276,8 +277,8 @@ export function NotchSurface({
               style={{
                 flex: '0 0 64px',
                 height: 3,
-                borderRadius: 1.5,
-                background: 'rgba(255,255,255,0.22)',
+                borderRadius: tokens.radius.xs,
+                background: tokens.notch.track,
                 overflow: 'hidden',
               }}
             >
@@ -286,7 +287,7 @@ export function NotchSurface({
                   display: 'block',
                   height: 3,
                   width: `${Math.round((content.value ?? 0.3) * 100)}%`,
-                  background: 'rgb(250,250,250)',
+                  background: tokens.notch.text,
                 }}
               />
             </span>
@@ -320,7 +321,7 @@ export function NotchSurface({
           data-testid={`${testId}-shape`}
           transform={`translate(${(panelW - w) / 2} 0)`}
           d={notchPath(w, h, r, e)}
-          fill="#000"
+          fill={tokens.notch.bg}
         />
       </svg>
       <div
@@ -334,8 +335,8 @@ export function NotchSurface({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 8,
-          color: 'rgb(250,250,250)',
+          gap: tokens.space[2],
+          color: tokens.notch.text,
           fontFamily: t.font.family,
           fontSize: '13.158px',
           opacity: contentOpacity,
@@ -347,7 +348,7 @@ export function NotchSurface({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: tokens.space[2],
             minWidth: 0,
             background: 'transparent',
           }}

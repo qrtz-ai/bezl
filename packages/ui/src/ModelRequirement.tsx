@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import type { ReactNode } from 'react';
 import { calloutBox } from './Callout';
 import { useTheme } from './theme';
@@ -222,7 +223,14 @@ export function ModelRequirement(p: ModelRequirementProps) {
       ) : (
         <Icon name={ICON[state]} tone={tone} />
       )}
-      <div style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 auto' }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: tokens.space[0.5],
+          minWidth: 0,
+          flex: '1 1 auto',
+        }}
+      >
         <Text truncate={layout === 'row'} data-testid={`${testId}-title`}>
           {layout === 'banner' && p.app ? `${p.app} needs the ${name}` : name}
         </Text>

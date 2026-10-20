@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import {
   useEffect,
   useId,
@@ -129,7 +130,7 @@ export function Modal({
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'flex-start',
-        padding: '10vh 16px 16px',
+        padding: `10vh ${tokens.space[4]} ${tokens.space[4]}`,
         boxSizing: 'border-box',
         animation: `q-fade-in ${t.motion.fast} ${t.motion.easeOut}`,
       }}
@@ -151,7 +152,7 @@ export function Modal({
           background: t.color.surface,
           border: `1px solid ${t.color.border}`,
           borderRadius: t.radius.lg,
-          boxShadow: '0 12px 32px rgba(0,0,0,0.24)',
+          boxShadow: tokens.shadow.overlay,
           outline: 'none',
           overflow: 'hidden',
         }}

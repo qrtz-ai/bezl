@@ -13,7 +13,7 @@ import { Button } from './Button';
 import { Input } from './Input';
 import { Dialog } from './Overlay';
 import { IconButton } from './Layout';
-import { transition, typeStyle } from './tokens';
+import { transition, typeStyle, tokens } from './tokens';
 
 /** One transcript line (memoized; content-visibility keeps 2-hour transcripts fast). */
 export const TranscriptRow = memo(function TranscriptRow({
@@ -76,7 +76,7 @@ export function TranscriptList({ children }: { children: ReactNode }) {
       data-testid="detail-transcript"
       role="list"
       aria-label="transcript"
-      style={{ display: 'grid', gap: 2 }}
+      style={{ display: 'grid', gap: tokens.space[0.5] }}
     >
       {children}
     </div>
@@ -265,7 +265,7 @@ export function SummaryBlock({
             q&amp;a
           </Text>
           {qa.map((q, i) => (
-            <div key={i} style={{ display: 'grid', gap: 2 }}>
+            <div key={i} style={{ display: 'grid', gap: tokens.space[0.5] }}>
               <Text>{q.question}</Text>
               <Text muted>{q.answer}</Text>
             </div>
@@ -342,7 +342,7 @@ export function RecordDot({ on = true }: { on?: boolean }) {
         width: 8,
         height: 8,
         flexShrink: 0,
-        borderRadius: 4,
+        borderRadius: tokens.radius.sm,
         background: on ? t.color.recording : t.color.textSubtle,
         animation: on
           ? `q-pulse ${t.motion.pulse} ease-in-out infinite`
@@ -362,7 +362,7 @@ export function LevelMeter({ level }: { level: number }) {
         width: 48,
         height: 3,
         background: t.color.border,
-        borderRadius: 2,
+        borderRadius: tokens.radius.xs,
         overflow: 'hidden',
         display: 'inline-block',
       }}
@@ -542,7 +542,7 @@ export function ActionMenu({
             zIndex: t.z.overlay,
             minWidth: 200,
             display: 'grid',
-            gap: 2,
+            gap: tokens.space[0.5],
             padding: t.space[1],
             background: t.color.surface,
             border: `1px solid ${t.color.borderStrong}`,
@@ -858,7 +858,7 @@ export function MiniHudFrame({
         gridTemplateRows: body ? '56px 1fr' : '1fr',
         background: t.color.surface,
         border: `1px solid ${t.color.borderStrong}`,
-        borderRadius: 12,
+        borderRadius: tokens.radius.lg,
         overflow: 'hidden',
       }}
     >

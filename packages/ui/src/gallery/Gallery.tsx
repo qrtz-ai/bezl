@@ -1,7 +1,7 @@
 import { lowerTitle } from '../case';
 import { useState, type ReactNode } from 'react';
 import { useTheme, ThemeScope } from '../theme';
-import { TYPE_VARIANTS, transition, type ThemeMode } from '../tokens';
+import { TYPE_VARIANTS, transition, type ThemeMode, tokens } from '../tokens';
 import { Text, Label, Code, Link } from '../Text';
 import { Heading } from '../Heading';
 import { Button } from '../Button';
@@ -145,7 +145,7 @@ function Frame({
 export function ComponentGallery() {
   const [mode, setMode] = useState<ThemeMode>('dark');
   return (
-    <ThemeScope mode={mode} style={{ borderRadius: 8 }}>
+    <ThemeScope mode={mode} style={{ borderRadius: tokens.radius.lg }}>
       <Showcase mode={mode} setMode={setMode} />
     </ThemeScope>
   );
@@ -277,7 +277,10 @@ function Showcase({
             {Object.entries(t.color)
               .filter(([k]) => k !== 'accentText')
               .map(([k, v]) => (
-                <div key={k} style={{ display: 'grid', gap: 4, width: 96 }}>
+                <div
+                  key={k}
+                  style={{ display: 'grid', gap: tokens.space[1], width: 96 }}
+                >
                   <div
                     style={{
                       height: 40,
@@ -879,7 +882,11 @@ function Showcase({
             {Object.entries(t.space).map(([k, v]) => (
               <div
                 key={k}
-                style={{ display: 'grid', gap: 4, justifyItems: 'center' }}
+                style={{
+                  display: 'grid',
+                  gap: tokens.space[1],
+                  justifyItems: 'center',
+                }}
               >
                 <div
                   style={{
@@ -887,7 +894,7 @@ function Showcase({
                     height: 16,
                     minWidth: 1,
                     background: t.color.textMuted,
-                    borderRadius: 2,
+                    borderRadius: tokens.radius.xs,
                   }}
                 />
                 <Text variant="caption" muted>
@@ -898,7 +905,11 @@ function Showcase({
             {Object.entries(t.radius).map(([k, v]) => (
               <div
                 key={k}
-                style={{ display: 'grid', gap: 4, justifyItems: 'center' }}
+                style={{
+                  display: 'grid',
+                  gap: tokens.space[1],
+                  justifyItems: 'center',
+                }}
               >
                 <div
                   style={{
@@ -930,7 +941,11 @@ function Showcase({
               {(['hover', 'enter', 'exit'] as const).map((speed) => (
                 <div
                   key={speed}
-                  style={{ display: 'flex', gap: 12, alignItems: 'center' }}
+                  style={{
+                    display: 'flex',
+                    gap: tokens.space[3],
+                    alignItems: 'center',
+                  }}
                 >
                   <Text variant="caption" muted style={{ width: 140 }}>
                     {speed} · {t.motion[speed]}
@@ -942,7 +957,7 @@ function Showcase({
                         left: moved ? 'calc(100% - 8px)' : 0,
                         width: 8,
                         height: 8,
-                        borderRadius: 99,
+                        borderRadius: tokens.radius.full,
                         background: t.color.primary,
                         transition: transition('left', speed, t),
                       }}

@@ -47,11 +47,13 @@ Dark is the qrtz.ai brand default. Light is an opt-in palette with the same role
 | `space.8` | `--q-space-8` | `32px` |
 | `space.12` | `--q-space-12` | `48px` |
 | `space.16` | `--q-space-16` | `64px` |
+| `space.0.5` | `--q-space-0-5` | `2px` |
 
 ## Radius
 
 | Token | CSS variable | Value |
 |---|---|---|
+| `radius.xs` | `--q-radius-xs` | `2px` |
 | `radius.sm` | `--q-radius-sm` | `4px` |
 | `radius.md` | `--q-radius-md` | `6px` |
 | `radius.lg` | `--q-radius-lg` | `8px` |
@@ -115,4 +117,4 @@ Feather icons only, through `<Icon name size>` (or `icon=` on `Button`/`IconButt
 | `z.toast` | `--q-z-toast` | `60` |
 | `z.tooltip` | `--q-z-tooltip` | `70` |
 
-_98 CSS variables in total._
+_108 CSS variables in total._

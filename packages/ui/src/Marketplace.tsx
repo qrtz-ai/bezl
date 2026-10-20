@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useTheme } from './theme';
-import { transition } from './tokens';
+import { transition, tokens } from './tokens';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
 import { GridCard } from './Card';
@@ -138,7 +138,7 @@ export function ExtensionCard({
           <ExtensionGlyph icon={icon} />
           <ExtensionStatusBadge status={status} />
         </div>
-        <div style={{ display: 'grid', gap: 2 }}>
+        <div style={{ display: 'grid', gap: tokens.space[0.5] }}>
           <Text variant="h3">{lowerTitle(name)}</Text>
           <Text variant="caption" muted>
             {description.toLowerCase()}
@@ -173,7 +173,9 @@ export function ExtensionHeader({
       style={{ display: 'flex', alignItems: 'center', gap: t.space[4] }}
     >
       <ExtensionGlyph icon={icon} size="lg" />
-      <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
+      <div
+        style={{ flex: 1, minWidth: 0, display: 'grid', gap: tokens.space[1] }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
           <Text variant="h2">{lowerTitle(name)}</Text>
           <ExtensionStatusBadge status={status} />
@@ -274,7 +276,7 @@ export function IconLines({
     <ul
       aria-label={label}
       data-testid={testId}
-      style={{ margin: 0, padding: 0, display: 'grid', gap: 2 }}
+      style={{ margin: 0, padding: 0, display: 'grid', gap: tokens.space[0.5] }}
     >
       {children}
     </ul>
@@ -342,7 +344,14 @@ export function ModuleRow({
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: t.space[3] }}>
         <ExtensionGlyph icon={icon} />
-        <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 2 }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'grid',
+            gap: tokens.space[0.5],
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -406,7 +415,7 @@ export function AppList({
         margin: 0,
         padding: 0,
         display: 'grid',
-        gap: 2,
+        gap: tokens.space[0.5],
         minWidth: 0,
       }}
     >

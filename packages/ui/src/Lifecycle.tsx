@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Button } from './Button';
@@ -110,7 +111,7 @@ export function StreamingTranscript({
           overflowY: 'auto',
           maxHeight: maxHeight ?? '60vh',
           display: 'grid',
-          gap: 2,
+          gap: tokens.space[0.5],
           alignContent: 'start',
         }}
       >

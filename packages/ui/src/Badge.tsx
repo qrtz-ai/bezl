@@ -1,4 +1,4 @@
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 
@@ -36,8 +36,8 @@ export function Badge({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 4,
-        padding: '2px 8px',
+        gap: tokens.space[1],
+        padding: `${tokens.space[0.5]} ${tokens.space[2]}`,
         ...typeStyle('label', t),
         color: c,
         background: `color-mix(in srgb, ${c} 10%, transparent)`,
