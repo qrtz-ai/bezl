@@ -5,7 +5,8 @@
 #
 # Checks, each failing nonzero with a message:
 #   - every executable in Contents/MacOS satisfies the requirement a release build launches it under
-#     (crates/qrtz-app/src/installed.rs launch_requirement): qrtz-app ai.qrtz.desktop, qrtz-echo ai.qrtz.echo,
+#     (crates/qrtz-app/src/installed.rs launch_requirement): qrtz-app ai.qrtz.desktop, each bundled helper the
+#     code.bundleId and code.designatedRequirement of its modules/*/module.json (QRT-255; qrtz-echo ai.qrtz.echo),
 #     qrtz ai.qrtz.cli, Developer ID, team MR26CCZ496; an unknown executable fails;
 #   - each executable's entitlements are exactly its allowlist (ents_for below): qrtz-app apple-events, allow-jit,
 #     audio-input, calendars; qrtz-echo audio-input; qrtz none. get-task-allow anywhere fails;
@@ -32,17 +33,32 @@ ok() { echo "verify-bundle: ok: $*"; }
 
 [[ -d "$macos" ]] || { echo "verify-bundle: FAIL: $app is not an app bundle (no Contents/MacOS)" >&2; exit 1; }
 
-ident_for() { case "$1" in qrtz-app) echo ai.qrtz.desktop ;; qrtz-echo) echo ai.qrtz.echo ;; qrtz) echo ai.qrtz.cli ;; *) echo "" ;; esac; }
+# QRT-255: the bundled module helpers (qrtz-echo today: ai.qrtz.echo, audio-input) come from each modules/*/module.json
+# (bundled-helpers.sh), the file the launcher's requirement comes from, so this gate and sign-mac.sh can't drift from
+# it. Unreadable or inconsistent module.json fails the gate.
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=bundled-helpers.sh
+source "$repo/scripts/release/bundled-helpers.sh"
+helpers="$(bundled_helpers "$repo/modules")" || { echo "verify-bundle: FAIL: can't read the bundled helpers from $repo/modules/*/module.json" >&2; exit 1; }
+helper_field() { awk -F'\t' -v n="$1" -v c="$2" '$1 == n { print $c; exit }' <<<"$helpers"; }
+helper_names() { cut -f1 <<<"$helpers"; }
+ident_for() {
+  case "$1" in qrtz-app) echo ai.qrtz.desktop ;; qrtz) echo ai.qrtz.cli ;; *) helper_field "$1" 2 ;; esac
+}
 ents_for() {
+  local f
   case "$1" in
     qrtz-app) echo "com.apple.security.automation.apple-events com.apple.security.cs.allow-jit com.apple.security.device.audio-input com.apple.security.personal-information.calendars" ;;
-    qrtz-echo) echo "com.apple.security.device.audio-input" ;;
-    *) echo "" ;;
+    qrtz) echo "" ;;
+    *)
+      f="$(helper_field "$1" 3)"
+      [[ -n "$f" && "$f" != none ]] && grep -o '<key>[^<]*</key>' "$repo/$f" | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' | sed 's/ $//'
+      ;;
   esac
 }
 ent_keys() { codesign -d --entitlements - --xml "$1" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null | grep -o '<key>[^<]*</key>' | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' | sed 's/ $//'; }
 
-for name in qrtz-app qrtz-echo qrtz; do [[ -x "$macos/$name" ]] || fail "$name is missing from Contents/MacOS"; done
+for name in qrtz-app qrtz $(helper_names); do [[ -x "$macos/$name" ]] || fail "$name is missing from Contents/MacOS"; done
 
 # ADR 0231 amendment 1: Agent Dash's network helper is dev-only until Bozniak clears dash for release. Any file of
 # that name anywhere in the bundle fails, signed or not, executable or not.
@@ -93,6 +109,10 @@ for bin in "$macos"/*; do
   [[ "$got" == "$id" ]] || fail "$name: signing identifier is '$got', want '$id' (was sign-mac.sh run?)"
   req="anchor apple generic and identifier \"$id\" and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = \"$team\""
   if codesign --verify --strict -R="$req" "$bin" 2>/dev/null; then ok "$name satisfies $id, Developer ID, team $team"; else fail "$name does not satisfy the launch requirement ($id, team $team)"; fi
+  # QRT-255: a bundled helper must also satisfy the exact requirement its module.json pins (what the launcher checks).
+  if [[ -n "$(helper_field "$name" 1)" ]]; then
+    if why="$(check_helper "$bin" "$id" "$(helper_field "$name" 4)")"; then ok "$name satisfies its module.json requirement ($id)"; else fail "$name: $why"; fi
+  fi
   keys="$(ent_keys "$bin")"
   want="$(ents_for "$name")"
   [[ "$keys" == *get-task-allow* ]] && fail "$name carries com.apple.security.get-task-allow (a debug signature)"
@@ -112,9 +132,10 @@ while IFS= read -r -d '' f; do
   rel="${f#"$app"/}"
   is_macho "$f" || continue
   case "$rel" in
-    Contents/MacOS/qrtz-app | Contents/MacOS/qrtz-echo | Contents/MacOS/qrtz) want_id="$(ident_for "${rel##*/}")" ;;
-    *) want_id=""; fail "unknown Mach-O in the bundle: $rel" ;;
+    Contents/MacOS/*) want_id="$(ident_for "${rel#Contents/MacOS/}")" ;;
+    *) want_id="" ;;
   esac
+  [[ -n "$want_id" ]] || fail "unknown Mach-O in the bundle: $rel"
   if command -v codesign >/dev/null 2>&1; then
     sid="$(codesign -dv "$f" 2>&1 | sed -n 's/^Identifier=//p')"
     case "$sid" in *dash-net* | *dash_net*) fail "$rel: signed as $sid (Agent Dash's network helper) (ADR 0231)" ;; esac
@@ -150,7 +171,7 @@ if xcrun stapler validate "$app" >/dev/null 2>&1; then ok "stapler validate"; el
 # dev-local (scripts/dev/dev-local.sh, src/dev_local.rs) is debug-only and behind a non-default feature: a release
 # qrtz-app, qrtz-echo and qrtz carry none of its override names or its startup line, nor the legacy split/monolith
 # overrides it gates (QRTZ_MODULE_HELPERS, QRTZ_HELPER_BIN; Bozniak, 23d892af review).
-for bin in "$macos/qrtz-app" "$macos/qrtz-echo" "$macos/qrtz"; do
+for bin in "$macos/qrtz-app" "$macos/qrtz" $(helper_names | sed "s|^|$macos/|"); do
   [[ -f "$bin" ]] || continue
   if LC_ALL=C grep -aEq 'QRTZ_(NANO|SNAP|CTRL|ECHO|HELPER)_BIN|QRTZ_MODULE_HELPERS|QRTZ_DEV_REPO|dev-local: ' "$bin"; then
     fail "${bin##*/} contains dev-local override strings (built with --features dev-local or as debug?)"
