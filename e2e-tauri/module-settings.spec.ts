@@ -52,15 +52,16 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   await expect(echo.getByTestId('talk-settings')).toHaveCount(0);
   await expect(echo.getByTestId('talk-toggle')).toBeVisible();
 
-  // nano: settings take over the whole page, like echo's; the meeting list and the hud are back on close.
+  // nano: opts open in a modal over the view (QRT-267); the meeting list and record stay underneath.
   await page.getByTestId('nav-note').click();
   const nano = page.locator('[data-subapp="note"]');
   await nano.getByTestId('note-settings-open').click();
   const nanoPage = nano.getByTestId('note-settings');
   await expect(nanoPage.getByText('nano opts')).toBeVisible();
-  await expect(nano.getByTestId('note-app')).toHaveCount(0);
-  await expect(nano.getByRole('list', { name: 'meetings' })).toHaveCount(0);
-  await expect(nano.getByTestId('note-record-manual')).toHaveCount(0);
+  await expect(nanoPage).toHaveAttribute('role', 'dialog');
+  await expect(nanoPage).toHaveAttribute('aria-modal', 'true');
+  await expect(nano.getByTestId('note-app')).toHaveCount(1);
+  await expect(nano.getByTestId('note-record-manual')).toHaveCount(1);
   await expect(nanoPage.getByTestId('talk-show-pill')).toHaveCount(0);
   const auto = (await config(page)).note.autoRecord;
   await nanoPage.getByTestId('auto-record').click();
@@ -81,6 +82,9 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   await expect(
     ctrl.getByTestId('ctrl-settings').getByTestId('module-settings-empty'),
   ).toBeVisible();
+  // The opts modal sits over the whole window (QRT-267): esc closes it before the sidebar is reachable again.
+  await page.keyboard.press('Escape');
+  await expect(ctrl.getByTestId('ctrl-settings')).toHaveCount(0);
 
   // global settings
   await openSettings(page);

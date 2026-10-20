@@ -40,7 +40,7 @@ test('boots the shared shell over the Tauri transport with no errors', async ({
   page,
 }) => {
   const errors = await open(page);
-  for (const tab of ['qrtz', 'nano', 'echo'])
+  for (const tab of ['apps', 'opts', 'nano', 'echo'])
     await expect(
       page.getByRole('button', { name: tab, exact: true }),
     ).toBeVisible();
@@ -189,8 +189,9 @@ test('deep links open a meeting tab; tab switches keep the url and never refetch
   await page.getByTestId('nav-note').click();
   await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}$`));
   await expect(note.getByText("Let's start.")).toBeVisible();
-  // An unknown route goes to the default page: qrtz, the first sidebar row.
+  // An unknown route goes to the default page: the top sidebar app, echo (QRT-269).
   await page.evaluate(() => (location.hash = '#/nope'));
-  await expect(page).toHaveURL(/#\/qrtz$/);
+  await expect(page).toHaveURL(/#\/talk$/);
+  await expect(page.locator('[data-subapp="talk"]')).toBeVisible();
   expect(errors).toEqual([]);
 });

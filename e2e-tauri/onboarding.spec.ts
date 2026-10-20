@@ -1,3 +1,4 @@
+import { openQrtz } from './nav';
 import { expect, test, type Page } from '@playwright/test';
 import { axe } from './axe';
 
@@ -42,7 +43,7 @@ async function clean(page: Page, name: string) {
   expect(await axe(page, name)).toEqual([]);
 }
 
-test('first launch: permissions onboarding, then the qrtz page; reopened from qrtz settings', async ({
+test('first launch: permissions onboarding, then the top sidebar app; reopened from qrtz settings', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -94,7 +95,9 @@ test('first launch: permissions onboarding, then the qrtz page; reopened from qr
   await page.getByTestId('onboarding-continue').click();
   await expect(ob).toHaveCount(0);
   await expect(page.getByTestId('nav-apps')).toBeVisible();
-  await expect(page.locator('[data-subapp="marketplace"]')).toBeVisible();
+  // QRT-269: the default page is the top sidebar app (echo), not the apps page.
+  await expect(page).toHaveURL(/#\/talk$/);
+  await expect(page.locator('[data-subapp="talk"]')).toBeVisible();
   const cfg = await invoke(page, 'settings', 'config:get');
   expect(cfg.data?.onboarding).toEqual({ done: true });
 
@@ -149,11 +152,13 @@ test('without nano installed, onboarding and settings never list system audio (A
   expect(seen).not.toContain('permissions:request');
 });
 
-test('after onboarding qrtz opens on the qrtz page, and its app rows pass axe', async ({
+test('after onboarding qrtz opens on the top sidebar app; the apps page rows pass axe', async ({
   page,
 }) => {
   await page.goto('/?dev=1');
   await expect(page.getByTestId('onboarding')).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/talk$/);
+  await openQrtz(page);
   const rows = page.locator('[data-app-row]');
   await expect(rows.first()).toBeVisible();
   // Each row's details button is named by what the row shows.

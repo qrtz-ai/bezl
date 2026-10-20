@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { axe } from './axe';
-import { go } from './nav';
+import { go, openQrtz } from './nav';
 
 // A fresh install (no first-run screen, ADR 0163), the speech setup in settings and every view in both themes (e2e-parity rows 8, 12, 13, 29, 30, 39, 40),
 // against the mocked backend. Screenshots go to test-results/screens, or docs/screenshots with QRTZ_DOC_SHOTS=1.
@@ -89,10 +89,12 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   page,
 }) => {
   const errors = watch(page);
-  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on the qrtz page,
-  // the first sidebar row; nano is one click away.
+  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on the top
+  // sidebar app (echo, QRT-269); the apps page and nano are one click away.
   await page.goto('/?dev=1&mockSpeech=missing&mockPerms=denied&mockSpeed=150');
-  await expect(page.getByTestId('qrtz-page')).toBeVisible();
+  await expect(page).toHaveURL(/#\/talk$/);
+  await expect(page.locator('[data-subapp="talk"]')).toBeVisible();
+  await openQrtz(page);
   await tab(page, 'note').click();
   await expect(page.getByTestId('note-app')).toBeVisible();
   await expect(page.locator('[data-testid^="onboarding"]')).toHaveCount(0);
