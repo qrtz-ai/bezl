@@ -175,6 +175,11 @@ pub trait ShellHooks: Send + Sync {
     fn open_https(&self, _url: &str) -> bool {
         false
     }
+    /// QRT-298 `dash:copy-prompt`: put text on the main-process clipboard. `false` = couldn't, or no shell.
+    /// Implementations must never log the text (it holds an enrollment code).
+    fn write_clipboard(&self, _text: &str) -> bool {
+        false
+    }
 }
 
 pub struct NoShell;

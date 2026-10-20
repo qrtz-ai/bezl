@@ -1623,6 +1623,12 @@
         "expiresAt": 1760660100000
       }
     },
+    "dash:copy-prompt": {
+      "request": null,
+      "response": {
+        "copied": true
+      }
+    },
     "dash:rotate-codes": {
       "request": null,
       "response": {
