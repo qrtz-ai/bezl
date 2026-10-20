@@ -65,6 +65,12 @@ impl DashNet {
         if let Some(h) = std::env::var_os("HOME") {
             cmd.env("HOME", h);
         }
+        // docs/dash-local.md (FOR BOZNIAK REVIEW): debug + dev-local builds only, pass the local server origin across.
+        // The helper re-checks it (http://127.0.0.1:<port> only) and is itself built without the override in release.
+        #[cfg(all(debug_assertions, feature = "dev-local"))]
+        if let Some(o) = std::env::var_os("QRTZ_DASH_ORIGIN") {
+            cmd.env("QRTZ_DASH_ORIGIN", o);
+        }
         // One retry on ETXTBSY (a just-written binary still open for writing in a forking process).
         const ETXTBSY: i32 = 26;
         let mut child = match cmd.spawn() {

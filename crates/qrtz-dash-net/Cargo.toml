@@ -11,6 +11,11 @@ publish.workspace = true
 name = "qrtz-dash-net"
 path = "src/main.rs"
 
+[features]
+# Debug builds only (docs/dash-local.md, FOR BOZNIAK REVIEW): lets QRTZ_DASH_ORIGIN point the helper at
+# http://127.0.0.1:<port> (local wrangler dev). Compiled out of release builds whatever the features. Never default.
+dev-local = []
+
 [dependencies]
 serde_json = { workspace = true }
 async-trait = { workspace = true }

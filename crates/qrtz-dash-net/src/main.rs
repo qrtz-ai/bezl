@@ -11,6 +11,10 @@ use tokio::io::{AsyncWriteExt, BufReader};
 async fn main() {
     // Keeps the marker in the binary for verify-bundle.sh (M5).
     std::hint::black_box(BUNDLE_MARKER.as_bytes());
+    // A dev origin override that is set but not http://127.0.0.1:<port>: refuse to run (debug + dev-local only).
+    if !qrtz_dash_net::origin_config_ok() {
+        std::process::exit(2);
+    }
     let Ok(https) = Https::new() else {
         std::process::exit(1);
     };
