@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 26: the host side of the helper's N121 diarizer bound (ADR 0079 amended, `16e60ad`).
 //! A channel whose diarizer fell 30 s behind stands down for the rest of the recording (turns already sent stay,
 //! its open turn is not sent); at stop a diarizer still busy is closed out (its open turns sent before

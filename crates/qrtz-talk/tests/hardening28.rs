@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 28: dictation under the failures Jared named (helper crash after the release, a refused start
 //! racing the key, a meeting sharing the helper, a full disk while the text goes in), as lasting tests on the
 //! scripted helper and a paused clock. These pin behaviour that holds today (T1, N110, N134, T4) on the paths the
@@ -96,7 +97,7 @@ async fn a_refusal_for_another_start_never_fails_the_running_dictation() {
     let r = rig(opts(HelperOpts::default()));
     r.helper.key("down");
     until(|| r.view().phase == TalkPhase::Listening, 2000).await;
-    let id = r.view().id.clone().unwrap();
+    let id = r.view().id.unwrap();
     r.helper.deliver(
         json!({"type": "error", "code": "dictation.asr", "message": "no speech recogniser is ready",
         "fatal": false, "id": "t-older"}),

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Slice 5b (ADR 0110, ctrl do since ADR 0215): ctrl over the supervised helper process. A fake child behind the
 //! real `Supervisor` speaks the echo/nano lines (hello, heartbeats) and answers `ctrl.*` lines with the in-memory
 //! `FakeHelper` (the ctrl crate's fixture world), so a run goes

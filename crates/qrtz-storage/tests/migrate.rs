@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Port of packages/core/src/db/migrate.test.ts plus the shared-file guarantees.
 
 use std::path::Path;

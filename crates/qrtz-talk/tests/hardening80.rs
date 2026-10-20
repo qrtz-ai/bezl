@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0232 (echo cycle 80): an unmarked question that opens with a contracted wh-word ("What's", "Where's",
 //! "How'd", "What're", "When'll", "What've") ends with "?" like its spelled-out form ("What is the plan for
 //! tonight?"). The contraction is the only apostrophe allowed, it is read as the wh-word and its auxiliary, and its

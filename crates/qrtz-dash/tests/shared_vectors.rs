@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The vectors shared with the Cloudflare Worker (services/dash-worker/test/vectors.test.ts, ADR 0228 amendment):
 //! contracts/dash/vectors.json. The scanner is reached through the public API (a status widget's text, read back
 //! from the view), so both sides are held to the same rules.

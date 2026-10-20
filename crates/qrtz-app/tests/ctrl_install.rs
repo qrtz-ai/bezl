@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Run 41: ADR 0169 / ADR 0171 for ctrl, end to end on a local signed index. Installing ctrl from the marketplace
 //! brings `model.laya` in the same plan (one consent, one progress), its files come only from their pinned Hugging
 //! Face URL (never from the package host), and with no answer recorded in ctrl's settings the installed model is

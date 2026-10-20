@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0146 lockfile: lookup-only resolution, side by side versions, no silent change, all or nothing.
 mod common;
 use common::*;
@@ -174,7 +175,7 @@ fn the_lockfile_round_trips_atomically_and_a_corrupt_one_is_an_error() {
     std::fs::write(&p, b"{not json").unwrap();
     assert!(Lockfile::load(&p).is_err());
     // A lockfile whose module pins a package it doesn't list is refused.
-    let mut bad = lock.clone();
+    let mut bad = lock;
     bad.packages.clear();
     assert!(Lockfile::parse(&bad.to_bytes()).is_err());
 }

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0067: Deepgram is gone. State written while it existed still loads, in qrtz-talk on its own (without
 //! qrtz-app's `migrate_legacy`): a config that still says `talk.engine = deepgram` dictates on-device (talk has
 //! no cloud engine at all since ADR 0076); a talk.json history entry from Deepgram keeps its text and reads as

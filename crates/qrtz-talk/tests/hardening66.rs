@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0206 (echo cycle 66): a question to someone named in the user's dictionary gets the vocative comma and its
 //! "?": "Hey Jared are you free tomorrow" → "Hey Jared, are you free tomorrow?". Only "hey", only a dictionary term
 //! shaped like a name right after it, and only where the words after the name are a question ADR 0203 would take

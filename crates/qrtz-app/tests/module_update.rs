@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0172 (v1): a marketplace update of an installed module keeps `installed` true and doesn't touch its running
 //! helper: the module is `pendingRestart` until qrtz restarts, and the old version's package dir survives every
 //! prune while that helper lives. The next launch runs the new version and prunes the old dir.

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! talk.json on disk: owner-only, atomic, stale tmp, corrupt file, full disk.
 mod common;
 use common::*;

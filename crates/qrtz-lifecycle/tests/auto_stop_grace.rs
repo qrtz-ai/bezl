@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Jared: flipping away from the meeting tab stopped a running recording (the helper ends a meeting ~4 s after its
 //! tab loses focus). `meeting.ended` for the recorded meeting now only arms a long grace
 //! (`AUTO_STOP_GRACE_MS` x `retry_scale`); the meeting coming back disarms it, and only a meeting that stays gone

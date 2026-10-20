@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Bozniak's sideload rules (ADR 0146 §5). Rules 2, 3 and 6 also get gate tests on the confinement track; these
 //! are the shell's own.
 mod common;

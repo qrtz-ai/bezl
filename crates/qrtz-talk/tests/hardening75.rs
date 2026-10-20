@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Echo cycle 75, backlog P8 (crash safety, talk side; ADR 0226). The capture helper (the echo process) dies and
 //! the app restarts it. A new helper process starts with its push key "up" (`HotkeyFilter.down == false`), so the
 //! release of a press the old process heard never arrives. These pin that no press of a dead helper can leave the

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 35, N165 (ADR 0109): `finish_inner` waited up to `final_ms` (1.5 s) for the speech-module
 //! session's flush even when the helper's `dictation.stopped` text was non-empty and wins. With a module that is
 //! slow to flush, insert waited on text it wouldn't use. Shipped builds use `HelperAsrSpeech` (finish is instant),

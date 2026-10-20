@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Step 9 / N84 for note, end to end on Linux: with the speech module configured, every recording part gets a
 //! module session (attached to the mock helper's capture before `recording.start`), its words become the live
 //! transcript through `NoteRuntime::speech_event`, and the helper's own `asr` lines are no longer used. Without an

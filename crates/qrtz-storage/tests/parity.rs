@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Electron <-> Rust database cross-open. Mirror of apps/desktop/src/worker/db-parity.test.ts: the ops in
 //! spec/fixtures/db/seed.json, applied through `NoteRepo`/`LifecycleRepo`, must dump to expected.json (written by
 //! the TS oracle); electron.sqlite (made by node:sqlite) must open here and dump the same; rust.sqlite (made here)

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0153 §3: the production root 1 that `crates/qrtz-app/src/module_hosts.json` pins. Its public copy and
 //! detached signatures live in `crates/qrtz-modules/roots/` (the same bytes as https://modules.qrtz.ai/v1/root/1.root.json).
 //! It must hash to the pin, parse, and carry threshold 2 on the root role, met by both root keys; one root

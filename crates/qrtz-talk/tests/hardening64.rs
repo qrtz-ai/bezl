@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0204 (echo cycle 64): when ADR 0203 ends a question that opens with the interjection "hey", "okay", "ok" or
 //! "alright" with no comma, the comma goes after the interjection ("Hey are you free tomorrow afternoon" → "Hey, are
 //! you free tomorrow afternoon?"). Only where the "?" rule already fires; "so", "and", "but", "also" never get one,

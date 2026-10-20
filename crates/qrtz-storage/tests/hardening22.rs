@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Cycle 22: a database an older build left behind (schema v1–v4) opens in this build, migrates forward to the
 //! current schema with every row intact, and is searchable, owner-only and in WAL. The end-to-end version of this
 //! was the TS test deleted with Electron (apps/desktop/src/worker/db.hardening4.test.ts, "an older DB (v2) still

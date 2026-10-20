@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! `note:delete` through the app service onto the real qrtz-lifecycle `NoteRuntime` (feature "runtime"):
 //! the runtime deletes rows and audio and emits `note:changed`, the response stays `{ok: true}`, and the
 //! meeting being recorded is refused with a clear E_VALIDATION (nothing removed, no event).

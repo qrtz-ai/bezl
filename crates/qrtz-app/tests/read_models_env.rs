@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0212, at launch: a downloaded module's helper gets `QRTZ_READ_MODELS` with exactly its granted read-only
 //! store dirs (empty when it has none, so it never falls back to a writable view); bundled echo gets none.
 use qrtz_app::installed::read_models_env;

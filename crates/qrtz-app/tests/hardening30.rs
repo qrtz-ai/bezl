@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 30 (N150, ADR 0096): the pill gate over refusals as `qrtz-talk` now emits them. A press refused
 //! before `dictation.start` (speech module missing, stale, revoked) carries the id that press drew, so tapping fn
 //! again after a refusal flashes again, with no idle view in between (talk emits none: the key press itself emits

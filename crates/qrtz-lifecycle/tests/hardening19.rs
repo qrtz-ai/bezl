@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 19 (ADR 0062). N95: a failed speech session tells the live notice why (`asr_unavailable`), and
 //! the reason never outlives the `asr-unavailable` flag, whichever event drops the flag.
 use qrtz_lifecycle::model::{
@@ -36,7 +37,7 @@ fn n95_a_speech_failure_records_its_reason_with_the_flag() {
     let j = serde_json::to_value(&s).unwrap();
     assert_eq!(j["asrUnavailable"], "not-installed");
     // A row written before N95 has no key and loads as unknown.
-    let mut old = j.clone();
+    let mut old = j;
     old.as_object_mut().unwrap().remove("asrUnavailable");
     let back: RecordingState = serde_json::from_value(old).unwrap();
     assert_eq!(back.asr_unavailable, None);

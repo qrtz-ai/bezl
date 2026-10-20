@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 24: the on-device summary engine (ADR 0075) under stress, over fake models in paused time
 //! (no helper, no DB). Hung model, the meeting deadline vs the runtime timeout, 4 h+ meetings and resuming (N114),
 //! one meeting's turn on the model (N115), renumbered split labels (N117), a transcript far larger than the

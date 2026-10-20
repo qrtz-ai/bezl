@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N69: transcript words can't forge prompt lines or leave the fence (ADR 0054). Byte parity with TS is in
 //! spec/vectors/llm/prompts.json (`n69-*`); this checks the properties with a random nonce.
 use qrtz_llm::prompt::{build_summary_prompt, fence_nonce, prompt_safe, prompt_unsafe, SummaryOptions};

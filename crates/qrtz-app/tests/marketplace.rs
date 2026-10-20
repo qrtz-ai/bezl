@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0161 on loopback: the marketplace's catalog is the stored signed index (read with no network, and empty
 //! before the first check), each extension's card carries its dependency tree, install size and permissions, and
 //! `packages:apply` reports its download as `packages:progress` (at most once per percent, ending at the total).

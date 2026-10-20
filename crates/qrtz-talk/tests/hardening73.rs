@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Echo cycle 73 (ADR 0222, N194, backlog P4 mic edge cases): an `error{dictation.mic}` carries no dictation id.
 //! The helper sends it when a mic open fails: a refused `dictation.start`, `startMic` failing at a start, or the
 //! arm on a key press (`EchoController.pushKey(.down)` → `configure(warmMic: true)` → `attachMic`) failing because
@@ -55,7 +56,7 @@ async fn a_failed_mic_open_for_a_press_while_finalizing_keeps_the_last_dictation
     }));
     hold(&r, 800).await;
     until(|| r.view().phase == TalkPhase::Finalizing, 2000).await;
-    let id = r.view().id.clone().expect("an id");
+    let id = r.view().id.expect("an id");
     r.helper.key("down");
     r.helper.deliver(mic_open_failed());
     sleep(50).await;
@@ -107,7 +108,7 @@ async fn a_listening_dictation_fails_on_its_own_mic_error_only() {
     let r = rig(opts(HelperOpts::default()));
     r.helper.key("down");
     until(|| r.view().phase == TalkPhase::Listening, 2000).await;
-    let id = r.view().id.clone().expect("an id");
+    let id = r.view().id.expect("an id");
     let mut other = mic_open_failed();
     other["id"] = json!("someone-else");
     r.helper.deliver(other);

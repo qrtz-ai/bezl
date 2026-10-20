@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! `cargo run -p qrtz-talk --example echo_score -- <echo-bench report.json> [--dictionary dict.json]`
 //!
 //! Scores a `qrtz-helper --echo-bench` report (ADR 0099) after talk's rules cleanup and dictionary, prints one line

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Bozniak hardening item 1/2/5: the dev-only origin override (docs/dash-local.md). FOR BOZNIAK REVIEW.
 //! Run both ways: `cargo test -p qrtz-dash-net` (no override compiled) and
 //! `cargo test -p qrtz-dash-net --features dev-local` (debug: override compiled), plus `--release --features dev-local`.

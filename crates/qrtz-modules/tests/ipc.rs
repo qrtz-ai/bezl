@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0144 §2.3 / gate (f), Linux half: only declared, signed clients connect to a shared service, and state is
 //! per connection.
 mod common;

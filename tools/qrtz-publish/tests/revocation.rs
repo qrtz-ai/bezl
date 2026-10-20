@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0215: a published version is pulled only by listing it in the repo's revocation list (modules/revoked.json,
 //! passed as the spec's `revoked`). The live index 3933c81e… (index 2, spec/fixtures/ctrl-live-index) carries nano
 //! 0.2.0 and 0.2.1, which declare no reads for their three models (ADR 0212) and so can never pass the read check;
@@ -57,14 +58,14 @@ fn build(revoked: Vec<Revoked>) -> Result<qrtz_publish::Built, String> {
     let keys = Keys::ephemeral();
     let out = out_at_live(d.path(), &keys);
     let lv = live();
-    qrtz_publish::build_against(&out, &spec(revoked), &keys, NOW, &Notarized::Unchecked, Some(&lv))
-        .map_err(|e| e.to_string())
-        .inspect(|_| {
+    qrtz_publish::build_against(&out, &spec(revoked), &keys, NOW, &Notarized::Unchecked, Some(&lv)).inspect(
+        |_| {
             let (_, ix) = qrtz_publish::current(&out).unwrap().unwrap();
             // Nothing is dropped: every live entry is still there, byte-for-byte, and nano 0.2.0/0.2.1 are revoked.
             assert_eq!(ix.packages, lv.packages);
             assert!(ix.is_revoked("nano", "0.2.0") && ix.is_revoked("nano", "0.2.1"));
-        })
+        },
+    )
 }
 
 #[test]

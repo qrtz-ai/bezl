@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0212: every runnable unit declares the models it reads (`extension.reads` for the extension's own process,
 //! `service.models` for a service), and `resolve::extension_grants` alone derives grants from those declarations:
 //! no orphan model dependency, no read of anything that isn't a model dependency. No allowlist names a package.
