@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/lifecycle.spec.ts (docs/e2e-parity.md rows 14-17): live transcript partials → finals and
 //! after restart, permission denied, summary failure → retries → fallback → manual retry, restart mid
 //! post-processing. The scripted helper plays the standup and is the on-device model (examples/e2e_helper.rs,

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 port of e2e/permissions.spec.ts (docs/e2e-parity.md rows 25–27; row 28, N29/N32, is in e2e_capture.rs):
 //! H5 TCC revoked mid-capture degrades the recording live and stops a dictation gracefully; H6 a dictation runs
 //! alongside a meeting recording (mux, shared mic tap) and leaves the recording untouched.

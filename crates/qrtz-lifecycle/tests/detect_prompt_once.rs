@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Jared: the "meeting detected, record?" prompt fired on every tab flip back to the meeting. Once per meeting.
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};

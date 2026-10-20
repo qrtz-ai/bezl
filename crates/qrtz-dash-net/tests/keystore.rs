@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Bozniak M6: saving a new owner key never leaves the helper without a readable key, whatever step fails.
 use qrtz_dash_net::*;
 use std::collections::HashMap;

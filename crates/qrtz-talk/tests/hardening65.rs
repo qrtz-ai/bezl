@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0205 (echo cycle 65): a subject stutter across a comma, "we, we" / "they, they", collapses only when the
 //! first pronoun opens its sentence (alone or after one of so/and/but/then/because) and a plain modal follows the
 //! second ("So we, we can ship it tomorrow" → "So we can ship it tomorrow."). Everything else keeps both words.

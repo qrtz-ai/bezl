@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADRs 0192 and 0193 (echo cycle 58): two polish rules, each only in its unambiguous form.
 //! - ADR 0192: a filler the recogniser set off with commas takes the comma before it along, but only after a word a
 //!   comma can't follow ("the, um, design team", "and, uh, we", "The demo is, um, basically done", "Can you, um,

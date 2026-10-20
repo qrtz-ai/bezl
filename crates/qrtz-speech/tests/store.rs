@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0046 §4-5 against a mock bundle server: install, failure then retry, resume, checksum mismatch, bad
 //! signature, oversize, pause/resume, update + rollback, anti-rollback, health failure, no swap mid-session, crash
 //! loop, denylist (revoke, replay, expiry), key rotation (root + cross-signed only), lazy re-hash, permissions.

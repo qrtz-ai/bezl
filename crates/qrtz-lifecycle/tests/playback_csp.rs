@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Meeting playback: the renderer's `<audio>` loads `qrtz-media://rec/<uuid>.wav` (MeetingDetail.tsx, served by
 //! apps/desktop/src-tauri/src/media.rs). Two CSPs apply to that page: the `<meta>` in apps/desktop/index.html (the
 //! only one under `tauri dev`, and still enforced in builds, where Tauri adds tauri.conf.json's alongside it; a

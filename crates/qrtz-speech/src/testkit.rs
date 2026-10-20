@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test fixture (mock helper / test kit), never shipped in the app bundle.
 //! Test kit (feature `testkit`): a signing toolkit, signed bundles and denylists, and a tiny HTTP/1.1 bundle
 //! server with fault injection. Used by this crate's tests and by qrtz-app's E2E tests (settings speech setup, attach).
 use crate::bundle::PinnedKey;
@@ -154,9 +155,14 @@ impl Server {
                         let (k, v) = l.split_once(':')?;
                         k.eq_ignore_ascii_case("range").then(|| v.trim().to_string())
                     });
-                    let body = s.routes.lock().unwrap().get(&path).cloned();
+                    let body = s
+                        .routes
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .get(&path)
+                        .cloned();
                     let (fail, cut, corrupt, over, slow) = {
-                        let mut f = s.faults.lock().unwrap();
+                        let mut f = s.faults.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         *f.hits.entry(path.clone()).or_default() += 1;
                         if let Some(r) = &range {
                             f.ranges.push((path.clone(), r.clone()));
@@ -245,7 +251,10 @@ impl Server {
 
     /// Publish `b` as `latest` (and its files under `<version>/`).
     pub fn publish(&self, b: &Bundle) {
-        let mut r = self.routes.lock().unwrap();
+        let mut r = self
+            .routes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         r.insert("latest/manifest.json".into(), b.manifest.clone());
         r.insert("latest/manifest.sig".into(), b.sig.clone());
         for (p, bytes) in &b.files {
@@ -253,7 +262,10 @@ impl Server {
         }
     }
     pub fn put(&self, path: &str, bytes: Vec<u8>) {
-        self.routes.lock().unwrap().insert(path.into(), bytes);
+        self.routes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(path.into(), bytes);
     }
 }
 

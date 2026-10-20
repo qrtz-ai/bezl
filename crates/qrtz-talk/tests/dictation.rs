@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Dictation scenarios against the scripted helper and the speech module seam.
 mod common;
 use common::*;

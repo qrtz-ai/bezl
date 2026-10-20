@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: a build script fails the build by panicking.
 fn main() {
     stub_qrtz_command_for_debug_builds();
     // App commands get generated `allow-<command>` permissions that capabilities/default.json grants.

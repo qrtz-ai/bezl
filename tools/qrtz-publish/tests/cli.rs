@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The publisher CLI: dry-run end to end (extension, service and model, a file big enough for range fetches),
 //! keygen, key-file permissions, immutability, pinned models, and that no key material reaches stdout or the output.
 use std::process::Command;

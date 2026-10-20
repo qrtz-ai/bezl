@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 4: which files a meeting delete may remove (N15). Same cases as TS `insideDir` /
 //! `meetingAudio` in apps/desktop/src/main/note-service.hardening4.test.ts. The delete flow itself (N14, N16) is
 //! pinned by the shared scenarios `N15-delete-removes-audio`, `N16-deleted-mid-backoff` and `F14-*`.

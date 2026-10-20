@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The agent API end to end (ADR 0228): enrollment, approval, writes, batch, tombstones, heartbeat, retention.
 use qrtz_dash::*;
 use serde_json::{json, Value};

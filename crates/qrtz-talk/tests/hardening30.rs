@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Cycle 30 (N150, ADR 0096): a press refused before `dictation.start` is its own attempt. Each refusal view carries
 //! the id that press drew, so two refused presses in a row are two failures to the shell's pill gate (it keys a
 //! flash by the view's id), and a re-emitted view keeps its id. Before: the refusal kept no id, so the second tap's

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Port of packages/core/src/ipc/router.test.ts and apps/desktop/src/shared/ipc-capabilities.test.ts
 //! against the real generated contract and manifests.
 use async_trait::async_trait;

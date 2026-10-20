@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0075: meeting summaries on this Mac only (Apple Intelligence through the helper).
 //!
 //! The engine over a fake model (chunking, map-reduce, the context split, the N69 fence, output caps, error

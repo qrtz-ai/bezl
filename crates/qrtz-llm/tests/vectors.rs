@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The shared summary vectors (spec/vectors/llm, written by packages/core/src/note/llm.vectors.test.ts):
 //! byte-identical prompts and the summary reply parser. No network (ADR 0076).
 use std::path::Path;

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0116 / 0129: ctrl's Laya model. Nothing is fetched without the user's yes; a placeholder manifest refuses
 //! before any network call; the pinned manifest is laya-coreml @ 7b8d7a2 (e8, L512) + tokenizer.json; with a test
 //! manifest the download is verified (size + sha256) through the package manager, a damaged file is

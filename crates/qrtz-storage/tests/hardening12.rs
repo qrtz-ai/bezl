@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 12 (N48, ADR 0039): a word inside a run of Han, kana or Thai is found by search and the meeting
 //! list. The vectors in spec/stress/fts-substring.json are shared with packages/core/src/note/fts.hardening12.test.ts.
 

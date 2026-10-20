@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! The on-device engine against the mock module (ADR 0046 §3, §6; review N55, N57-N59, N66, N76, N77): the real
 //! spawner, confinement, protocol and validator, with the module installed from a signed bundle by the store.
 #![cfg(target_os = "linux")]

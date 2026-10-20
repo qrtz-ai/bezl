@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! N25: booting over a fresh or an older (0755) data dir under umask 022 leaves the app data dir and the
 //! recordings dir 0700, and the config the service writes there is 0600. Own test binary: umask is per process.
 #![cfg(unix)]

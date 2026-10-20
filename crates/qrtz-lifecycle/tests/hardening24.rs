@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 24 (N112; ADR 0077): `resummarize` waits for the retried summary step as long as the step can
 //! actually run (every attempt's timeout plus its backoff), not a fixed 120 s left from the cloud timeout.
 use qrtz_lifecycle::policies;

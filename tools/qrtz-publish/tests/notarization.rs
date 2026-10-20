@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0170: code is published only notarized, and the record is checked.
 use qrtz_modules::index::Notarization;
 use qrtz_publish::keys::Keys;
@@ -43,9 +44,7 @@ fn publish(base: &Path, p: SpecPackage) -> Result<(), String> {
         models: vec![],
         revoked: vec![],
     };
-    qrtz_publish::build(&out, &spec, &keys, now)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    qrtz_publish::build(&out, &spec, &keys, now).map(|_| ())
 }
 
 fn good() -> Notarization {

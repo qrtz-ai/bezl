@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0201 (echo cycle 62): the comma the recogniser wrote before each spoken "new line" of a dictated list goes
 //! ("Groceries, new line, eggs, new line, milk." → "Groceries⏎Eggs⏎Milk"), only when the whole text is a list of
 //! 1-2 word lines of plain lowercase common words with a comma on every line but the last. Greetings, sign-offs,

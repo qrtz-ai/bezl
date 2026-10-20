@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0046 §1 / N55 end to end on Linux: `build_app` with the Rust mock helper; the on-device engine spawns the
 //! real (confined) mock speech module installed from a signed bundle and hands its audio write ends to the helper
 //! (`speech.attach` over the speech socket). The helper writes the dictation's mic PCM to them; when the dictation

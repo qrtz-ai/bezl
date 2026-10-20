@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0079 / ADR 0157: the Mac helper's pinned models through settings ("speech"), installed by the
 //! package manager: status, download with progress, pause and resume, a damaged file refused and retried (only it),
 //! the `.qrtz-verified` markers the helper waits for, the `model.*` packages in `qrtz.lock`, delete and prune.

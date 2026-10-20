@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! spec/vectors/export/markdown.json (TS oracle: packages/core/src/note/markdown.vectors.test.ts): same filename
 //! and byte-identical Markdown, plus `export_meeting` through a real database.
 use std::path::Path;

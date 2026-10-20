@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Bounded memory: a backup much larger than the allowed RSS growth exports and imports with flat memory.
 //! Alone in its own test binary so the process high-water mark (VmHWM) measures only this test.
 mod common;

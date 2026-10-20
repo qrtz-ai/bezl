@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 43, ADR 0132 (ADR 0131's release tail confidence floor, N169): `dictation.stopped` may carry the
 //! release tail decode's confidence (`tailConf`) and whether the helper's floor dropped that tail (`tailDropped`).
 //! Talk parses both (additive: an older helper sends neither) and logs them on the `talk latency` line, beside

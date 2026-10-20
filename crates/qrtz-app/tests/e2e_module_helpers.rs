@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0146 M2.4: `QRTZ_MODULE_HELPERS=split` runs one helper per module. Here each is the mock helper told its
 //! module (`QRTZ_MODULE`); it refuses another module's commands, so a recording or a dictation only completes when
 //! the host sent it to the right process.

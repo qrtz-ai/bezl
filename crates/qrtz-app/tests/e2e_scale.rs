@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Phase 5 ports of the scale rows (docs/e2e-parity.md rows 11, 21, 33; row 13's backend boot budget is in
 //! e2e_shell.rs). Electron seeded with QRTZ_DEV_SEED=large|many; the Tauri build has no dev seed, so the tests
 //! seed the same data (`dev.seedLarge` / `dev.seedMany` shapes, e2e_support::seed_large / seed_many) into the

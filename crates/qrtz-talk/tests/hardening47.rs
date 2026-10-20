@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Hardening cycle 47, ADR 0156 (N175): the `talk latency` line's stage times are plain numbers. They were logged
 //! with `?`, so the line read `first_partial_ms=Some(890.4) final_ms=Some(1312.7) cleanup_ms=None`, unlike every other
 //! field on it and unlike docs/echo/dictation-tuning.md §5. `scripts/echo-timing-report.mjs` and a plain

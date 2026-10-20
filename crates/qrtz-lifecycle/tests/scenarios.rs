@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Tier-2 runtime scenarios (docs/rust-core-api.md §5): every spec/scenarios/lifecycle/*.json is replayed against
 //! [`NoteRuntime`] on a paused tokio clock with the same scripted helper, step outcomes and store faults as the TS
 //! runner (apps/desktop/src/main/note-service.scenarios.test.ts, the oracle that wrote `expect`). The trace,
@@ -218,7 +219,7 @@ impl EventSink for Life {
                         format!(" [{cap}]")
                     }
                 );
-                let l = t.pipelines.entry(v.meeting_id.clone()).or_default();
+                let l = t.pipelines.entry(v.meeting_id).or_default();
                 if l.last() != Some(&k) {
                     l.push(k);
                 }

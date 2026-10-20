@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0233 (echo cycle 81): an unmarked question whose auxiliary is contracted onto the wh-word's modifier ("What
 //! time's the meeting tomorrow", "How long'll it take", "How long've you been waiting") ends with "?" like its
 //! spelled-out form ("What time is the meeting tomorrow?"). Only "what" + time / day / size and "how" + long / much /

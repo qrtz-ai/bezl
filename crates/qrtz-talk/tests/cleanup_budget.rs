@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! ADR 0182: the latency budget for the whole cleanup chain. Polish must add no latency that anyone can feel, so
 //! `cleanup_dictation` on a long dictation (about 400 words, every rule exercised, a 20-term dictionary) must stay
 //! within 2 ms. The median of many runs is checked, in the optimised build the app ships (`--release`), and with a

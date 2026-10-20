@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Electron <-> Rust backup parity (spec/fixtures/backup; TS side: apps/desktop/src/main/backup.parity.test.ts).
 //!
 //! - electron-v1.zip (TS-made) imports here to expected.json.

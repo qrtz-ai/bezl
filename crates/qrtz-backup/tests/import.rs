@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // QRT-288: test code may panic on setup failure.
 //! Import semantics beyond the format: duplicate ids, audio name collisions, tombstones, disk full, size caps.
 mod common;
 
