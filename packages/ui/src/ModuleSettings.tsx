@@ -31,6 +31,7 @@ export function ModuleSettingsModal({
       title={`${module} opts`}
       closeLabel={`close ${module} opts`}
       width={width}
+      initialFocus="dialog"
       {...(testId ? { 'data-testid': testId } : {})}
     >
       <div

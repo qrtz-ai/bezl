@@ -30,6 +30,9 @@ export function useModalLayer(
   ref: RefObject<HTMLElement | null>,
   open: boolean,
   onClose: () => void,
+  /** `first` (default): the `[data-autofocus]` control, else the first control. `dialog`: the dialog itself
+   * unless a control is marked `[data-autofocus]` (the opts modal, so its close button opens without a ring). */
+  initialFocus: 'first' | 'dialog' = 'first',
 ) {
   const close = useRef(onClose);
   close.current = onClose;
@@ -67,15 +70,19 @@ export function useModalLayer(
       }
     };
     window.addEventListener('keydown', onKey);
-    // The dialog itself takes focus unless a control asks for it, so the close button doesn't open with a ring.
-    (el.querySelector<HTMLElement>('[data-autofocus]') ?? el).focus();
+    const first =
+      el.querySelector<HTMLElement>('[data-autofocus]') ??
+      (initialFocus === 'first'
+        ? el.querySelector<HTMLElement>('input, textarea, button, [tabindex]')
+        : null);
+    (first ?? el).focus();
     return () => {
       window.removeEventListener('keydown', onKey);
       const i = layers.lastIndexOf(el);
       if (i >= 0) layers.splice(i, 1);
       prev?.focus?.();
     };
-  }, [open, ref]);
+  }, [open, ref, initialFocus]);
 }
 
 /**
@@ -90,6 +97,7 @@ export function Modal({
   children,
   width = 640,
   closeLabel = 'close',
+  initialFocus = 'first',
   'data-testid': testId,
 }: {
   open: boolean;
@@ -98,12 +106,14 @@ export function Modal({
   children: ReactNode;
   width?: number;
   closeLabel?: string;
+  /** Where focus goes on open; see `useModalLayer`. */
+  initialFocus?: 'first' | 'dialog';
   'data-testid'?: string;
 }) {
   const t = useTheme();
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  useModalLayer(ref, open, onClose);
+  useModalLayer(ref, open, onClose, initialFocus);
   if (!open) return null;
   return (
     <div

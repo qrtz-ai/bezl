@@ -494,7 +494,7 @@ export function IconButton({
   disabled?: boolean;
   badge?: boolean;
   tone?: 'default' | 'record' | 'danger';
-  /** `ghost`: no border, muted until hovered (a modal's close). */
+  /** `ghost`: no border, muted text (a modal's close). */
   variant?: 'outline' | 'ghost';
   ref?: Ref<HTMLButtonElement>;
   'data-testid'?: string;
