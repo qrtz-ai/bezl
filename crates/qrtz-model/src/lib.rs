@@ -9,6 +9,7 @@
 //! - ms values are integers. TS may have written a fractional number, so ms fields are read through
 //!   [`de_ms`] / [`de_ms_opt`], which round. Floats are never written for ms.
 
+#![forbid(unsafe_code)]
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer, Serialize};

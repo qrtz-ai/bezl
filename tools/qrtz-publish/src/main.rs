@@ -1,4 +1,5 @@
 //! `qrtz-publish`: see `docs/modules/hosting-setup.md`, ADR 0153 and ADR 0157.
+#![forbid(unsafe_code)]
 use qrtz_publish::keys::{write_keypair, Keys};
 use std::path::PathBuf;
 

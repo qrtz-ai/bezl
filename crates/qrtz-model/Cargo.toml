@@ -15,3 +15,6 @@ specta = { workspace = true, optional = true }
 [features]
 # TS type export after cutover (docs/rust-core-api.md §2). Off during the dual run: zod is the source of truth.
 specta = ["dep:specta"]
+
+[lints]
+workspace = true

@@ -1,6 +1,7 @@
 //! `qrtz-dash-net`: Agent Dash's network helper (ADR 0231 amendment 1). Spawned by qrtz-app only when dash is on
 //! (debug builds) and the user opted in; reads one `dash:*` call per stdin line, writes one answer per stdout
 //! line, and exits when stdin closes. Nothing else: no arguments, no files, no other host.
+#![forbid(unsafe_code)]
 use qrtz_dash_net::{
     line_too_long, platform_store, read_line_capped, Helper, Https, Line, BUNDLE_MARKER, MAX_LINE,
 };

@@ -23,6 +23,7 @@
 //! - [`service`]: the `ctrl:*` channels the shell's ctrl view calls.
 //!
 //! The macOS side (the tree reader, the actor and the stop-key watcher) is `native/qrtz-helper/Sources/QrtzCtrl`.
+#![forbid(unsafe_code)]
 pub mod act;
 pub mod ax;
 pub mod chain;

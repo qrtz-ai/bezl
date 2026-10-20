@@ -168,12 +168,15 @@ mod mac {
     }
 
     pub fn ax_trusted() -> bool {
+        // SAFETY: ApplicationServices call with no arguments or preconditions.
         unsafe { AXIsProcessTrusted() != 0 }
     }
 
     /// `AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: true})`: macOS adds qrtz to the Accessibility
     /// list and shows its own "qrtz would like to control this computer" prompt (once).
     pub fn ax_prompt() -> bool {
+        // SAFETY: keys/values are 1-element arrays alive for the CFDictionaryCreate call; the callbacks are the
+        // system's static CFType callbacks; `opts` is checked for null and released exactly once.
         unsafe {
             let keys = [kAXTrustedCheckOptionPrompt];
             let values = [kCFBooleanTrue];
@@ -195,10 +198,12 @@ mod mac {
     }
 
     pub fn screen_preflight() -> bool {
+        // SAFETY: CoreGraphics call with no arguments or preconditions.
         unsafe { CGPreflightScreenCaptureAccess() }
     }
 
     pub fn screen_request() -> bool {
+        // SAFETY: CoreGraphics call with no arguments or preconditions.
         unsafe { CGRequestScreenCaptureAccess() }
     }
 }

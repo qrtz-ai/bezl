@@ -207,6 +207,7 @@ mod tests {
         // A FIFO: the check neither blocks nor reads it.
         std::fs::remove_file(&f).unwrap();
         let c = std::ffi::CString::new(f.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a valid NUL-terminated path that outlives the call.
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
         assert_eq!(current(&f), None);
         assert!(write(&f, "dark").unwrap());

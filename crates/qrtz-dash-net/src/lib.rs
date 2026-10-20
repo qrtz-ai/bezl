@@ -11,6 +11,7 @@
 //!   scrubbed dash view. It never gets the vault, note text, transcripts or the app's keys. The dashboard's owner
 //!   key is this process's own secret: it is created by `dash:connect`, kept in a Keychain item only this helper
 //!   reads ([`KEYCHAIN_SERVICE`]), and is never sent to the app.
+#![forbid(unsafe_code)]
 use qrtz_ipc::{AppError, ErrorCode};
 use serde_json::{json, Value};
 use zeroize::{Zeroize, Zeroizing};

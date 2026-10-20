@@ -1,6 +1,7 @@
 //! qrtz Tauri 2 shell: windows, tray, global shortcuts, login item, notifications and the two IPC commands.
 //! Everything behavioural lives in the UI-free crates (qrtz-app, qrtz-ipc, qrtz-helper-bridge, qrtz-lifecycle,
 //! qrtz-storage); see docs/tauri-migration-status.md.
+#![forbid(unsafe_code)]
 mod backend;
 mod commands;
 mod media;

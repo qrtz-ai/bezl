@@ -1,5 +1,6 @@
 //! qrtz IPC for the Tauri build: the zod contract (embedded JSON), a validated router with per-sub-app
 //! capability scoping, and event subscription rules. No Tauri dependency, so it is unit-testable.
+#![forbid(unsafe_code)]
 pub mod contract;
 pub mod error;
 pub mod router;

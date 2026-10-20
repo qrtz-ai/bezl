@@ -88,3 +88,6 @@ ed25519-dalek = { workspace = true }
 qrtz-publish = { workspace = true }
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }
+
+[lints]
+workspace = true

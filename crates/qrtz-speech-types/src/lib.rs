@@ -1,6 +1,7 @@
 //! qrtz speech types (ADR 0046, ADR 0146 M2): what echo's and nano's crates share with the shell's speech manager
 //! (`qrtz-speech`): the `SpeechEngine` seam and its events, the speech protocol with its untrusted-output validator,
 //! and `SpeechError`. `qrtz-speech` re-exports all of it, so its users see no change.
+#![forbid(unsafe_code)]
 pub mod engine;
 pub mod protocol;
 pub mod validate;

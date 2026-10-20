@@ -77,3 +77,10 @@ strip = false
 debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
+
+# Shared lint baseline (QRT: Rust lint baseline). Every member sets `[lints] workspace = true`.
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"

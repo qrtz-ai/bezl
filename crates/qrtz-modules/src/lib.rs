@@ -24,6 +24,7 @@
 //!
 //! This crate has no network, no process spawning and no platform code. The macOS bindings (LaunchServices,
 //! `SecStaticCodeCheckValidity`, `NSXPCConnection`) plug in through the traits in [`launcher`] and [`ipc`] in M1.
+#![forbid(unsafe_code)]
 pub mod error;
 pub mod fetch;
 pub mod fsutil;

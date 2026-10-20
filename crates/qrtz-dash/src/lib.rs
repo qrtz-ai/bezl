@@ -4,6 +4,7 @@
 //! path, headers, body bytes) and returns the status and JSON body the spec names; the user's side (issue a code,
 //! approve, reject, delete, the read-only view) are plain methods the app's `dash:*` IPC channels call. Time is
 //! always passed in (`now_ms`) so every rule is testable. Nothing here listens on a socket.
+#![forbid(unsafe_code)]
 mod blocks;
 mod crypto;
 mod store;

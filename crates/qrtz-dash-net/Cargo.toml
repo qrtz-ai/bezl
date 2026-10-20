@@ -28,3 +28,6 @@ security-framework = { version = "3", features = ["OSX_10_15"] }
 
 [dev-dependencies]
 qrtz-dash = { workspace = true }
+
+[lints]
+workspace = true

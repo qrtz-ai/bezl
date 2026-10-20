@@ -325,6 +325,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn uid() -> u32 {
+        // SAFETY: getuid has no preconditions and cannot fail.
         unsafe { libc::getuid() }
     }
 

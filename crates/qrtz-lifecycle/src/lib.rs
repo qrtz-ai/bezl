@@ -5,6 +5,7 @@
 //! in, persists every accepted state and broadcasts the derived views. Behaviour, including the TS quirks kept
 //! for parity, is pinned by the shared vectors in `spec/vectors/lifecycle` (run by vitest and `cargo test`).
 
+#![forbid(unsafe_code)]
 mod arbiter;
 pub mod fusion;
 pub(crate) mod js;

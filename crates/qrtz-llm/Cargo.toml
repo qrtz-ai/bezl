@@ -25,3 +25,6 @@ tokio = { version = "1", features = [
   "macros",
   "time",
 ] }
+
+[lints]
+workspace = true

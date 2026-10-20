@@ -20,3 +20,6 @@ tempfile = { workspace = true }
 # The Laya (Core ML) scorer for the decision chain (ADR 0106, kept by ADR 0214). macOS only, and only used with a
 # consented, installed model and a runtime; without it (and everywhere else) the deterministic heuristic answers.
 laya = []
+
+[lints]
+workspace = true

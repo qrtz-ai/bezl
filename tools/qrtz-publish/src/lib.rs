@@ -13,6 +13,7 @@
 //! Packages are extensions, services and models, each with a `qrtz.json` (ADR 0157). Model sets pinned in the app
 //! (`local_models.json`, `ctrl_laya_model.json`) are published from a dir of their downloaded files, checked
 //! against those pins, so the hosted package is the same tree the app already pins.
+#![forbid(unsafe_code)]
 pub mod keys;
 pub mod notary;
 

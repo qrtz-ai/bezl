@@ -25,3 +25,6 @@ tempfile = { workspace = true }
 name = "qrtz-mock-helper"
 path = "src/bin/qrtz-mock-helper.rs"
 test = false
+
+[lints]
+workspace = true

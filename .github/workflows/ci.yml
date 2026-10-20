@@ -117,8 +117,7 @@ jobs:
       - run: cargo fmt --all --check
       - name: clippy (as check:rust)
         run: |
-          cargo clippy --workspace --all-targets
-          cargo clippy -p qrtz-ipc -p qrtz-helper-bridge -p qrtz-app --all-targets -- -D warnings
+          cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
   macos:

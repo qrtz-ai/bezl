@@ -12,6 +12,7 @@ fn mode(p: &Path) -> u32 {
 
 #[test]
 fn boot_makes_data_and_recordings_dirs_0700_under_umask_022() {
+    // SAFETY: umask has no preconditions; it only sets this process's file-mode mask.
     unsafe { libc::umask(0o022) };
     let root = tempfile::tempdir().unwrap();
 

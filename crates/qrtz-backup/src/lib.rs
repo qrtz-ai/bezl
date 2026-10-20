@@ -8,6 +8,7 @@
 //!
 //! Blocking, synchronous APIs over a `&Db`: run them inside `StorageHandle::call` (the single writer thread),
 //! like the TS worker. See docs/rust-core-api.md §9 and ADR 0042.
+#![forbid(unsafe_code)]
 pub mod backup;
 pub mod format;
 pub mod markdown;

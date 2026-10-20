@@ -47,3 +47,6 @@ qrtz-helper-bridge = { workspace = true }
 qrtz-ipc = { workspace = true }
 # `cargo test --workspace` builds the runtime tests without extra flags.
 qrtz-lifecycle = { path = ".", features = ["runtime"] }
+
+[lints]
+workspace = true

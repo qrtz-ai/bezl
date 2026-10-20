@@ -381,8 +381,10 @@ mod linux {
         scratch: Vec<RawFd>,
     }
 
-    // The raw pointers point into `argv`, owned by the plan; the plan moves into the pre_exec closure whole.
+    // SAFETY: the raw pointers point into `argv`, owned by the plan; the plan moves into the pre_exec closure whole,
+    // so they never outlive or alias the CStrings across threads.
     unsafe impl Send for ChildPlan {}
+    // SAFETY: as above; shared access only reads the pointers, never the pointees through `&self` mutation.
     unsafe impl Sync for ChildPlan {}
 
     impl ChildPlan {
@@ -416,20 +418,23 @@ mod linux {
             let n = self.targets.len() as RawFd;
             // 1. Move every source above the target range (so no dup2 clobbers a later source).
             for i in 0..self.targets.len() {
-                let fd = libc::fcntl(self.targets[i], libc::F_DUPFD_CLOEXEC, n + 16);
+                // SAFETY: fcntl(F_DUPFD_CLOEXEC) on a caller-provided fd; async-signal-safe, no memory access.
+                let fd = unsafe { libc::fcntl(self.targets[i], libc::F_DUPFD_CLOEXEC, n + 16) };
                 if fd < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 self.scratch[i] = fd;
             }
-            let entry = libc::fcntl(self.entry, libc::F_DUPFD_CLOEXEC, n + 16);
+            // SAFETY: fcntl(F_DUPFD_CLOEXEC) on the entry fd; async-signal-safe, no memory access.
+            let entry = unsafe { libc::fcntl(self.entry, libc::F_DUPFD_CLOEXEC, n + 16) };
             if entry < 0 {
                 return Err(std::io::Error::last_os_error());
             }
             // The ruleset fd may sit inside 0..7+n too: move it up before the targets are placed.
             let ruleset = match &self.ruleset {
                 Some(rs) => {
-                    let fd = libc::fcntl(rs.as_raw_fd(), libc::F_DUPFD_CLOEXEC, n + 16);
+                    // SAFETY: fcntl(F_DUPFD_CLOEXEC) on the owned ruleset fd; async-signal-safe.
+                    let fd = unsafe { libc::fcntl(rs.as_raw_fd(), libc::F_DUPFD_CLOEXEC, n + 16) };
                     if fd < 0 {
                         return Err(std::io::Error::last_os_error());
                     }
@@ -439,52 +444,66 @@ mod linux {
             };
             // 2. Place them (dup2 clears close-on-exec on the target).
             for i in 0..self.scratch.len() {
-                if libc::dup2(self.scratch[i], i as RawFd) < 0 {
+                // SAFETY: dup2 between plain fds in the child; async-signal-safe, no memory access.
+                if unsafe { libc::dup2(self.scratch[i], i as RawFd) } < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
             }
             // 3. N58: everything else is close-on-exec (incl. the scratch copies, the entry and std's error pipe).
-            if libc::syscall(
-                libc::SYS_close_range,
-                n as u32,
-                u32::MAX,
-                4u32, /* CLOSE_RANGE_CLOEXEC */
-            ) < 0
+            // SAFETY: close_range with integer args only; async-signal-safe.
+            if unsafe {
+                libc::syscall(
+                    libc::SYS_close_range,
+                    n as u32,
+                    u32::MAX,
+                    4u32, /* CLOSE_RANGE_CLOEXEC */
+                )
+            } < 0
             {
                 return Err(std::io::Error::last_os_error());
             }
-            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0 {
+            // SAFETY: prctl(PR_SET_NO_NEW_PRIVS) with integer args only.
+            if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } < 0 {
                 return Err(std::io::Error::last_os_error());
             }
-            if ruleset >= 0 && libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset, 0u32) < 0 {
+            // SAFETY: landlock_restrict_self on a valid ruleset fd, integer args only.
+            if ruleset >= 0 && unsafe { libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset, 0u32) } < 0 {
                 return Err(std::io::Error::last_os_error());
             }
             if let Some(f) = &mut self.seccomp {
-                f.patch_pid(libc::getpid() as u32);
+                // SAFETY: getpid has no preconditions.
+                f.patch_pid(unsafe { libc::getpid() } as u32);
                 let prog = SockFprog {
                     len: f.prog.len() as u16,
                     filter: f.prog.as_ptr(),
                 };
-                if libc::prctl(
-                    libc::PR_SET_SECCOMP,
-                    2, /* FILTER */
-                    &prog as *const SockFprog,
-                    0,
-                    0,
-                ) < 0
+                // SAFETY: `prog` and the filter it points at (`f.prog`) outlive the call; the kernel copies them.
+                if unsafe {
+                    libc::prctl(
+                        libc::PR_SET_SECCOMP,
+                        2, /* FILTER */
+                        &prog as *const SockFprog,
+                        0,
+                        0,
+                    )
+                } < 0
                 {
                     return Err(std::io::Error::last_os_error());
                 }
             }
             let empty = c"".as_ptr();
-            libc::syscall(
-                libc::SYS_execveat,
-                entry,
-                empty,
-                self.argv_ptrs.as_ptr(),
-                self.envp_ptrs.as_ptr(),
-                libc::AT_EMPTY_PATH,
-            );
+            // SAFETY: argv_ptrs/envp_ptrs are NUL-terminated arrays of pointers into `self.argv`, which outlives
+            // the call; `empty` is a static C string.
+            unsafe {
+                libc::syscall(
+                    libc::SYS_execveat,
+                    entry,
+                    empty,
+                    self.argv_ptrs.as_ptr(),
+                    self.envp_ptrs.as_ptr(),
+                    libc::AT_EMPTY_PATH,
+                );
+            }
             Err(std::io::Error::last_os_error())
         }
     }
