@@ -12,6 +12,22 @@ speech, switching echo or nano on in the module manager, ctrl's own model settin
 Every component keeps its own license. This file ships in the app (`Contents/Resources/THIRD_PARTY_NOTICES.md`) and is
 shown in settings → system → "open-source licenses".
 
+## Source code
+
+qrtz is AGPL-3.0-only (`Contents/Resources/licenses/AGPL-3.0.txt`, with the additional permission in
+`licenses/LICENSE-EXCEPTION.md`). Every release attaches its complete source next to the download, at
+`https://modules.qrtz.ai/v1/app/<version>/`:
+
+- `qrtz_<version>_source.tar.gz`: qrtz at the release commit (tag `app-v<version>` on
+  https://github.com/qrtz-ai/qrtz);
+- `qrtz_<version>_fluidaudio_source.tar.gz`: FluidAudio at exactly the pinned version and revision (0.17.7,
+  `503b4bd1`), including its possibly espeak-derived GPL-3.0-or-later parts;
+- `qrtz_<version>_build-scripts.tar.gz`: the build and release scripts and the manifests and lockfiles they read;
+- `qrtz_<version>_source.sha256`: their checksums.
+
+The same source is on GitHub at the `app-v<version>` tag and at
+https://github.com/FluidInference/FluidAudio/tree/v0.17.7.
+
 ## Models (downloaded after the user's yes, not in the app bundle)
 
 Today each file is fetched from Hugging Face at the pinned commit below, checked against its pinned sha256, and
