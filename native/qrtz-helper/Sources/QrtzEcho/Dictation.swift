@@ -238,6 +238,9 @@ public actor DictationEngine {
     /// Recognisers whose finish() outlived the finalize limit: not used again until it returns.
     var busy: Set<ObjectIdentifier> = []
     var session: Session?
+    /// QRT-270: echo is ready once a recogniser has finished loading (`prepare` returned). Until then a press still
+    /// opens the mic (the arm keeps its audio) but the start waits for the load instead of decoding on a cold model.
+    public private(set) var asrReady = false
     /// ADR 0099: the last stopped dictation's stage timings (the bench reads them; the log line carries them).
     public private(set) var lastTiming: DictationTiming?
     /// ADR 0099: set by `finalText` when the final decode outlived its limit (the last partial was sent).
@@ -308,6 +311,7 @@ public actor DictationEngine {
                 let t0 = ContinuousClock.now
                 do {
                     try await t.prepare()
+                    await self.markReady(t.name)
                     let d = t0.duration(to: .now)
                     let ms = Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
                     if log { send(.log(level: .info, msg: "echo asr: \(t.name) resident (\(ms) ms)")) }
@@ -317,6 +321,13 @@ public actor DictationEngine {
                 }
             }
         }
+    }
+
+    /// QRT-270: first successful load; logged once so a capture shows when echo became ready.
+    func markReady(_ name: String) {
+        guard !asrReady else { return }
+        asrReady = true
+        send(.log(level: .info, msg: "echo asr: ready (\(name))"))
     }
 
     /// N195 (ADR 0224), review B1: why a mic open failed, for `error{dictation.mic}.reason`. Permission decides first:
@@ -417,11 +428,17 @@ public actor DictationEngine {
         guard mic != nil else { send(.error(code: "dictation.mic", message: "no microphone source", fatal: false)); return }
         var s = Session(id: id, startMs: now())
         backlog?.rearm()
+        // QRT-270: a press before echo is ready waits here for the load (joining the one in flight) rather than
+        // decoding on a cold model. The mic is already open from the press, so the arm's ring keeps the audio
+        // (up to `armMaxMs`) and it is fed once the start goes through.
+        if !asrReady, !transcribers.isEmpty {
+            send(.log(level: .info, msg: "dictation \(id): echo asr still warming; start waits for it"))
+        }
         for t in transcribers {
             if busy.contains(ObjectIdentifier(t)) {
                 send(.log(level: .warn, msg: "dictation asr \(t.name) still finishing the last dictation; skipped")); continue
             }
-            do { try await t.prepare(); await t.reset(); s.transcriber = t; break }
+            do { try await t.prepare(); markReady(t.name); await t.reset(); s.transcriber = t; break }
             catch { send(.log(level: .warn, msg: "dictation asr \(t.name) unavailable: \(error)")) }
         }
         // N134: nothing would hear this dictation (every recogniser busy or failing, no speech module attached):
