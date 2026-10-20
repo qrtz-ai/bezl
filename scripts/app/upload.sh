@@ -16,7 +16,10 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$repo/scripts/ci/r2-env.sh"
 bucket="qrtzr2:${R2_BUCKET:-qrtz-modules}/v1/app"
 tgz="$dir/qrtz_${v}_aarch64.app.tar.gz"
-for f in "$tgz" "$tgz.sig" "$dir/latest.json" "$dmg"; do [[ -s "$f" ]] || { echo "upload: missing $f" >&2; exit 1; }; done
+# QRT-275: every release attaches its source (scripts/release/source-archives.sh); none is optional.
+sums="$dir/qrtz_${v}_source.sha256"
+for f in "$tgz" "$tgz.sig" "$dir/latest.json" "$dmg" "$sums" "$dir/qrtz_${v}_source.tar.gz" \
+  "$dir/qrtz_${v}_fluidaudio_source.tar.gz" "$dir/qrtz_${v}_build-scripts.tar.gz"; do [[ -s "$f" ]] || { echo "upload: missing $f" >&2; exit 1; }; done
 got="$(node "$repo/scripts/app/feed.mjs" --unwrap "$dir/latest.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).version))')"
 [[ "$got" == "$v" ]] || { echo "upload: latest.json is for ${got:-nothing}, not $v" >&2; exit 1; }
 
@@ -26,6 +29,9 @@ short=(--ignore-times --header-upload "Cache-Control: public, max-age=60")
 rclone copyto "$tgz" "$bucket/$v/$(basename "$tgz")" "${forever[@]}" -v
 rclone copyto "$tgz.sig" "$bucket/$v/$(basename "$tgz").sig" "${forever[@]}" -v
 rclone copyto "$dmg" "$bucket/$v/qrtz_${v}_aarch64.dmg" "${forever[@]}" -v
+for f in "qrtz_${v}_source.tar.gz" "qrtz_${v}_fluidaudio_source.tar.gz" "qrtz_${v}_build-scripts.tar.gz" "qrtz_${v}_source.sha256"; do
+  rclone copyto "$dir/$f" "$bucket/$v/$f" "${forever[@]}" -v
+done
 rclone copyto "$dmg" "$bucket/qrtz-latest.dmg" "${short[@]}" -v
 upload_feed "$dir/latest.json"
-echo "upload: qrtz $v is up (v1/app/$v/, qrtz-latest.dmg, latest.json)"
+echo "upload: qrtz $v is up (v1/app/$v/ with its source, qrtz-latest.dmg, latest.json)"

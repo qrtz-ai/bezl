@@ -296,6 +296,8 @@ run_to "$out/feed.json" node scripts/app/feed.mjs --version "$v" --archive "$tgz
 with_key bash scripts/app/sign-feed.sh "$out/feed.json" "$out/latest.json"
 [[ $dry == 1 ]] || rm -f "$out/feed.json"
 
+say "source archives (qrtz at HEAD, the exact FluidAudio pin, the build scripts)"
+run bash "$repo/scripts/release/source-archives.sh" "$v" "$out" HEAD
 say "upload to modules.qrtz.ai (R2 v1/app/, latest.json last)"
 with_r2 env VERSION="$v" bash scripts/app/upload.sh "$out" "$dmg"
 say "what modules.qrtz.ai serves is what was signed"
