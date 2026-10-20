@@ -629,6 +629,15 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     if let Some(w) = echo_warm {
         service.set_echo_hello_hook(Arc::new(move || w.on_hello()));
     }
+    // ADR 0116 / QRT-293: ctrl's model (consent and its verified download, on every OS; only a macOS `laya` build runs
+    // it). One slot: `ctrl:model` and ctrl's scorer read the same readiness.
+    let ctrl_slot = Arc::new(crate::ctrl_model::CtrlModelSlot::new(
+        crate::ctrl_model::CtrlLayaModel::new(
+            dirs.data.join("models").join("ctrl"),
+            &dirs.data.join("ctrl"),
+            None,
+        ),
+    ));
     // ADR 0214: ctrl do's store and run logs, <data>/ctrl/do (0700, files 0600).
     let mut ctrl = qrtz_ctrl::service::CtrlService::open(
         dirs.data.join("ctrl"),
@@ -644,27 +653,25 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         let helper = Arc::new(qrtz_ctrl::helper::HelperClient::new(Box::new(
             crate::ctrl_helper::SupervisorWire::new(sup, rt),
         )));
-        // ADR 0116: the Laya scorer only with the user's consent and the installed model, whose path rides on every
-        // `ctrl.laya`; otherwise (and on builds without the `laya` feature) the heuristic layer answers.
-        let laya = crate::ctrl_model::CtrlLayaModel::new(
-            dirs.data.join("models").join("ctrl"),
-            &dirs.data.join("ctrl"),
-            None,
+        // ADR 0116 / QRT-293: the Laya model is ctrl's only scorer, and only once it is consented, installed and
+        // verified; the path rides on every `ctrl.laya`. Until then (and on builds without the `laya` feature) ctrl
+        // decides nothing and takes no action.
+        let slot = ctrl_slot.clone();
+        tracing::info!(
+            status = slot.readiness().status.code(),
+            "ctrl.laya: model at start (re-read per question)"
         );
-        let consent = laya.consent();
-        let (_, fallback) = qrtz_ctrl::laya::select_scorer(&consent, None);
-        tracing::info!(?fallback, "ctrl.laya: scorer at start (re-read per question)");
-        // Run 19: re-selected per question, so a download that finishes (or an off) applies without a restart.
-        let scorer = qrtz_ctrl::laya::LiveScorer {
-            consent: Box::new(move || laya.consent()),
-            helper: helper.clone(),
-            model: qrtz_ctrl::decide::ModelId {
+        // Run 19: re-checked per question, so a download that finishes (or an off) applies without a restart.
+        let scorer = qrtz_ctrl::laya::LiveScorer::new(
+            Box::new(move || slot.readiness()),
+            helper.clone(),
+            qrtz_ctrl::decide::ModelId {
                 id: "laya".into(),
                 version: crate::ctrl_model::CtrlManifest::pinned().manifest.version,
                 quant: None,
             },
-            runtime_build: qrtz_ctrl::laya::RUNTIME_BUILD,
-        };
+            qrtz_ctrl::laya::RUNTIME_BUILD,
+        );
         // ADR 0133: warm the model on the helper once it can be used (consent + the installed model on disk +
         // the helper up and settled), from a low-priority thread of its own. The helper answers at once and loads
         // on its background queue, so no echo/nano start or ctrl question waits on it; nothing is downloaded.
@@ -711,14 +718,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     if tokio::runtime::Handle::try_current().is_ok() {
         calendar.spawn();
     }
-    // ADR 0116: the model's consent and verified download, on every OS (only a macOS `laya` build runs it).
-    service.set_ctrl_model(Arc::new(crate::ctrl_model::CtrlModelSlot::new(
-        crate::ctrl_model::CtrlLayaModel::new(
-            dirs.data.join("models").join("ctrl"),
-            &dirs.data.join("ctrl"),
-            None,
-        ),
-    )));
+    service.set_ctrl_model(ctrl_slot);
     service.set_speech_tap(helper_line_tap(attach.clone(), note_speech.clone(), warm));
     Ok(BuiltApp {
         service,

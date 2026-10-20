@@ -2,6 +2,8 @@
 //! before any network call; the pinned manifest is laya-coreml @ 7b8d7a2 (e8, L512) + tokenizer.json; with a test
 //! manifest the download is verified (size + sha256) through the package manager, a damaged file is
 //! refused and fetched again, and only an installed, consented model reaches `select_scorer` with its path.
+//! QRT-293: the model is required, so every not-ready case (not downloaded, mid-download, hash mismatch) is a status
+//! that blocks ctrl, never a fallback.
 //! Withdrawing consent deletes the model. Served by the qrtz-speech test kit on loopback.
 //!
 //! ADR 0157 §6/§9 (Bozniak): model.laya is the one model an extension reads in its own process, so it installs only
@@ -297,7 +299,13 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     assert!(m.installed());
     let st = m.state(true);
     assert_eq!((st.state, st.scorer), ("installed", "laya"));
-    assert_eq!(m.state(false).scorer, "heuristic", "no runtime in this build");
+    assert_eq!(st.status, "ready");
+    assert_eq!(m.readiness().status, qrtz_ctrl::decide::ModelStatus::Ready);
+    assert_eq!(
+        m.state(false).scorer,
+        "heuristic",
+        "no runtime in this build: nothing decides"
+    );
     let c = m.consent();
     assert!(c.consented);
     let entry = package(d.path()).join("laya.mlpackage");
@@ -315,14 +323,108 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     std::fs::remove_file(&answer).unwrap();
     assert!(m.consented() && m.consent().installed.is_some());
     std::fs::write(&answer, saved).unwrap();
-    // Off this macOS `laya` build the heuristic still answers.
-    let (_s, why) = qrtz_ctrl::laya::select_scorer(&c, None);
-    assert_eq!(why, Some(qrtz_ctrl::laya::Fallback::NotThisBuild));
+    // QRT-293: off a macOS `laya` build nothing decides (no rules fallback): no scorer, and why.
+    let why = qrtz_ctrl::laya::select_scorer(&c, None).err();
+    assert_eq!(why, Some(qrtz_ctrl::decide::ModelStatus::Unavailable));
+    assert_eq!(m.state(false).status, "unavailable");
     // Withdrawing consent deletes the model; the path no longer reaches the scorer.
     m.set_consent(false, 2).unwrap();
     assert!(!package(d.path()).exists());
     assert_eq!(m.consent().installed, None);
     assert_eq!(m.state(true).state, "off");
+    cleanup(d);
+}
+
+/// QRT-293 (Bozniak 2): every not-ready case is a status that blocks ctrl, read by the scorer and `ctrl:model` from
+/// the one slot: not downloaded, mid-download (`downloading`), a download that fails its pinned sha256
+/// (`hash_mismatch`), and installed files that no longer hash to the pin (`hash_mismatch`, checked before first use);
+/// only verified files are `ready`, with the path. All through the one downloader (`local_models`, the speech
+/// models' pinned path), loopback only.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn every_not_ready_case_blocks_ctrl_with_its_status() {
+    use qrtz_app::ctrl_model::CtrlModelSlot;
+    use qrtz_ctrl::decide::ModelStatus as S;
+    let srv = Server::start().await;
+    let d = tempfile::tempdir().unwrap();
+    let root = d.path().join("models/ctrl");
+    let idx = index().await;
+    let mk = || {
+        idx.on(CtrlLayaModel::with_manifest(
+            &root,
+            &d.path().join("ctrl"),
+            manifest(&srv, false),
+            Some(srv.base.clone()),
+        ))
+    };
+    let slot = CtrlModelSlot::new(mk());
+    let path = srv.routes.lock().unwrap().keys().next().unwrap().clone();
+    // Not downloaded: no consent yet, then consented with nothing on disk.
+    assert_eq!(
+        slot.readiness(),
+        qrtz_ctrl::laya::Readiness::not(S::NotDownloaded)
+    );
+    mk().set_consent(true, 1).unwrap();
+    assert_eq!(slot.readiness().status, S::NotDownloaded);
+    // Mid-download: a throttled transfer is `downloading`, never ready, until it is cancelled.
+    srv.faults
+        .lock()
+        .unwrap()
+        .throttle
+        .insert(path.clone(), std::time::Duration::from_millis(200));
+    let st = slot.set_consent(true, 2).await.unwrap();
+    assert_eq!(slot.readiness(), qrtz_ctrl::laya::Readiness::not(S::Downloading));
+    assert_ne!(st.status, "ready");
+    slot.set_consent(false, 3).await.unwrap();
+    srv.faults.lock().unwrap().throttle.clear();
+    for _ in 0..100 {
+        if slot.readiness().status != S::Downloading {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(slot.readiness().status, S::NotDownloaded);
+    // A download whose bytes don't hash to the pin: refused, nothing installed, `hash_mismatch`.
+    // (A fresh slot, as after a restart: the cancelled transfer above may still be winding down in its task.)
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let slot = CtrlModelSlot::new(mk());
+    srv.faults.lock().unwrap().corrupt.insert(path.clone());
+    slot.set_consent(true, 4).await.unwrap();
+    for _ in 0..100 {
+        if slot.readiness().status != S::Downloading {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        slot.readiness(),
+        qrtz_ctrl::laya::Readiness::not(S::HashMismatch),
+        "{:?}",
+        slot.state().error
+    );
+    assert!(!mk().installed());
+    // A clean download is ready, with the verified path.
+    srv.faults.lock().unwrap().corrupt.clear();
+    let m = mk();
+    m.download(&DownloadControl::default(), &|_| {}).await.unwrap();
+    let r = m.readiness();
+    assert_eq!(r.status, S::Ready);
+    let entry = package(d.path()).join("laya.mlpackage");
+    assert_eq!(r.path.as_deref(), Some(entry.as_path()));
+    // Installed files changed in place (same size, same read-only mode, different bytes): a fresh start re-hashes
+    // before the first use and refuses them.
+    let f = entry.join("Data/com.apple.CoreML/model.mlmodel");
+    let ro = std::fs::metadata(&f).unwrap().permissions();
+    let mut bytes = std::fs::read(&f).unwrap();
+    bytes[0] ^= 0xff;
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::write(&f, &bytes).unwrap();
+    std::fs::set_permissions(&f, ro).unwrap();
+    assert!(mk().installed(), "sizes and modes still match");
+    assert_eq!(mk().readiness(), qrtz_ctrl::laya::Readiness::not(S::HashMismatch));
+    assert_eq!(CtrlModelSlot::new(mk()).readiness().status, S::HashMismatch);
+    // A placeholder manifest has nothing to download: `unavailable`.
+    let p = CtrlLayaModel::with_manifest(&root, &d.path().join("ctrl"), manifest(&srv, true), None);
+    assert_eq!(p.readiness().status, S::Unavailable);
     cleanup(d);
 }
 
@@ -373,6 +475,8 @@ mod router {
         assert_eq!(v["ok"], true, "{v}");
         assert_eq!(v["data"]["state"], "off", "{v}");
         assert_eq!(v["data"]["scorer"], "heuristic");
+        // QRT-293: this build can't run the model, so ctrl is blocked and says so.
+        assert_eq!(v["data"]["status"], "unavailable", "{v}");
         assert_eq!(v["data"]["sizeBytes"], 483_924_446u64);
         let hits = || srv.faults.lock().unwrap().hits.clone();
         assert!(hits().is_empty(), "no request before the yes");
