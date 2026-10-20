@@ -40,12 +40,17 @@ qrtz-echo ai.qrtz.echo native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements
 ent_file() { case "$1" in app) echo "$app_ent" ;; none) echo "" ;; *) echo "$repo/$1" ;; esac; }
 keys() { grep -o '<key>[^<]*</key>' | sed 's/<[^>]*>//g' | sort; }
 
+# A dev stub is the tiny shell script apps/desktop/src-tauri/build.rs writes ("#!/bin/sh" + the marker). Only that is
+# refused: a real Mach-O such as qrtz-app contains the "qrtz: dev stub" string itself (qrtz-helper-bridge DEV_STUB_MARK),
+# so grepping the whole file blocked real release binaries. The check always runs; it is never skipped.
+is_dev_stub() { [[ "$(head -c 2 "$1" 2>/dev/null)" == '#!' ]] && grep -q "qrtz: dev stub" "$1"; }
+
 echo "== sign nested code"
 while read -r name id ent; do
   [[ -n "$name" ]] || continue
   bin="$macos/$name"
   [[ -f "$bin" ]] || { echo "$bin missing (externalBin in tauri.macos.conf.json?)" >&2; exit 1; }
-  if grep -q "qrtz: dev stub" "$bin"; then echo "$bin is a dev stub" >&2; exit 1; fi
+  if is_dev_stub "$bin"; then echo "$bin is a dev stub" >&2; exit 1; fi
   f="$(ent_file "$ent")"
   args=(--force --options runtime --timestamp --identifier "$id" --sign "$identity")
   [[ -n "$f" ]] && args+=(--entitlements "$f")
