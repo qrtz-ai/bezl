@@ -30,12 +30,27 @@ macos="$app/Contents/MacOS"
 
 # name identifier entitlements(app | none | repo path). Must match confinement-map.json bundledCode (checked by
 # crates/qrtz-lifecycle/tests/offline_graph.rs).
-# ADR 0174: the `qrtz` command and echo's own executable (ai.qrtz.echo, microphone entitlement; covered by the app's
-# notarization). nano, ctrl and snap are signed in their packages (scripts/modules/build-packages.sh, moduleCode).
+# ADR 0174: the `qrtz` command. QRT-255: the bundled module helpers (echo's qrtz-echo today) are NOT listed here:
+# their name, identifier, requirement and entitlements come from each modules/*/module.json (bundled-helpers.sh), the
+# same file the launcher's requirement comes from. nano, ctrl and snap are signed in their packages
+# (scripts/modules/build-packages.sh, moduleCode). qrtz-dash-net is never bundled or signed here (ADR 0231).
 NESTED="
 qrtz ai.qrtz.cli none
-qrtz-echo ai.qrtz.echo native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements
 "
+# shellcheck source=bundled-helpers.sh
+source "$repo/scripts/release/bundled-helpers.sh"
+helpers="$(bundled_helpers "$repo/modules")" || exit 1
+# name identifier entitlements requirement, tab-separated: the NESTED rows get the default Developer ID requirement.
+default_dr() { echo "identifier \"$1\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"$team\""; }
+SIGN=""
+while read -r name id ent; do
+  [[ -n "$name" ]] && SIGN+="$name"$'\t'"$id"$'\t'"$ent"$'\t'"$(default_dr "$id")"$'\n'
+done <<<"$NESTED"
+while IFS=$'\t' read -r name id ent req; do
+  [[ -n "$name" ]] || continue
+  [[ "$req" == *"certificate leaf[subject.OU] = \"$team\""* ]] || { echo "$name: module.json requirement does not pin team $team" >&2; exit 1; }
+  SIGN+="$name"$'\t'"$id"$'\t'"$ent"$'\t'"$req"$'\n'
+done <<<"$helpers"
 
 ent_file() { case "$1" in app) echo "$app_ent" ;; none) echo "" ;; *) echo "$repo/$1" ;; esac; }
 keys() { grep -o '<key>[^<]*</key>' | sed 's/<[^>]*>//g' | sort; }
@@ -46,7 +61,7 @@ keys() { grep -o '<key>[^<]*</key>' | sed 's/<[^>]*>//g' | sort; }
 is_dev_stub() { [[ "$(head -c 2 "$1" 2>/dev/null)" == '#!' ]] && grep -q "qrtz: dev stub" "$1"; }
 
 echo "== sign nested code"
-while read -r name id ent; do
+while IFS=$'\t' read -r name id ent req; do
   [[ -n "$name" ]] || continue
   bin="$macos/$name"
   [[ -f "$bin" ]] || { echo "$bin missing (externalBin in tauri.macos.conf.json?)" >&2; exit 1; }
@@ -56,18 +71,17 @@ while read -r name id ent; do
   [[ -n "$f" ]] && args+=(--entitlements "$f")
   codesign "${args[@]}" "$bin"
   echo "  $name: $id, entitlements ${ent}"
-done <<<"$NESTED"
+done <<<"$SIGN"
 
 echo "== reseal qrtz.app"
 codesign --force --options runtime --timestamp --entitlements "$app_ent" --sign "$identity" "$app"
 
 echo "== check"
 codesign --verify --strict --deep --verbose=2 "$app"
-while read -r name id ent; do
+while IFS=$'\t' read -r name id ent req; do
   [[ -n "$name" ]] || continue
   bin="$macos/$name"
-  dr="identifier \"$id\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"$team\""
-  codesign --verify --strict -R="$dr" "$bin"
+  why="$(check_helper "$bin" "$id" "$req")" || { echo "$name: $why" >&2; exit 1; }
   info="$(codesign -dv "$bin" 2>&1)" # not piped into grep -q: its early exit SIGPIPEs codesign under pipefail
   grep -q 'flags=0x10000(runtime)' <<<"$info" || { echo "$name: no hardened runtime" >&2; exit 1; }
   got="$(codesign -d --entitlements - --xml "$bin" 2>/dev/null | keys || true)"
@@ -79,7 +93,7 @@ while read -r name id ent; do
     exit 1
   fi
   echo "  $name: ok ($id, runtime, entitlements [$(tr '\n' ' ' <<<"$want")])"
-done <<<"$NESTED"
+done <<<"$SIGN"
 
 [[ "$notarize" == 1 ]] || { echo "signed; not notarized (--no-notarize)"; exit 0; }
 
