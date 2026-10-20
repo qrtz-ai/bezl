@@ -101,6 +101,9 @@ pub fn run() {
     app.run(|app, ev| match ev {
         // Closing the last window keeps qrtz running on macOS (dock + menu bar); elsewhere it quits, like Electron.
         RunEvent::ExitRequested { api, code: None, .. } if cfg!(target_os = "macos") => api.prevent_exit(),
+        // A Dock click or relaunch of the running app: bring the hidden (or closed) main window back.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => windows::show_main(app),
         RunEvent::Exit => backend::shutdown(app),
         _ => {}
     });
