@@ -78,6 +78,7 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium webkit
       - run: bun run e2e
+        working-directory: apps/desktop
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -229,7 +230,7 @@ jobs:
       - name: tauri build (unsigned)
         run: |
           env -u APPLE_SIGNING_IDENTITY -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID \
-            -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_KEY_PATH bun run make
+            -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_KEY_PATH bun run --cwd apps/desktop make
       - name: locate bundle
         id: bundle
         run: |
