@@ -277,10 +277,10 @@ impl CtrlModelSlot {
         if r.status == S::Ready {
             return r;
         }
-        if self.busy.lock().unwrap().is_some() && self.model.consented() {
+        if self.busy.lock().unwrap_or_else(|e| e.into_inner()).is_some() && self.model.consented() {
             return qrtz_ctrl::laya::Readiness::not(S::Downloading);
         }
-        if self.error.lock().unwrap().as_deref() == Some("checksum") {
+        if self.error.lock().unwrap_or_else(|e| e.into_inner()).as_deref() == Some("checksum") {
             return qrtz_ctrl::laya::Readiness::not(S::HashMismatch);
         }
         r
