@@ -115,7 +115,7 @@ pub fn spawn(job: impl FnOnce() + Send + 'static) {
             std::thread::Builder::new()
                 .name(format!("qrtz-media-{i}"))
                 .spawn(move || loop {
-                    let job = match rx.lock().unwrap_or_else(|p| p.into_inner()).recv() {
+                    let job = match rx.lock().unwrap_or_else(crate::poison::recover).recv() {
                         Ok(job) => job,
                         Err(_) => return,
                     };

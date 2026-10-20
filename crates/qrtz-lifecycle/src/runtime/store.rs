@@ -49,7 +49,7 @@ impl DbExec for InlineDb {
         &self,
         f: impl FnOnce(&mut Db) -> qrtz_storage::Result<R> + Send + 'static,
     ) -> BoxFut<'_, qrtz_storage::Result<R>> {
-        let r = f(&mut self.0.lock().unwrap_or_else(|p| p.into_inner()));
+        let r = f(&mut self.0.lock().unwrap_or_else(crate::poison::recover));
         Box::pin(std::future::ready(r))
     }
 }

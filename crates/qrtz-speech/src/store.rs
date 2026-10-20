@@ -150,7 +150,7 @@ impl SessionPin {
     pub fn revoked(&self) -> bool {
         self.inner
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(crate::poison::recover)
             .state
             .denied
             .contains(&self.version)
@@ -212,10 +212,7 @@ pub fn choose_engine(a: &SpeechAvailability) -> EngineChoice {
 
 impl Drop for SessionPin {
     fn drop(&mut self) {
-        let mut g = self
-            .inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut g = self.inner.lock().unwrap_or_else(crate::poison::recover);
         if let Some(n) = g.pins.get_mut(&self.version) {
             *n -= 1;
             if *n == 0 {
@@ -308,9 +305,7 @@ impl SpeechStore {
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.inner.lock().unwrap_or_else(crate::poison::recover)
     }
 
     pub fn root(&self) -> &Path {

@@ -282,11 +282,11 @@ impl CtrlService {
 
     /// (do id, run id) of the gates that started waiting since the last call.
     pub fn take_confirm_notices(&self) -> Vec<(String, String)> {
-        std::mem::take(&mut *self.notices.lock().unwrap_or_else(|e| e.into_inner()))
+        std::mem::take(&mut *self.notices.lock().unwrap_or_else(crate::poison::recover))
     }
 
     fn with_store<R>(&self, f: impl FnOnce(&mut Store) -> Result<R, CtrlError>) -> Result<R, CtrlError> {
-        let mut g = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.store.lock().unwrap_or_else(crate::poison::recover);
         let s = g.as_mut().map_err(|e| CtrlError::from(e.clone()))?;
         f(s)
     }
@@ -314,7 +314,7 @@ impl CtrlService {
             ));
         };
         {
-            let mut a = self.active.lock().unwrap_or_else(|e| e.into_inner());
+            let mut a = self.active.lock().unwrap_or_else(crate::poison::recover);
             if a.is_some() {
                 return Err(CtrlError::new(
                     CtrlErrorCode::Validation,
@@ -328,7 +328,7 @@ impl CtrlService {
         let mut labels = self
             .labels
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .remove(log.run_id())
             .unwrap_or_default();
         let step = Driver {
@@ -343,13 +343,13 @@ impl CtrlService {
         .drive();
         self.labels
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .insert(log.run_id().to_string(), labels);
-        *self.active.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self.active.lock().unwrap_or_else(crate::poison::recover) = None;
         if step == Step::Confirming {
             self.notices
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(crate::poison::recover)
                 .push((do_id.to_string(), log.run_id().to_string()));
         }
         self.with_store(|s| s.persist_tail(log, from).map_err(CtrlError::from))
@@ -360,7 +360,7 @@ impl CtrlService {
         let total = log.records().len();
         let at = at.map_or(total, |a| (a as usize).min(total));
         let s = log.state_at(at);
-        let all = self.labels.lock().unwrap_or_else(|e| e.into_inner());
+        let all = self.labels.lock().unwrap_or_else(crate::poison::recover);
         let empty = BTreeMap::new();
         let labels = all.get(log.run_id()).unwrap_or(&empty);
         let decisions: Vec<Value> = s
@@ -502,7 +502,12 @@ impl CtrlService {
                         "ctrl's helper isn't running, so ctrl can't act right now",
                     ));
                 }
-                if self.active.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+                if self
+                    .active
+                    .lock()
+                    .unwrap_or_else(crate::poison::recover)
+                    .is_some()
+                {
                     return Err(CtrlError::new(
                         CtrlErrorCode::Validation,
                         "ctrl is already doing something",
@@ -618,7 +623,7 @@ impl CtrlService {
             }
             "ctrl:stop" => {
                 let run_id = str_field(&p, "runId")?.to_string();
-                let driving = self.active.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let driving = self.active.lock().unwrap_or_else(crate::poison::recover).clone();
                 if driving.as_deref() == Some(run_id.as_str()) {
                     self.stop.store(true, Ordering::SeqCst);
                     return Ok(json!({ "runId": run_id, "status": "stopping" }));

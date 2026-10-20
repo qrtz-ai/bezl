@@ -55,7 +55,7 @@ impl Default for Events {
 pub struct SharedConfig(pub Arc<Mutex<ConfigStore>>);
 impl SharedConfig {
     pub fn get(&self) -> Value {
-        self.0.lock().unwrap_or_else(|p| p.into_inner()).get().clone()
+        self.0.lock().unwrap_or_else(crate::poison::recover).get().clone()
     }
 }
 impl From<ConfigStore> for SharedConfig {
@@ -600,7 +600,7 @@ impl AppService {
                 .relaunch
                 .started
                 .lock()
-                .unwrap_or_else(|p| p.into_inner())
+                .unwrap_or_else(crate::poison::recover)
                 .contains_key(crate::snap::MODULE_ID);
             if s.apply(cfg) {
                 self.events.emit("snap:changed", s.status());
@@ -697,7 +697,7 @@ impl AppService {
             return;
         };
         let g = qrtz_modules::settings::GlobalSettings::from_config(cfg);
-        let mut last = self.helpers_on.lock().unwrap_or_else(|p| p.into_inner());
+        let mut last = self.helpers_on.lock().unwrap_or_else(crate::poison::recover);
         for (id, sup) in [("nano", &h.nano), ("echo", &h.echo), ("ctrl", &h.ctrl)] {
             let on = if id == "ctrl" {
                 g.is_on(id)
@@ -730,10 +730,14 @@ impl AppService {
             .relaunch
             .locked
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .get(id)
             .cloned();
-        let mut started = self.relaunch.started.lock().unwrap_or_else(|p| p.into_inner());
+        let mut started = self
+            .relaunch
+            .started
+            .lock()
+            .unwrap_or_else(crate::poison::recover);
         match v {
             Some(v) => started.insert(id, v),
             None => started.remove(id),
@@ -744,7 +748,7 @@ impl AppService {
         self.relaunch
             .started
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .remove(id);
     }
 
@@ -754,9 +758,13 @@ impl AppService {
             .relaunch
             .locked
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .clone();
-        let started = self.relaunch.started.lock().unwrap_or_else(|p| p.into_inner());
+        let started = self
+            .relaunch
+            .started
+            .lock()
+            .unwrap_or_else(crate::poison::recover);
         started
             .iter()
             .filter_map(|(id, old)| {
@@ -776,7 +784,7 @@ impl AppService {
             .into_iter()
             .map(|(id, old, _)| qrtz_modules::qrtz_lock::package_dir(id, &old))
             .collect();
-        let mut last = self.relaunch.in_use.lock().unwrap_or_else(|p| p.into_inner());
+        let mut last = self.relaunch.in_use.lock().unwrap_or_else(crate::poison::recover);
         if last.as_ref() == Some(&dirs) {
             return;
         }
@@ -836,7 +844,7 @@ impl AppService {
             return;
         };
         let now = (sync.read)();
-        *self.relaunch.locked.lock().unwrap_or_else(|p| p.into_inner()) = now.versions;
+        *self.relaunch.locked.lock().unwrap_or_else(crate::poison::recover) = now.versions;
         let patch = now.patch;
         let cur = self.config.get();
         let changed = patch["modules"].as_object().is_some_and(|m| {
@@ -1006,7 +1014,7 @@ impl AppService {
         // Split: each helper's watcher is its own task. Read the aggregate, emit and store it under one lock, or
         // nano's "echo still starting" can land after echo's "all running" and, with no later event, leave
         // `helper_ready` false (CI run 39383136220). `status()` is a watch borrow, never a supervisor lock.
-        let mut delivered = self.delivered.lock().unwrap_or_else(|p| p.into_inner());
+        let mut delivered = self.delivered.lock().unwrap_or_else(crate::poison::recover);
         let shown = match (src, self.module_helpers.get()) {
             (crate::module_helpers::HelperSource::Monolith, _) | (_, None) => s.clone(),
             (_, Some(h)) => h.status(),
@@ -1023,7 +1031,7 @@ impl AppService {
     pub fn helper_ready(&self) -> bool {
         self.delivered
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .as_ref()
             .is_some_and(|s| s.state == qrtz_helper_bridge::HelperState::Running)
     }
@@ -1033,7 +1041,7 @@ impl AppService {
             .config
             .0
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(crate::poison::recover)
             .set(patch)?;
         self.events.emit("config:changed", next.clone());
         self.talk.config_changed();

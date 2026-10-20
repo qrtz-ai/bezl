@@ -141,21 +141,11 @@ impl NotesVault {
 
     /// Open the vault (first call: create the folder, rebuild/refresh the index, migrate old notes).
     async fn ensure(&self) -> Result<(), AppError> {
-        if self
-            .open
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
-        {
+        if self.open.lock().unwrap_or_else(crate::poison::recover).is_some() {
             return Ok(());
         }
         let _one = self.opening.lock().await;
-        if self
-            .open
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
-        {
+        if self.open.lock().unwrap_or_else(crate::poison::recover).is_some() {
             return Ok(());
         }
         let legacy = self.legacy().await?;
@@ -176,10 +166,7 @@ impl NotesVault {
         .await
         .map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))?
         .map_err(verr)?;
-        let mut g = self
-            .open
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut g = self.open.lock().unwrap_or_else(crate::poison::recover);
         if g.is_none() {
             *g = Some(v);
         }
@@ -193,7 +180,7 @@ impl NotesVault {
         self.ensure().await?;
         let me = self.clone();
         tokio::task::spawn_blocking(move || {
-            let mut g = me.open.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut g = me.open.lock().unwrap_or_else(crate::poison::recover);
             let v = g
                 .as_mut()
                 .ok_or_else(|| VaultError::Invalid("notes folder unavailable".into()))?;
@@ -223,10 +210,7 @@ impl NotesVault {
         match channel {
             "vault:get" => {
                 self.ensure().await?;
-                let g = self
-                    .open
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let g = self.open.lock().unwrap_or_else(crate::poison::recover);
                 Ok(self.info(g.as_ref().ok_or_else(unavailable)?))
             }
             "vault:choose" => {
@@ -237,19 +221,13 @@ impl NotesVault {
                     .flatten();
                 let Some(path) = picked else {
                     self.ensure().await?;
-                    let g = self
-                        .open
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let g = self.open.lock().unwrap_or_else(crate::poison::recover);
                     let mut v = self.info(g.as_ref().ok_or_else(unavailable)?);
                     v["canceled"] = json!(true);
                     return Ok(v);
                 };
                 self.switch_to(&path).await?;
-                let g = self
-                    .open
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let g = self.open.lock().unwrap_or_else(crate::poison::recover);
                 let mut v = self.info(g.as_ref().ok_or_else(unavailable)?);
                 v["canceled"] = json!(false);
                 Ok(v)
@@ -339,10 +317,7 @@ impl NotesVault {
             json!({"path": canon}).to_string().as_bytes(),
         )
         .map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))?;
-        *self
-            .open
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(v);
+        *self.open.lock().unwrap_or_else(crate::poison::recover) = Some(v);
         self.changed(vec![]);
         Ok(())
     }
@@ -366,10 +341,7 @@ impl NotesVault {
     /// One poll: reindex what changed on disk (only once the vault was opened).
     pub fn poll(&self) {
         let rep = {
-            let mut g = self
-                .open
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut g = self.open.lock().unwrap_or_else(crate::poison::recover);
             match g.as_mut() {
                 Some(v) => v.rescan(),
                 None => return,

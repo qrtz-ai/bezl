@@ -10,6 +10,7 @@ mod arbiter;
 pub mod fusion;
 pub(crate) mod js;
 mod pipeline;
+mod poison;
 #[cfg(feature = "runtime")]
 pub mod runtime;
 mod session;
