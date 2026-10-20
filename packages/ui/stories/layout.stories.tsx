@@ -57,7 +57,7 @@ function ShellDemo() {
         <Page title={bar}>
           <Text muted>
             the {bar} page, in the shared page layout. the side nav is{' '}
-            {SIDENAV_WIDTH}px: every label is four characters or fewer.
+            {SIDENAV_WIDTH}px wide.
           </Text>
         </Page>
       </AppFrame>

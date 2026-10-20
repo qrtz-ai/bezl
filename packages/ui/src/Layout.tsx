@@ -178,10 +178,9 @@ export type SideNavItem = {
 };
 
 /**
- * The side nav's width: every row label is four characters or fewer (echo, nano, ctrl, snap, apps, opts), so it is
- * sized to an icon + a four-letter Geist Pixel Square label + room for the update dot, inside 8px gutters.
+ * The side nav's width: the original 176px (restored at Jared's request after 23e503d narrowed it to 104).
  */
-export const SIDENAV_WIDTH = 104;
+export const SIDENAV_WIDTH = 176;
 
 /** The app's main navigation: a vertical sidebar of icon + lowercase label rows. Each row gets data-testid `nav-<id>`. */
 export function SideNav({
