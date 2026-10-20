@@ -93,6 +93,8 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     sizeBytes: 483_924_446,
     bytesOnDisk: 0,
     scorer: 'heuristic',
+    // QRT-293: mirrors the backend's model status (the mock's own runs are unchanged; the renderer is foo's).
+    status: 'not_downloaded',
     error: null,
   };
 
@@ -416,12 +418,15 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
             consented: true,
             state: 'installed',
             bytesOnDisk: model.sizeBytes,
+            // Like a build without the Core ML runtime: installed, but nothing can run it.
+            status: 'unavailable',
             error: null,
           }
         : {
             ...model,
             consented: false,
             state: 'off',
+            status: 'not_downloaded',
             error: null,
             bytesOnDisk: 0,
           };

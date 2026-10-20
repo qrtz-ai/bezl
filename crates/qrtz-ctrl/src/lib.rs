@@ -11,7 +11,8 @@
 //!
 //! - [`ax`]: the tree as the helper sends it (wire) and as the log holds it (hashed tokens only), pruning, grouping
 //!   to ≤ 20 options, the tree hash and diff. Secure, password and payment fields never enter it.
-//! - [`chain`]: the option sources and heuristic priors of every node, a pure function of the goal and the state.
+//! - [`chain`]: the option sources of every node and the ranks that prune them to ≤ 20 (never a decision: QRT-293
+//!   removed the rules scorer; the downloaded model decides), a pure function of the goal and the state.
 //! - [`decide`]: scoring, calibration, act / tentative / ask, backtracking, replay check.
 //! - [`act`]: the fixed action set and its policy (no free-form AppleScript, no coordinate clicks).
 //! - [`gate`]: the host-owned confirm rules table; approvals bind to (element handle, action, tree hash).
