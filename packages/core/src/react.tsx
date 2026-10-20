@@ -94,6 +94,21 @@ export function useQrtzEvent<E extends EventName>(
  */
 /** A module whose models a scoped speech call names. */
 type SpeechScope = 'echo' | 'nano' | 'ctrl';
+const SPEECH_SCOPES: readonly string[] = ['echo', 'nano', 'ctrl'];
+
+/** Not ready: what a scoped hook shows when its scope is empty or unknown, or its status can't be read. */
+const notReady = (
+  prev: SpeechSetupStatus | null = null,
+): SpeechSetupStatus => ({
+  configured: true,
+  installed: null,
+  bytes: 0,
+  latest: prev?.latest ?? null,
+  latestBytes: prev?.latestBytes ?? null,
+  waiting: prev?.waiting ?? null,
+  listExpired: prev?.listExpired ?? false,
+  download: prev?.download ?? { state: 'idle', done: 0, total: 0 },
+});
 
 export function useSpeechSetup(
   opts: { check?: boolean; extensions?: readonly SpeechScope[] } = {},
@@ -103,21 +118,38 @@ export function useSpeechSetup(
   const [error, setError] = useState<string | null>(null);
   // QRT-277: a module's notice asks about only its own models (`extensions`), not every switched-on module's.
   // The streamed `speech:status` event is the global status, so a scoped hook keeps only its download progress
-  // and reads its own installed state again.
+  // and reads its own installed state again. Fail closed: an empty or unknown scope is never sent (it would read
+  // as "every module" or nothing) and shows not ready, and a failed read drops a stale "installed".
   const scope = opts.extensions?.join('\0');
   useEffect(() => {
     let live = true;
-    const fail = (e: Error) => live && setError(e.message);
-    const extensions =
-      scope === undefined ? undefined : (scope.split('\0') as SpeechScope[]);
+    const extensions = scope === undefined ? undefined : scope.split('\0');
+    if (
+      extensions &&
+      (!extensions.length || extensions.some((e) => !SPEECH_SCOPES.includes(e)))
+    ) {
+      setError('unknown speech scope');
+      setSpeech(notReady());
+      return;
+    }
+    const scoped = extensions as SpeechScope[] | undefined;
+    const fail = (e: Error) => {
+      if (!live) return;
+      setError(e.message);
+      if (scoped) setSpeech((prev) => notReady(prev));
+    };
     const read = () =>
       client
-        .invoke('speech:status', extensions ? { extensions } : {})
-        .then((s) => live && setSpeech(s), fail);
+        .invoke('speech:status', scoped ? { extensions: scoped } : {})
+        .then((s) => {
+          if (!live) return;
+          setError(null);
+          setSpeech(s);
+        }, fail);
     void read();
     const offs = [
       client.on('speech:status', (s) => {
-        if (!extensions) return setSpeech(s);
+        if (!scoped) return setSpeech(s);
         setSpeech((prev) => (prev ? { ...prev, download: s.download } : prev));
         void read().then(
           () =>

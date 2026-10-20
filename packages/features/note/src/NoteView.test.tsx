@@ -14,11 +14,14 @@ import NoteView from './NoteView';
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function mount() {
+async function mount(calls: { channel: string; req: unknown }[] = []) {
   const client = {
     subApp: 'note',
-    invoke: async (channel: string) =>
-      (ipcSamples as Record<string, { response: unknown }>)[channel]?.response,
+    invoke: async (channel: string, req: unknown) => {
+      calls.push({ channel, req });
+      return (ipcSamples as Record<string, { response: unknown }>)[channel]
+        ?.response;
+    },
     on: () => () => {},
   } as unknown as QrtzClient;
   const el = document.createElement('div');
@@ -78,6 +81,17 @@ describe("nano's opts", () => {
     await v.settle();
     expect(v.q('note-settings')).toBeNull();
     expect(v.q('note-app')).not.toBeNull();
+    v.unmount();
+  });
+});
+
+describe("nano's speech notice (QRT-277)", () => {
+  it("asks about only nano's models", async () => {
+    const calls: { channel: string; req: unknown }[] = [];
+    const v = await mount(calls);
+    const status = calls.filter((c) => c.channel === 'speech:status');
+    expect(status.length).toBeGreaterThan(0);
+    for (const c of status) expect(c.req).toEqual({ extensions: ['nano'] });
     v.unmount();
   });
 });
