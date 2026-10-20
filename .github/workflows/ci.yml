@@ -119,6 +119,9 @@ jobs:
         run: |
           cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # Bozniak call 2: the dash helper's fail-closed and no-override tests must pass in a release build too.
+      - name: qrtz-dash-net release tests (fail closed, no dev override)
+        run: cargo test -p qrtz-dash-net --release --test fail_closed --test dev_origin
 
   macos:
     name: macOS · swift test · cargo test · cargo check desktop
