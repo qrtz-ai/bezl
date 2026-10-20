@@ -53,7 +53,7 @@ export default function NoteView() {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const qrtz = useQrtz();
-  const speechSetup = useSpeechSetup({ check: false });
+  const speechSetup = useSpeechSetup({ check: false, extensions: ['nano'] });
   // Lifecycle state comes only from main (note:session); the view never guesses.
   const session = useSession();
   const [query, setQuery] = useState('');

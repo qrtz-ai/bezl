@@ -266,7 +266,7 @@ function TalkOn({
     if (route.path === SETTINGS_PATH) route.navigate('', { replace: true });
   };
   const qrtz = useQrtz();
-  const speechSetup = useSpeechSetup({ check: false });
+  const speechSetup = useSpeechSetup({ check: false, extensions: ['echo'] });
   const toast = useToast();
   const live = useQrtzEvent('talk:state');
   const changed = useQrtzEvent('talk:history-changed');

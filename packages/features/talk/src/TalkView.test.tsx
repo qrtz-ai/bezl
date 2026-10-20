@@ -192,6 +192,31 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
   });
 });
 
+describe("echo's speech notice checks only echo's models (QRT-277)", () => {
+  it("says nothing when parakeet is installed but nano's models are not", async () => {
+    // The global status covers every switched-on module (nano's Nemotron sets too): not installed.
+    const v = await mount(
+      async () => installed,
+      {},
+      async () => none,
+    );
+    expect(v.q('echo-offer')).toBeNull();
+    expect(v.q('speech-notice')).toBeNull();
+    // A streamed (global) status event doesn't bring the notice back either.
+    await v.emit('speech:status', none);
+    await v.settle();
+    expect(v.q('speech-notice')).toBeNull();
+    expect(
+      v.calls.some(
+        (c) =>
+          c.channel === 'speech:status' &&
+          !(c.req as { extensions?: string[] })?.extensions,
+      ),
+    ).toBe(false);
+    v.unmount();
+  });
+});
+
 describe('the echo switch waits for the model status (N180)', () => {
   const deferred = () => {
     let answer: (s: SpeechSetupStatus) => void = () => {};

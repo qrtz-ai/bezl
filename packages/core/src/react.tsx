@@ -89,22 +89,50 @@ export function useQrtzEvent<E extends EventName>(
  * events and the actions. Needs `speech.read` (+ `speech.manage` to act).
  *
  * ADR 0078: opening a screen never goes online. `speech:check` (the release list) runs only from `check()`,
- * which the user starts; `_opts` is accepted for older callers and ignored.
+ * which the user starts; `check` is accepted for older callers and ignored. `extensions` scopes the status to
+ * those modules' models (QRT-277).
  */
-export function useSpeechSetup(_opts: { check?: boolean } = {}) {
+/** A module whose models a scoped speech call names. */
+type SpeechScope = 'echo' | 'nano' | 'ctrl';
+
+export function useSpeechSetup(
+  opts: { check?: boolean; extensions?: readonly SpeechScope[] } = {},
+) {
   const client = useQrtz();
   const [speech, setSpeech] = useState<SpeechSetupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // QRT-277: a module's notice asks about only its own models (`extensions`), not every switched-on module's.
+  // The streamed `speech:status` event is the global status, so a scoped hook keeps only its download progress
+  // and reads its own installed state again.
+  const scope = opts.extensions?.join('\0');
   useEffect(() => {
     let live = true;
     const fail = (e: Error) => live && setError(e.message);
-    client.invoke('speech:status', {}).then((s) => live && setSpeech(s), fail);
-    const offs = [client.on('speech:status', (s) => setSpeech(s))];
+    const extensions =
+      scope === undefined ? undefined : (scope.split('\0') as SpeechScope[]);
+    const read = () =>
+      client
+        .invoke('speech:status', extensions ? { extensions } : {})
+        .then((s) => live && setSpeech(s), fail);
+    void read();
+    const offs = [
+      client.on('speech:status', (s) => {
+        if (!extensions) return setSpeech(s);
+        setSpeech((prev) => (prev ? { ...prev, download: s.download } : prev));
+        void read().then(
+          () =>
+            live &&
+            setSpeech((prev) =>
+              prev ? { ...prev, download: s.download } : prev,
+            ),
+        );
+      }),
+    ];
     return () => {
       live = false;
       offs.forEach((off) => off());
     };
-  }, [client]);
+  }, [client, scope]);
   const act =
     <T,>(p: () => Promise<T>, set: (v: T) => void) =>
     () => {
