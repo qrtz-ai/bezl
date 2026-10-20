@@ -20,32 +20,36 @@ Every command below runs from `services/dash-worker` with this package's own scr
 
 ## What the worker needs (from `wrangler.toml` and `src/env.ts`)
 
-| Name               | Kind                      | Notes                                                                                                                                  |
-| ------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `DASHBOARD`        | Durable Object binding    | class `Dashboard` (SQLite), migration `v1`                                                                                             |
-| `ENROLL`           | Durable Object binding    | class `EnrollDirectory` (SQLite), migration `v1`                                                                                       |
-| `DASH_PEPPER`      | secret, required          | exactly 64 hex chars (32 bytes). HMAC key for tokens, owner keys, codes, IPs. Missing/bad → every request 503 `server not configured`. |
-| `DASH_SETUP_TOKEN` | secret, required          | ≥ 32 chars. One-time bearer for `POST /v1/owner/setup`; one dashboard per token, ever.                                                 |
-| `DASH_DEV_LOCAL`   | local only, NEVER in prod | only in `.dev.vars` from `bun run dev:local`. Must not be set as a var or secret.                                                      |
+| Name               | Kind                       | Notes                                                                                                                                                                                                 |
+| ------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DASHBOARD`        | Durable Object binding     | class `Dashboard` (SQLite), migration `v1`                                                                                                                                                            |
+| `ENROLL`           | Durable Object binding     | class `EnrollDirectory` (SQLite), migration `v1`                                                                                                                                                      |
+| `DASH_PEPPER`      | secret, required           | exactly 64 hex chars (32 bytes). HMAC key for tokens, owner keys, codes, IPs. Missing/bad → every request 503 `server not configured`.                                                                |
+| `DASH_SETUP_TOKEN` | secret, required           | ≥ 32 chars. One-time bearer for `POST /v1/owner/setup`; one dashboard per token, ever.                                                                                                                |
+| `DASH_ENROLL_KEY`  | secret, required (QRT-284) | exactly 64 hex chars (32 bytes). HMAC key for enrollment codes only: stored form is HMAC(DASH_ENROLL_KEY, "enroll-code:" id "." secret). Missing/bad → `POST /v1/enroll` 503 `server not configured`. |
+| `DASH_DEV_LOCAL`   | local only, NEVER in prod  | only in `.dev.vars` from `bun run dev:local`. Must not be set as a var or secret.                                                                                                                     |
 
-There is no `DASH_ENROLL_KEY` in the code; the enrollment HMAC key is `DASH_PEPPER`. Do not create extra secrets.
+Exactly three secrets: `DASH_PEPPER`, `DASH_SETUP_TOKEN` and `DASH_ENROLL_KEY` (added by QRT-284, so deploy only once QRT-284 is on `main`). Do not create any others.
 
 ## 1. Secrets
 
-Generate and pipe in one step so the value never hits the terminal, history, or clipboard:
+Generate and pipe in one step so the value never hits the terminal or shell history:
 
 ```bash
 cd services/dash-worker
 openssl rand -hex 32 | tr -d '\n' | npx wrangler secret put DASH_PEPPER
-openssl rand -hex 24 | tr -d '\n' | npx wrangler secret put DASH_SETUP_TOKEN
-npx wrangler secret list          # names only; expect exactly DASH_PEPPER and DASH_SETUP_TOKEN
+openssl rand -hex 32 | tr -d '\n' | npx wrangler secret put DASH_ENROLL_KEY
+openssl rand -hex 24 | tr -d '\n' | tee >(pbcopy) | npx wrangler secret put DASH_SETUP_TOKEN
+npx wrangler secret list          # names only; expect exactly DASH_PEPPER, DASH_ENROLL_KEY, DASH_SETUP_TOKEN
 ```
 
-- `DASH_PEPPER` is permanent: rotating it invalidates every agent token, owner key and code. Set it once. If you must
-  keep a copy, generate into your password manager instead of piping, and paste from there into the prompt.
-- `DASH_SETUP_TOKEN`: for the first dashboard you need the value, so generate it into your password manager, run
-  `npx wrangler secret put DASH_SETUP_TOKEN` and paste at the hidden prompt. After the dashboard exists, rotate it to
-  a fresh unknown value with the piped form above.
+- `DASH_PEPPER` is permanent: rotating it invalidates every agent token and owner key. Set it once.
+- `DASH_ENROLL_KEY` keys only enrollment codes. Rotating it kills outstanding (unused, 15-minute) codes and nothing
+  else; enrolled agents keep working.
+- `DASH_SETUP_TOKEN` goes onto your clipboard (via `pbcopy`) and is never echoed. It is one-time: right after the
+  deploy and smoke test (sections 4 and 5), connect the app to `https://dash.qrtz.ai` and paste it to create the
+  dashboard. Then clear the clipboard (`pbcopy </dev/null`) and rotate it to an unknown value:
+  `openssl rand -hex 24 | tr -d '\n' | npx wrangler secret put DASH_SETUP_TOKEN`.
 - Never `echo` a secret, never pass one as a command-line argument, never put one in `wrangler.toml`.
 - If `secret put` runs before the first deploy, wrangler may offer to create the worker; that is fine (it is empty).
 
@@ -109,7 +113,7 @@ Checks (curl only, no secrets): `GET /v1/readme` is 200; `POST /v1/enroll` with 
 `used, expired or wrong`; plain `http://dash.qrtz.ai` is redirected or refused, never served; `POST /v1/owner/test-codes`
 is 404. Exit 0 means all passed. It makes one wrong-code attempt from your IP (counted by the worker; harmless).
 
-Then create the dashboard from the app (it uses `DASH_SETUP_TOKEN`), and rotate `DASH_SETUP_TOKEN` (section 1).
+Then immediately connect the app and create the dashboard with the `DASH_SETUP_TOKEN` on your clipboard, clear the clipboard, and rotate `DASH_SETUP_TOKEN` (section 1). A 503 from the smoke test means a secret is missing: run `npx wrangler secret list`.
 
 ## 6. Rollback
 
@@ -123,5 +127,5 @@ bash scripts/smoke-prod.sh
 - Rollback restores code only. Secrets, Durable Object data and migrations are not rolled back; never roll back past
   the deployment that applied migration `v1`.
 - To take Dash offline entirely: Workers → `qrtz-dash` → Domains & Routes → remove `dash.qrtz.ai` (data kept).
-- If a secret leaked: rotate `DASH_SETUP_TOKEN` freely; rotating `DASH_PEPPER` logs out every agent and owner (needs
+- If a secret leaked: rotate `DASH_SETUP_TOKEN` or `DASH_ENROLL_KEY` freely; rotating `DASH_PEPPER` logs out every agent and owner (needs
   Bozniak and Jared).
