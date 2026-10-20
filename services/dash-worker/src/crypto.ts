@@ -74,7 +74,34 @@ export const codeChars = (n: number) => {
   return out;
 };
 
+/**
+ * QRT-284 (Bozniak): an enrollment code is `<id>.<secret>`. The id (prefix + CODE_ID_CHARS) only finds the row; the
+ * secret (CODE_SECRET_CHARS from the CSPRNG, 17 x log2(30) = 83.4 bits) is the part that proves possession. Only
+ * HMAC(DASH_ENROLL_KEY, id.secret) is stored, and a code dies after ENROLL_CODE_STRIKES wrong secrets on its id.
+ */
+export const CODE_ID_CHARS = 8;
+export const CODE_SECRET_CHARS = 17;
+export const CODE_SECRET_BITS =
+  CODE_SECRET_CHARS * Math.log2(CODE_ALPHABET.length);
+
 export const newCode = (prefix = 'ENR-') => {
-  const c = codeChars(8);
-  return `${prefix}${c.slice(0, 4)}-${c.slice(4)}`;
+  const id = `${prefix}${codeChars(CODE_ID_CHARS)}`;
+  const secret = codeChars(CODE_SECRET_CHARS);
+  return { code: `${id}.${secret}`, id, secret };
 };
+
+const CODE_RE = new RegExp(
+  `^((?:ENR|TST)-[${CODE_ALPHABET}]{${CODE_ID_CHARS}})\\.([${CODE_ALPHABET}]{${CODE_SECRET_CHARS}})$`,
+);
+
+/** Trimmed and upper-cased (hand-typed codes), then split. Null for anything not exactly `<id>.<secret>`. */
+export const parseCode = (
+  raw: string,
+): { id: string; secret: string } | null => {
+  const m = CODE_RE.exec(raw.trim().toUpperCase());
+  return m ? { id: m[1]!, secret: m[2]! } : null;
+};
+
+/** The stored form of a code's secret: hex(HMAC-SHA256(DASH_ENROLL_KEY, "enroll-code:" id "." secret)). */
+export const codeMac = (enrollKeyHex: string, id: string, secret: string) =>
+  hmacHex(enrollKeyHex, `enroll-code:${id}.${secret}`);
