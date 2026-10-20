@@ -324,3 +324,20 @@ async fn a_keychain_read_error_is_reported_not_treated_as_no_key() {
         assert!(e.message.starts_with("keychain: "), "{c}: {}", e.message);
     }
 }
+
+/// Bozniak call 2: the owner key only ever goes to this process's origin (fixed for its life), as a bearer header.
+#[tokio::test]
+async fn the_owner_key_is_only_sent_to_the_bound_origin() {
+    let (h, seen) = helper(200, json!({"agents": []}), Some(KEY));
+    let _ = h.call("dash:view", &json!({})).await;
+    let _ = h.call("dash:connect", &json!({})).await;
+    let seen = seen.lock().unwrap();
+    assert!(!seen.is_empty());
+    for (_, url, bearer, _) in seen.iter() {
+        assert!(url.starts_with(&format!("{}/", origin())), "{url}");
+        assert!(!url.contains(KEY), "key in a url");
+        if !bearer.is_empty() {
+            assert_eq!(bearer, KEY);
+        }
+    }
+}
