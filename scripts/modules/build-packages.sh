@@ -4,6 +4,9 @@
 # moduleCode, checked by crates/qrtz-lifecycle/tests/offline_graph.rs), and optionally make a local dev index.
 #
 #   scripts/modules/build-packages.sh [--out <dir>] [--dev-index] [<module>...]   (default: nano ctrl snap; echo is bundled, ADR 0174)
+#   scripts/modules/build-packages.sh --out <dir> --sign-only <module>...
+#       QRT-297 (release.yml): no build. Re-sign the packages an earlier run left in <dir>/packages (the unsigned build
+#       job's artifact) with $QRTZ_SIGN_ID, the same identifier and entitlements, and check them the same way.
 #
 # Output: <out>/packages/<module>/{qrtz.json, bin/qrtz-<module>} (default out: ~/qrtz-packages), ready for
 # QRTZ_PUBLISH_PACKAGES in scripts/modules/publish.sh, which notarizes each before it enters the index (ADR 0170).
@@ -25,11 +28,13 @@ die() { echo "build-packages: $*" >&2; exit 1; }
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$HOME/qrtz-packages"
 dev_index=0
+sign_only=0
 want=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out) out="${2:?--out <dir>}"; shift 2 ;;
     --dev-index) dev_index=1; shift ;;
+    --sign-only) sign_only=1; shift ;;
     -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
     -*) die "unknown option $1" ;;
     *) want+=("$1"); shift ;;
@@ -55,11 +60,14 @@ fi
 ts=(--timestamp=none)
 [[ "$identity" == "Developer ID Application:"* ]] && ts=(--timestamp)
 
-echo "== swift build (release, arm64)"
-helper="$repo/native/qrtz-helper"
-# shellcheck disable=SC2086
-(cd "$helper" && for p in "${want[@]}"; do swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --product "qrtz-$p"; done)
-bin_dir="$(cd "$helper" && swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
+[[ "$sign_only" == 0 || "$dev_index" == 0 ]] || die "--sign-only and --dev-index don't combine"
+if [[ "$sign_only" == 0 ]]; then
+  echo "== swift build (release, arm64)"
+  helper="$repo/native/qrtz-helper"
+  # shellcheck disable=SC2086
+  (cd "$helper" && for p in "${want[@]}"; do swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --product "qrtz-$p"; done)
+  bin_dir="$(cd "$helper" && swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
+fi
 
 echo "== stage and sign ($identity)"
 for m in "${want[@]}"; do
@@ -67,11 +75,16 @@ for m in "${want[@]}"; do
   [[ -n "$line" ]] || die "$m: not a module (${MODULES//$'\n'/ })"
   read -r _ id ent <<<"$line"
   pkg="$out/packages/$m"
-  rm -rf "$pkg"
-  mkdir -p "$pkg/bin"
-  cp "$repo/modules/$m/qrtz.json" "$pkg/qrtz.json"
   exe="$pkg/bin/qrtz-$m"
-  cp "$bin_dir/qrtz-$m" "$exe"
+  if [[ "$sign_only" == 1 ]]; then
+    [[ -f "$exe" ]] || die "--sign-only: no $exe (the build job's artifact)"
+    cmp -s "$repo/modules/$m/qrtz.json" "$pkg/qrtz.json" || die "--sign-only: $pkg/qrtz.json isn't modules/$m/qrtz.json"
+  else
+    rm -rf "$pkg"
+    mkdir -p "$pkg/bin"
+    cp "$repo/modules/$m/qrtz.json" "$pkg/qrtz.json"
+    cp "$bin_dir/qrtz-$m" "$exe"
+  fi
   chmod 755 "$exe"
   codesign --force --options runtime "${ts[@]}" --identifier "$id" --entitlements "$repo/$ent" --sign "$identity" "$exe"
   info="$(codesign -dv "$exe" 2>&1)"
