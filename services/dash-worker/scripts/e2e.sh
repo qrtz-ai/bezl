@@ -16,7 +16,7 @@ for _ in $(seq 90); do kill -0 $PID 2>/dev/null || break; curl -fsS -m 2 "$B/v1/
 curl -fsS -m 2 "$B/v1/readme" >/dev/null 2>&1 || { echo "wrangler dev did not start:"; tail -20 "$tmp/dev.log"; exit 1; }
 j() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[process.argv[1]]))' "$1"; }
 req() { curl -sS -m 10 -o "$tmp/out" -w '%{http_code}' -X "$1" "$B$2" -H 'content-type: application/json' "${@:3}"; }
-check() { if [ "$1" = "$2" ]; then echo "ok   $3 ($1)"; else echo "FAIL $3: got $1 want $2: $(cat "$tmp/out")"; exit 1; fi; }
+check() { [ "$#" -eq 3 ] || { echo "FAIL check() got $# args, want 3 (status, expected, label): $*"; exit 1; }; if [ "$1" = "$2" ]; then echo "ok   $3 ($1)"; else echo "FAIL $3: got $1 want $2: $(cat "$tmp/out")"; exit 1; fi; }
 check "$(req GET /v1/readme)" 200 "GET /v1/readme over http on 127.0.0.1"
 check "$(req POST /v1/owner/setup -H 'authorization: Bearer nope')" 401 "setup with a wrong token"
 check "$(req POST /v1/owner/setup -H "authorization: Bearer $SETUP")" 201 "setup"
@@ -28,9 +28,12 @@ check "$(req POST /v1/owner/test-codes -H "authorization: Bearer $OWNER")" 201 "
 CODE="$(j code <"$tmp/out")"
 [[ "$CODE" == TST-* ]] && echo "ok   code is a test code (TST-)" || { echo "FAIL code prefix: ${CODE:0:4}"; exit 1; }
 check "$(req POST /v1/enroll -d '{"code":"ENR-AAAA-BBBB","name":"x"}')" 401 "wrong code"
-check "$(req POST /v1/enroll -d "{\"code\":\"$CODE\",\"name\":\"smoke bot\",\"description\":\"local smoke\"}")" 201 "enroll"
+# JSON bodies go into a variable first: macOS /bin/bash 3.2 mis-parses \" inside "$( ... )" (broken body, shifted args).
+body="$(printf '{"code":"%s","name":"smoke bot","description":"local smoke"}' "$CODE")"
+check "$(req POST /v1/enroll -d "$body")" 201 "enroll"
 AID="$(j agent_id <"$tmp/out")"; TOK="$(j agent_token <"$tmp/out")"
-check "$(req POST /v1/enroll -d "{\"code\":\"$CODE\",\"name\":\"again\"}")" 401 "code is single use"
+body="$(printf '{"code":"%s","name":"again"}' "$CODE")"
+check "$(req POST /v1/enroll -d "$body")" 401 "code is single use"
 check "$(req POST /v1/heartbeat -H "authorization: Bearer $TOK" -d '{"status":"idle"}')" 403 "pending agent is refused"
 check "$(req POST "/v1/owner/agents/$AID/review" -H "authorization: Bearer $OWNER" -d '{"approve":true}')" 200 "owner approves agent"
 check "$(req POST /v1/heartbeat -H "authorization: Bearer $TOK" -d '{"status":"idle"}')" 200 "approved heartbeat"
