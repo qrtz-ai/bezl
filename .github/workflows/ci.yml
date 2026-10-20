@@ -164,6 +164,15 @@ jobs:
       - run: cargo check -p qrtz-desktop --all-targets
       - name: cargo test (workspace)
         run: cargo test --workspace
+      # macOS ships /bin/bash 3.2; run the dash-worker e2e under it so bash-3.2 parsing bugs fail CI.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: dash-worker e2e under /bin/bash 3.2
+        working-directory: services/dash-worker
+        run: |
+          /bin/bash --version | head -n1
+          /bin/bash scripts/e2e.sh
 
   # QRT-276 (Bozniak-cleared): KeychainStore type-check (debug and release paths) and the real-keychain tests that
   # gate QRT-260, on a THROWAWAY keychain made in this job and always deleted at the end. The login keychain is never
