@@ -3,8 +3,9 @@
 //! network code of its own). The app's Extensions screen, the `qrtz` CLI and the speech model download all go through
 //! [`Packages`]: one installer, one fetcher, one verify path.
 //!
-//! - **Hosts** are pinned in this binary (`module_hosts.json`): the sole package host `https://modules.qrtz.ai`
-//!   (Cloudflare R2; ADR 0167, no Backblaze B2 mirror), then, for a model file only, the signed tree's own mirror
+//! - **Hosts** are pinned in this binary (`module_hosts.json`): the sole package host, the fixed `index` GitHub
+//!   release `https://github.com/qrtz-ai/qrtz/releases/download/index` (QRT-297; flat asset names,
+//!   [`layout::on_host`]; its redirects are followed only to the pinned `redirectHosts`), then, for a model file only, the signed tree's own mirror
 //!   URL when it is under a pinned model mirror host (`https://huggingface.co`). Nothing else is reachable from
 //!   here, and nothing is reached without a consent: `refresh` takes a `RefreshConsent`, `apply` an
 //!   `InstallConsent` for exactly the plan the user saw.
@@ -36,13 +37,16 @@ pub struct Hosts {
     /// Hosts a signed tree's extra mirror URL may point at (models only).
     pub model_mirrors: Vec<String>,
     pub root1_sha256: Option<String>,
+    /// QRT-297: the only hosts a package-host answer may redirect to (GitHub's release asset CDN). Exact names.
+    #[serde(default)]
+    pub redirect_hosts: Vec<String>,
 }
 
 impl Hosts {
     pub fn pinned() -> Self {
         serde_json::from_str(HOSTS).expect("module_hosts.json")
     }
-    /// The package host is set up once the offline root exists and is pinned here (`hosting-setup.md`). Before
+    /// The package host is set up once the offline root exists and is pinned here (`docs/modules/hosting-setup.md`). Before
     /// that nothing is published to it, so the fetcher never asks it for a blob (audit P0-3: no failed requests
     /// to `modules.qrtz.ai` ahead of every Hugging Face file).
     pub fn configured(&self) -> bool {
@@ -58,6 +62,8 @@ impl Hosts {
 /// The sole package host, plus the allowed model mirror hosts, over the shared downloader.
 pub struct HttpTransport {
     hosts: Vec<Downloader>,
+    /// Each host's base, to map a layout path to what that host serves ([`layout::on_host`]).
+    bases: Vec<String>,
     /// `(allowed prefix, downloader)`: a mirror URL `<prefix>/<path>` is fetched as `<path>` from the downloader's
     /// base (the prefix itself in the app; a loopback server in tests).
     extra: Vec<(String, Downloader)>,
@@ -78,8 +84,24 @@ impl HttpTransport {
     /// allowed mirror prefix to the base actually reached. Tests pass loopback servers; the app passes
     /// [`Hosts::pinned`].
     pub fn new(bases: &[String], extra: &[(String, String)]) -> Self {
+        Self::with_redirects(bases, extra, None)
+    }
+
+    /// [`new`](Self::new), with the package hosts' redirects held to `redirect_hosts` when given.
+    fn with_redirects(
+        bases: &[String],
+        extra: &[(String, String)],
+        redirect_hosts: Option<&[String]>,
+    ) -> Self {
         Self {
-            hosts: bases.iter().map(|b| Downloader::new(b)).collect(),
+            hosts: bases
+                .iter()
+                .map(|b| match redirect_hosts {
+                    Some(r) => Downloader::with_redirect_hosts(b, r),
+                    None => Downloader::new(b),
+                })
+                .collect(),
+            bases: bases.iter().map(|b| b.trim_end_matches('/').to_owned()).collect(),
             extra: extra
                 .iter()
                 .map(|(p, b)| (p.trim_end_matches('/').to_owned(), Downloader::new(b)))
@@ -120,7 +142,7 @@ impl HttpTransport {
     pub fn pinned() -> Self {
         let h = Hosts::pinned();
         let extra: Vec<(String, String)> = h.model_mirrors.iter().map(|m| (m.clone(), m.clone())).collect();
-        let t = Self::new(&h.all(), &extra);
+        let t = Self::with_redirects(&h.all(), &extra, Some(&h.redirect_hosts));
         if h.configured() {
             t
         } else {
@@ -141,22 +163,20 @@ impl HttpTransport {
 /// ADR 0181: qrtz's own update files (`v1/app/…`: the feed and the archives), from the pinned package host only,
 /// through the same fetcher. Nothing else is reachable here: a path outside `v1/app/` is refused.
 impl HttpTransport {
-    fn app_host(&self, path: &str) -> Result<&Downloader, String> {
+    fn app_host(&self, path: &str) -> Result<(&Downloader, String), String> {
         if !path.starts_with(crate::self_update::APP_DIR) || path.contains("..") || path.contains("//") {
             return Err(format!("{path}: not an app update file"));
         }
         if self.dir.is_some() || !self.configured {
             return Err("the package hosts aren't set up yet".into());
         }
-        self.hosts.first().ok_or_else(|| "no package host".to_string())
+        let dl = self.hosts.first().ok_or_else(|| "no package host".to_string())?;
+        Ok((dl, layout::on_host(&self.bases[0], path)))
     }
     /// A small file (the feed), at most `max` bytes; `None` = not there.
     pub async fn app_meta(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
-        let b = self
-            .app_host(path)?
-            .fetch_meta(path)
-            .await
-            .map_err(|e| e.to_string())?;
+        let (dl, p) = self.app_host(path)?;
+        let b = dl.fetch_meta(&p).await.map_err(|e| e.to_string())?;
         match b {
             Some(b) if b.len() > max => Err(format!("{path}: too large")),
             b => Ok(b),
@@ -164,8 +184,8 @@ impl HttpTransport {
     }
     /// `len` bytes of an archive from `start`.
     pub async fn app_range(&self, path: &str, start: u64, len: u64) -> Result<Vec<u8>, String> {
-        self.app_host(path)?
-            .fetch_range(path, start, len, &self.ctl)
+        let (dl, p) = self.app_host(path)?;
+        dl.fetch_range(&p, start, len, &self.ctl)
             .await
             .map_err(|e| e.to_string())
     }
@@ -197,7 +217,7 @@ impl Transport for HttpTransport {
             return Err(format!("{path}: the package hosts aren't set up yet"));
         }
         let b = self.hosts[host]
-            .fetch_meta(path)
+            .fetch_meta(&layout::on_host(&self.bases[host], path))
             .await
             .map_err(|e| e.to_string())?;
         match b {
@@ -229,7 +249,10 @@ impl Transport for HttpTransport {
         }
         let (dl, path) = match src {
             Source::Host(_) if !self.configured => return Err("the package hosts aren't set up yet".into()),
-            Source::Host(i) => (self.hosts.get(*i).ok_or("no such host")?, layout::blob(sha256)),
+            Source::Host(i) => (
+                self.hosts.get(*i).ok_or("no such host")?,
+                layout::on_host(&self.bases[*i], &layout::blob(sha256)),
+            ),
             Source::Url(u) => self
                 .extra
                 .iter()
@@ -529,15 +552,27 @@ mod tests {
     #[test]
     fn the_pinned_hosts_are_https_and_name_no_user() {
         let h = Hosts::pinned();
-        assert_eq!(h.primary, "https://modules.qrtz.ai");
+        assert_eq!(
+            h.primary,
+            "https://github.com/qrtz-ai/qrtz/releases/download/index"
+        );
+        assert!(layout::is_release_base(&h.primary));
         assert!(h.mirrors.is_empty(), "ADR 0167: no package-host mirror");
-        assert_eq!(h.all(), ["https://modules.qrtz.ai"]);
+        assert_eq!(h.all(), [h.primary.clone()]);
+        assert_eq!(
+            h.redirect_hosts,
+            [
+                "objects.githubusercontent.com",
+                "release-assets.githubusercontent.com"
+            ],
+            "QRT-297: GitHub's release asset CDN only"
+        );
         assert!(h.all().iter().all(|u| !u.contains('?') && !u.ends_with('/')));
         assert_eq!(h.model_mirrors, ["https://huggingface.co"]);
     }
 
     /// P0-3: with no pinned root (today), the pinned transport reaches only the model mirror: a pinned model file
-    /// never waits on modules.qrtz.ai first.
+    /// never waits on the package host first.
     #[test]
     fn the_pinned_hosts_are_skipped_until_the_root_is_pinned() {
         let h = Hosts::pinned();
