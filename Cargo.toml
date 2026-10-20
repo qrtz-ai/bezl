@@ -72,3 +72,8 @@ opt-level = "s"
 panic = "unwind"
 # strip off: true corrupts release binaries on Jared's Mac with the current Xcode.
 strip = false
+
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
