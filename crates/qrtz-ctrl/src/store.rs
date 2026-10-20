@@ -88,6 +88,11 @@ pub struct StoreRecord {
     pub hash: String,
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "serde_json on a plain derived type with string keys cannot fail"
+)]
 fn store_digest(r: &StoreRecord) -> String {
     #[derive(Serialize)]
     struct Body<'a> {

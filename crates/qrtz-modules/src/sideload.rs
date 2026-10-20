@@ -260,11 +260,7 @@ pub fn decide(
             if yes.package_sha256 != c.package_sha256 || yes.revocation_issued_ms != issued {
                 return Err(Refusal::ConfirmationMismatch);
             }
-            (
-                Source::Sideload,
-                snap.clone(),
-                took.then(|| snap.expect("adopted")),
-            )
+            (Source::Sideload, snap.clone(), snap.filter(|_| took))
         }
     };
     // Rule 2 (and the network path's own revocation check).

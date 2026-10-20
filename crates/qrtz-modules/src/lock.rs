@@ -116,6 +116,11 @@ struct DigestEntry<'a> {
 /// The content hash of a package: sha256 over the canonical JSON (keys sorted, no whitespace, files sorted by
 /// path) of `[{path, sha256, size}]`. The same value the signed index will carry (M7), so a model set already
 /// pinned file by file (local_models.json) gets one stable hash without re-reading 500 MB.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "serde_json on a plain derived type with string keys cannot fail"
+)]
 pub fn content_digest<'a>(files: impl IntoIterator<Item = (&'a str, u64, &'a str)>) -> String {
     let mut v: Vec<DigestEntry> = files
         .into_iter()
@@ -165,6 +170,11 @@ impl Lockfile {
     }
 
     /// Deterministic bytes (maps are sorted), so the same install state always writes the same file.
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "serde_json on a plain derived type with string keys cannot fail"
+    )]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b = serde_json::to_vec_pretty(self).expect("plain json");
         b.push(b'\n');

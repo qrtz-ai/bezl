@@ -268,7 +268,9 @@ fn pass(
         }
         let k = crate::qrtz_lock::key(&q.name, &v.to_string());
         if expanded.insert(k.clone()) {
-            let e = index.entry(&q.name, &v.to_string()).expect("checked");
+            let e = index
+                .entry(&q.name, &v.to_string())
+                .ok_or_else(|| ResolveError::Invalid(format!("{}@{v}: not in the signed index", q.name)))?;
             for (d, range, req) in effective_deps(index, ws, &q.name, e)? {
                 todo.push_back(Req {
                     by: k.clone(),
@@ -294,10 +296,17 @@ fn finish(index: &Index, ws: &Workspace, p: Pass) -> Result<Resolution, ResolveE
         if packages.contains_key(&k) {
             continue;
         }
-        let e = index.entry(&n, &v.to_string()).expect("resolved").clone();
+        let e = index
+            .entry(&n, &v.to_string())
+            .ok_or_else(|| ResolveError::Invalid(format!("{n}@{v}: not in the signed index")))?
+            .clone();
         let mut deps = BTreeMap::new();
         for (d, _, _) in effective_deps(index, ws, &n, &e)? {
-            let dv = p.choice.get(&(k.clone(), d.clone())).expect("chosen").clone();
+            let dv = p
+                .choice
+                .get(&(k.clone(), d.clone()))
+                .ok_or_else(|| ResolveError::Invalid(format!("{k}: no version chosen for {d}")))?
+                .clone();
             deps.insert(d.clone(), dv.to_string());
             todo.push((d, dv));
         }

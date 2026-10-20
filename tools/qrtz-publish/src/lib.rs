@@ -67,7 +67,10 @@ fn put_immutable(out: &Path, rel: &str, bytes: &[u8]) -> Result<()> {
 /// Write (or replace) `out/<rel>` through a temp file: only the timestamp is replaced.
 fn put(out: &Path, rel: &str, bytes: &[u8]) -> Result<()> {
     let p = out.join(rel);
-    std::fs::create_dir_all(p.parent().expect("parent")).map_err(io(&p))?;
+    let dir = p
+        .parent()
+        .ok_or_else(|| format!("{}: no parent folder", p.display()))?;
+    std::fs::create_dir_all(dir).map_err(io(&p))?;
     let tmp = p.with_extension("tmp");
     std::fs::write(&tmp, bytes).map_err(io(&tmp))?;
     std::fs::rename(&tmp, &p).map_err(io(&p))
@@ -277,7 +280,7 @@ fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, PathBuf, bool)>) -> Resu
         let ft = e.file_type().map_err(io(&p))?;
         let rel = p
             .strip_prefix(base)
-            .expect("inside")
+            .map_err(|_| format!("{}: outside {}", p.display(), base.display()))?
             .to_string_lossy()
             .replace('\\', "/");
         if ft.is_symlink() {
@@ -317,7 +320,10 @@ fn blob_file(out: &Path, src: &Path) -> Result<(u64, String)> {
     let (size, sha) = qrtz_modules::fsutil::sha256_file(src).map_err(io(src))?;
     let dest = out.join(layout::blob(&sha));
     if !dest.exists() {
-        std::fs::create_dir_all(dest.parent().expect("parent")).map_err(io(&dest))?;
+        let dir = dest
+            .parent()
+            .ok_or_else(|| format!("{}: no parent folder", dest.display()))?;
+        std::fs::create_dir_all(dir).map_err(io(&dest))?;
         let tmp = dest.with_extension("incoming");
         std::fs::copy(src, &tmp).map_err(io(src))?;
         let (n, h) = qrtz_modules::fsutil::sha256_file(&tmp).map_err(io(&tmp))?;
@@ -717,7 +723,7 @@ pub fn pack(out: &Path, name: &str, version: &str, dest: &Path) -> Result<Vec<St
     };
     // A pack carries exactly what is signed, revoked or not: the client's rule 2 refuses a revoked package from its
     // freshest list (the one in the file or a newer stored one), so resolve here as if nothing were revoked.
-    let mut all = index.clone();
+    let mut all = index;
     all.revoked.clear();
     let r = qrtz_modules::resolve::resolve(&all, &ws, &QrtzLock::default(), &Default::default())
         .map_err(|e| e.to_string())?;

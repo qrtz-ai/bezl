@@ -65,7 +65,7 @@ impl Qrtzpkg {
         if &head[..8] != MAGIC {
             return Err(bad("not a .qrtzpkg"));
         }
-        let n = u32::from_le_bytes(head[8..12].try_into().expect("4 bytes")) as usize;
+        let n = u32::from_le_bytes([head[8], head[9], head[10], head[11]]) as usize;
         if n > MAX_TOC_BYTES {
             return Err(IndexError::TooLarge("qrtzpkg toc"));
         }
