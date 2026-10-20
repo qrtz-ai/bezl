@@ -62,6 +62,11 @@ pub struct ModelFile {
 }
 
 impl Manifest {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+    )]
     pub fn pinned() -> Manifest {
         serde_json::from_str(MANIFEST).expect("local_models.json")
     }
@@ -164,6 +169,11 @@ impl LocalModels {
         Self::with_manifest(root, Manifest::pinned(), base)
     }
 
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+    )]
     pub fn with_manifest(root: impl Into<PathBuf>, manifest: Manifest, base: Option<String>) -> Self {
         let root: PathBuf = root.into();
         let packages_root = root

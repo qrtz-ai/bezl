@@ -888,9 +888,12 @@ impl AppService {
                 {
                     let sup3 = sup2.clone();
                     tokio::spawn(async move {
-                        let _ = sup3
-                            .send(encode_host_message(&json!({"type": "permissions.check"})).unwrap())
-                            .await;
+                        match encode_host_message(&json!({"type": "permissions.check"})) {
+                            Ok(line) => {
+                                let _ = sup3.send(line).await;
+                            }
+                            Err(e) => tracing::error!(error = %e, "encode permissions.check"),
+                        }
                     });
                 }
                 prev = Some(s.state);
@@ -1008,8 +1011,10 @@ impl AppService {
             (crate::module_helpers::HelperSource::Monolith, _) | (_, None) => s.clone(),
             (_, Some(h)) => h.status(),
         };
-        self.events
-            .emit("helper:status", serde_json::to_value(&shown).unwrap());
+        match serde_json::to_value(&shown) {
+            Ok(v) => self.events.emit("helper:status", v),
+            Err(e) => tracing::error!(error = %e, "serialize helper:status"),
+        }
         *delivered = Some(shown);
     }
 
@@ -1124,8 +1129,10 @@ impl AppService {
                 Ok(json!({"autoRecord": cfg["note"]["autoRecord"]}))
             }
             "helper:status" => Ok(match (&self.helper, self.module_helpers.get()) {
-                (_, Some(m)) => serde_json::to_value(m.status()).unwrap(),
-                (Some(h), None) => serde_json::to_value(h.status()).unwrap(),
+                (_, Some(m)) => serde_json::to_value(m.status())
+                    .map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))?,
+                (Some(h), None) => serde_json::to_value(h.status())
+                    .map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))?,
                 (None, None) => json!({"state": "stopped", "restarts": 0}),
             }),
             "log:write" => {

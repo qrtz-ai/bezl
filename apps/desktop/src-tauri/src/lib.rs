@@ -14,6 +14,11 @@ mod windows;
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, RunEvent, WindowEvent};
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "the app can't run without its Tauri runtime; this is the process entry point"
+)]
 pub fn run() {
     let started = std::time::Instant::now();
     // ADR 0083: stderr plus the local, size-capped log file (~/Library/Logs/qrtz/qrtz.log on macOS). A release

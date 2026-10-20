@@ -270,8 +270,9 @@ impl NotchBroker {
                 .as_ref()
                 .is_some_and(|h| h.priority == Priority::Module)
         {
-            let h = self.holder.take().expect("checked");
-            return vec![dismiss(&h.owner)];
+            if let Some(h) = self.holder.take() {
+                return vec![dismiss(&h.owner)];
+            }
         }
         Vec::new()
     }
@@ -396,8 +397,9 @@ impl NotchBroker {
                 && (secure_input || now_ms.saturating_sub(h.last_ms) >= MODULE_TIMEOUT_MS)
         });
         if expired {
-            let h = self.holder.take().expect("checked");
-            return vec![dismiss(&h.owner)];
+            if let Some(h) = self.holder.take() {
+                return vec![dismiss(&h.owner)];
+            }
         }
         Vec::new()
     }
