@@ -13,6 +13,11 @@ async fn main() {
     std::hint::black_box(BUNDLE_MARKER.as_bytes());
     // A dev origin override that is set but not http://127.0.0.1:<port>: refuse to run (debug + dev-local only).
     if !qrtz_dash_net::origin_config_ok() {
+        eprintln!(
+            "qrtz-dash-net: refusing to start: {} is set, but this build only accepts it as http://127.0.0.1:<port> \
+             in a debug build with the dev-local feature",
+            qrtz_dash_net::DEV_ORIGIN_VAR
+        );
         std::process::exit(2);
     }
     let Ok(https) = Https::new() else {

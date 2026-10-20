@@ -35,13 +35,18 @@ fn dev_origin() -> Result<Option<&'static str>, ()> {
     dev_origin::read()
 }
 
-/// Release builds (or no `dev-local`): there is no override path at all.
+/// Release builds (or no `dev-local`): there is no override path at all, and the helper fails closed: if the
+/// variable is set anyway, `Err` (main refuses to start) instead of silently talking to the real origin.
 #[cfg(not(all(debug_assertions, feature = "dev-local")))]
 fn dev_origin() -> Result<Option<&'static str>, ()> {
-    Ok(None)
+    if std::env::var_os(DEV_ORIGIN_VAR).is_some() {
+        Err(())
+    } else {
+        Ok(None)
+    }
 }
 
-/// Startup check for main: `false` if a dev override is set but invalid.
+/// Startup check for main: `false` if a dev override is set but invalid, or set at all in a build without it.
 pub fn origin_config_ok() -> bool {
     dev_origin().is_ok()
 }
@@ -57,6 +62,13 @@ pub fn origin() -> &'static str {
 /// True when the dev loopback origin is in use.
 pub fn dev_origin_active() -> bool {
     matches!(dev_origin(), Ok(Some(_)))
+}
+
+/// The origin an owner key is bound to, stored with its Keychain item (the item's comment, which is also part of
+/// every lookup, so a key saved for one origin is never found, and so never sent, under another). The service name
+/// differs too ([`keychain_service`]). The origin is fixed for the life of the process.
+pub fn key_origin_tag() -> String {
+    format!("qrtz-dash origin {}", origin())
 }
 
 /// The Keychain service for the current origin.
@@ -383,6 +395,7 @@ fn keychain_options(
 ) -> Result<security_framework::passwords::PasswordOptions, String> {
     use security_framework::passwords::PasswordOptions;
     let mut o = PasswordOptions::new_generic_password(keychain_service(), account);
+    o.set_comment(&key_origin_tag());
     if cfg!(not(debug_assertions)) {
         o.use_protected_keychain();
         o.set_access_group(ACCESS_GROUP);

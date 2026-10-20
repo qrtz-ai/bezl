@@ -50,7 +50,10 @@ fn no_override_path_without_dev_local_debug() {
     assert_eq!(origin(), ORIGIN);
     assert!(!dev_origin_active());
     assert_eq!(keychain_service(), KEYCHAIN_SERVICE);
-    assert!(origin_config_ok());
+    // Fail closed: set in a build without the override, the helper refuses to start (tests/fail_closed.rs).
+    assert!(!origin_config_ok());
+    assert_eq!(keychain_service(), "ai.qrtz.dash-net");
+    assert_eq!(key_origin_tag(), "qrtz-dash origin https://dash.qrtz.ai");
     assert!(!egress_ok("http://127.0.0.1:8799/v1/owner/view"));
     assert!(egress_ok("https://dash.qrtz.ai/v1/owner/view"));
 }
@@ -64,6 +67,8 @@ fn override_on_reaches_only_the_loopback_origin_with_the_dev_keychain() {
     assert_eq!(origin(), "http://127.0.0.1:8799");
     assert!(dev_origin_active());
     assert_eq!(keychain_service(), "qrtz-dash-dev");
+    assert_eq!(key_origin_tag(), "qrtz-dash origin http://127.0.0.1:8799");
+    assert!(origin_config_ok());
     assert!(egress_ok("http://127.0.0.1:8799/v1/owner/view"));
     for bad in [
         "https://dash.qrtz.ai/v1/owner/view",
