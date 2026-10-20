@@ -107,7 +107,11 @@ impl PinnedKey {
         let key: [u8; 32] = b
             .try_into()
             .map_err(|_| SpeechError::Signature("bad key length".into()))?;
-        VerifyingKey::from_bytes(&key).map_err(|_| SpeechError::Signature("bad key".into()))?;
+        let vk = VerifyingKey::from_bytes(&key).map_err(|_| SpeechError::Signature("bad key".into()))?;
+        // A small-order ("weak") point verifies forged signatures for some messages; a pinned key must never be one.
+        if vk.is_weak() {
+            return Err(SpeechError::Signature("weak key".into()));
+        }
         Ok(Self {
             key_id: key_id.into(),
             key,
