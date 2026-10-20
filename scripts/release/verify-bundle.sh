@@ -44,6 +44,27 @@ ent_keys() { codesign -d --entitlements - --xml "$1" 2>/dev/null | plutil -conve
 
 for name in qrtz-app qrtz-echo qrtz; do [[ -x "$macos/$name" ]] || fail "$name is missing from Contents/MacOS"; done
 
+# QRT-275: the bundle carries its own notices and license texts (Contents/Resources). Each must be there, non-empty,
+# and start with its own license's title. scripts/check-notices.mjs keeps this list, tauri.conf.json and the repo
+# files in step.
+required_notices=(
+  "THIRD_PARTY_NOTICES.md|# Third-party notices"
+  "licenses/AGPL-3.0.txt|GNU AFFERO GENERAL PUBLIC LICENSE"
+  "licenses/LICENSE-EXCEPTION.md|# Additional permission under AGPL-3.0 section 7"
+  "licenses/GPL-3.0.txt|GNU GENERAL PUBLIC LICENSE"
+  "licenses/Apache-2.0.txt|Apache License"
+)
+for entry in "${required_notices[@]}"; do
+  rel="${entry%%|*}"; title="${entry#*|}"; f="$app/Contents/Resources/$rel"
+  if [[ ! -s "$f" ]]; then
+    fail "Contents/Resources/$rel is missing or empty (license notices must ship in the app)"
+  elif ! head -n 5 "$f" | grep -q -F "$title"; then
+    fail "Contents/Resources/$rel does not start with '$title'"
+  else
+    ok "Contents/Resources/$rel"
+  fi
+done
+
 # ADR 0231 amendment 1: Agent Dash's network helper is dev-only until Bozniak clears dash for release. Any file of
 # that name anywhere in the bundle fails, signed or not, executable or not.
 while IFS= read -r -d '' f; do
