@@ -126,3 +126,40 @@ describe('sign-notarize.sh', () => {
     }
   });
 });
+
+describe('sign-notarize.sh QRTZ_SPEECH_* (all or none)', () => {
+  const base = { QRTZ_SIGN_ID: ID, QRTZ_TEAM_ID: 'ABCDE12345' };
+  const all = {
+    QRTZ_SPEECH_URL: 'https://example.invalid/s',
+    QRTZ_SPEECH_KEY_ID: 'k1',
+    QRTZ_SPEECH_KEY: 'secret-key-value',
+    QRTZ_SPEECH_ROOT_KEY_ID: 'r1',
+    QRTZ_SPEECH_ROOT_KEY: 'secret-root-value',
+  };
+  it('none set: builds without speech', () => {
+    const r = run(base);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain('without a speech module');
+    expect(plan(r).some((l) => l.includes('run --cwd'))).toBe(true);
+  });
+  it('all set: builds with speech and never prints a value', () => {
+    const r = run({ ...base, ...all });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain('all 5 QRTZ_SPEECH_* set');
+    expect(r.stdout + r.stderr).not.toMatch(/secret-(key|root)-value/);
+  });
+  it('only some set: stops before running anything, names only', () => {
+    for (const drop of Object.keys(all)) {
+      const env = { ...base, ...all };
+      delete env[drop];
+      const r = run(env);
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain(`missing: ${drop}`);
+      expect(plan(r)).toEqual([]);
+      expect(r.stdout + r.stderr).not.toMatch(/secret-(key|root)-value/);
+    }
+    const r = run({ ...base, QRTZ_SPEECH_URL: 'https://example.invalid/s' });
+    expect(r.status).not.toBe(0);
+    expect(plan(r)).toEqual([]);
+  });
+});
