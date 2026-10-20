@@ -68,15 +68,14 @@ const view = (): View => ({
   ],
 });
 
-function fake() {
+function fake(over: Partial<View> = {}) {
   const calls: [string, unknown][] = [];
   const client = {
     subApp: 'dash',
     invoke: async (channel: string, p: unknown) => {
       calls.push([channel, p]);
-      if (channel === 'dash:view') return view();
-      if (channel === 'dash:issue-code')
-        return { code: 'ENR-ABCD-2345', expiresAt: 1 };
+      if (channel === 'dash:view') return { ...view(), ...over };
+      if (channel === 'dash:copy-prompt') return { copied: true };
       return { ok: true };
     },
     on: () => () => {},
@@ -142,15 +141,9 @@ describe('dash view (ADR 0228)', () => {
     ]);
   });
 
-  it('issues a code and deletes widget, agent and dashboard', async () => {
+  it('deletes widget, agent and dashboard', async () => {
     const { client, calls } = fake();
     await render(client);
-    await act(async () => (q('dash-add-agent') as HTMLButtonElement).click());
-    await flush();
-    expect(q('dash-code')?.textContent).toContain('ENR-ABCD-2345');
-    expect(q('dash-code')?.textContent).toContain(
-      'https://dash.qrtz.ai/v1/readme',
-    );
     const del = (label: string) =>
       el.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
     await act(async () => del('delete state farm')?.click());
@@ -166,6 +159,38 @@ describe('dash view (ADR 0228)', () => {
       { scope: 'dashboard' },
     ]);
   });
+});
+
+describe('dash copy prompt (QRT-298)', () => {
+  const btn = () => q('dash-copy-prompt') as HTMLButtonElement | null;
+  it('never issues a code or copies on render', async () => {
+    const { client, calls } = fake();
+    await render(client);
+    expect(btn()).not.toBeNull();
+    expect(calls.map(([c]) => c)).not.toContain('dash:copy-prompt');
+    expect(calls.map(([c]) => c)).not.toContain('dash:issue-code');
+    expect(el.textContent).not.toMatch(/ENR-|v1\/readme/);
+  });
+  it('is disabled and says not connected with no origin', async () => {
+    const { client, calls } = fake({ origin: '' });
+    await render(client);
+    expect(btn()?.disabled).toBe(true);
+    expect(q('dash-not-connected')?.textContent).toBe('not connected');
+    await act(async () => btn()?.click());
+    expect(calls.map(([c]) => c)).not.toContain('dash:copy-prompt');
+  });
+  for (const origin of ['https://dash.qrtz.ai', 'http://127.0.0.1:8799'])
+    it(`copies on click and shows copied (${origin})`, async () => {
+      const { client, calls } = fake({ origin, connected: true });
+      await render(client);
+      expect(btn()?.disabled).toBe(false);
+      expect(q('dash-copied')).toBeNull();
+      await act(async () => btn()?.click());
+      await flush();
+      expect(calls.filter(([c]) => c === 'dash:copy-prompt')).toHaveLength(1);
+      expect(q('dash-copied')?.textContent).toBe('copied');
+      expect(el.textContent).not.toMatch(/ENR-/);
+    });
 });
 
 describe('dash blocks', () => {
