@@ -16,9 +16,75 @@ use qrtz_ipc::{AppError, ErrorCode};
 use serde_json::{json, Value};
 use zeroize::{Zeroize, Zeroizing};
 
-/// The one origin this process may reach.
+/// The one origin this process may reach (release builds: always).
 pub const ORIGIN: &str = "https://dash.qrtz.ai";
 pub const KEYCHAIN_SERVICE: &str = "ai.qrtz.dash-net";
+/// The Keychain service while the dev origin override is on (Bozniak item 5): never the real item.
+pub const DEV_KEYCHAIN_SERVICE: &str = "qrtz-dash-dev";
+/// The env var the dev-only origin override reads (docs/dash-local.md). FOR BOZNIAK REVIEW.
+pub const DEV_ORIGIN_VAR: &str = "QRTZ_DASH_ORIGIN";
+/// `true` only in debug builds with the `dev-local` feature. Everywhere else the override code is not compiled in.
+pub const DEV_OVERRIDE_COMPILED: bool = cfg!(all(debug_assertions, feature = "dev-local"));
+
+/// `http://127.0.0.1:<port>` exactly: explicit port 1-65535, no path, userinfo, query, fragment or other host
+/// (not `localhost`, not `[::1]`).
+pub fn dev_origin_ok(o: &str) -> bool {
+    let Some(port) = o.strip_prefix("http://127.0.0.1:") else {
+        return false;
+    };
+    !port.is_empty()
+        && port.len() <= 5
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && !port.starts_with('0')
+        && port.parse::<u32>().is_ok_and(|p| (1..=65535).contains(&p))
+}
+
+/// The dev override, read once. `Err` if it is set but not a valid loopback origin (the helper then exits).
+#[cfg(all(debug_assertions, feature = "dev-local"))]
+fn dev_origin() -> Result<Option<&'static str>, ()> {
+    static O: std::sync::OnceLock<Result<Option<String>, ()>> = std::sync::OnceLock::new();
+    O.get_or_init(|| match std::env::var(DEV_ORIGIN_VAR) {
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Ok(v) if dev_origin_ok(&v) => Ok(Some(v)),
+        _ => Err(()),
+    })
+    .as_ref()
+    .map(|o| o.as_deref())
+    .map_err(|_| ())
+}
+
+/// Release builds (or no `dev-local`): there is no override path at all.
+#[cfg(not(all(debug_assertions, feature = "dev-local")))]
+fn dev_origin() -> Result<Option<&'static str>, ()> {
+    Ok(None)
+}
+
+/// Startup check for main: `false` if a dev override is set but invalid.
+pub fn origin_config_ok() -> bool {
+    dev_origin().is_ok()
+}
+
+/// The origin this process talks to: [`ORIGIN`], or the checked dev loopback origin.
+pub fn origin() -> &'static str {
+    match dev_origin() {
+        Ok(Some(o)) => o,
+        _ => ORIGIN,
+    }
+}
+
+/// True when the dev loopback origin is in use.
+pub fn dev_origin_active() -> bool {
+    matches!(dev_origin(), Ok(Some(_)))
+}
+
+/// The Keychain service for the current origin.
+pub fn keychain_service() -> &'static str {
+    if dev_origin_active() {
+        DEV_KEYCHAIN_SERVICE
+    } else {
+        KEYCHAIN_SERVICE
+    }
+}
 pub const KEYCHAIN_ACCOUNT: &str = "owner-key";
 /// Longest stdin line accepted (a `dash:*` call is a few hundred bytes).
 pub const MAX_LINE: usize = 16 * 1024;
@@ -94,8 +160,9 @@ fn bad(m: &str) -> AppError {
 }
 
 /// `true` only for `https://dash.qrtz.ai/<path>`: no other scheme, host, port, userinfo, fragment or `..`.
+/// With the dev override on, the same rules with the dev origin in place of [`ORIGIN`] (and nothing else).
 pub fn egress_ok(url: &str) -> bool {
-    let Some(path) = url.strip_prefix(ORIGIN) else {
+    let Some(path) = url.strip_prefix(origin()) else {
         return false;
     };
     path.starts_with('/')
@@ -333,7 +400,7 @@ fn keychain_options(
     write: bool,
 ) -> Result<security_framework::passwords::PasswordOptions, String> {
     use security_framework::passwords::PasswordOptions;
-    let mut o = PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, account);
+    let mut o = PasswordOptions::new_generic_password(keychain_service(), account);
     if cfg!(not(debug_assertions)) {
         o.use_protected_keychain();
         o.set_access_group(ACCESS_GROUP);
@@ -447,7 +514,8 @@ impl Https {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::none())
-            .https_only(true)
+            // Plain http only for the checked dev loopback origin (debug + dev-local); release: https only.
+            .https_only(!dev_origin_active())
             .no_proxy()
             .build()
             .map(Https)
@@ -530,7 +598,7 @@ impl Helper {
         bearer: &str,
         body: Option<Value>,
     ) -> Result<Value, AppError> {
-        let url = format!("{ORIGIN}{path}");
+        let url = format!("{}{path}", origin());
         // Checked again right before the request leaves (Bozniak: refuse other hosts and plain http).
         if !egress_ok(&url) {
             return Err(bad("the dash helper only talks to https://dash.qrtz.ai"));
@@ -561,7 +629,7 @@ impl Helper {
                 }
                 // No token: reuse the dashboard this helper already holds a key for.
                 if self.load_key()?.is_some() {
-                    Ok(json!({"connected": true, "origin": ORIGIN}))
+                    Ok(json!({"connected": true, "origin": origin()}))
                 } else {
                     Err(AppError::new(ErrorCode::NotFound, "no dash server connected yet").retryable(false))
                 }
@@ -585,7 +653,7 @@ impl Helper {
     }
 
     async fn connect_raw(&self, token: &str) -> Result<Value, AppError> {
-        let url = format!("{ORIGIN}/v1/owner/setup");
+        let url = format!("{}/v1/owner/setup", origin());
         if !egress_ok(&url) {
             return Err(bad("the dash helper only talks to https://dash.qrtz.ai"));
         }
@@ -609,7 +677,7 @@ impl Helper {
             };
             return Err(keychain_error(format!("{e}; {next}")));
         }
-        Ok(json!({"connected": true, "origin": ORIGIN}))
+        Ok(json!({"connected": true, "origin": origin()}))
     }
 
     /// One stdin line `{"id", "channel", "capability", "params"}` → one stdout line `{"id", "ok"}` or
