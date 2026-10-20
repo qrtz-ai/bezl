@@ -30,6 +30,18 @@ public final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
             stamp.record(loadMs: ms)
             self?.lastLoad = (ms, expect.cached, expect.why)
             logErr("parakeet: loaded in \(ms) ms (\(expect.cached ? "specialization cached" : "specializing: " + expect.why))")
+            // QRT-270: one decode of silence before `prepare` returns (so before echo reports ready): Core ML's first
+            // predict on the Neural Engine is slow, and it was landing on the user's first dictation. A failure here
+            // is only logged; the model is loaded and a real decode still works.
+            let tw = Date()
+            var warm = TdtDecoderState.make(decoderLayers: await m.decoderLayerCount)
+            do {
+                _ = try await m.transcribe([Float](repeating: 0, count: ASRConstants.minimumRequiredSamples(forSampleRate: 16_000)),
+                                           decoderState: &warm)
+                logErr("parakeet: warm-up decode \(Int(Date().timeIntervalSince(tw) * 1000)) ms")
+            } catch {
+                logErr("parakeet: warm-up decode failed: \(error)")
+            }
             return m
         }
     }
