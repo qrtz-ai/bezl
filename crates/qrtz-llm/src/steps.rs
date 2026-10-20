@@ -34,7 +34,8 @@ impl Loaded {
         );
         tokio::task::spawn_blocking(move || extractive_summary(&segs, None, &notes, tpl.as_deref()))
             .await
-            .expect("extractive summary panicked")
+            // The blocking task only fails if the summarizer panicked: re-raise that panic here, unchanged.
+            .unwrap_or_else(|e| std::panic::resume_unwind(e.into_panic()))
     }
 }
 

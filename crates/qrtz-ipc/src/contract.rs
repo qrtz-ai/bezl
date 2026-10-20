@@ -51,6 +51,11 @@ fn compile(schema: &Value, what: &str) -> Validator {
 }
 
 impl Contract {
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+    )]
     pub fn parse(text: &str) -> Contract {
         let raw: Value = serde_json::from_str(text).expect("ipc-contract.json is valid JSON");
         let channels = raw["channels"]
@@ -175,6 +180,11 @@ pub fn issue_paths(v: &Validator, value: &Value) -> Vec<String> {
 /// Golden samples (packages/core/src/ipc/samples.ts → contracts/ipc-samples.json).
 pub const SAMPLES_JSON: &str = include_str!("../../../contracts/ipc-samples.json");
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "embedded at build time; a bad file is a build defect caught by its unit tests"
+)]
 pub fn samples() -> &'static Value {
     static S: OnceLock<Value> = OnceLock::new();
     S.get_or_init(|| serde_json::from_str(SAMPLES_JSON).expect("ipc-samples.json"))
