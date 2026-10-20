@@ -68,7 +68,8 @@ prints the submission id and `xcrun notarytool log <id> --keychain-profile <prof
 
 The speech module source (download URL and the two pinned Ed25519 keys, hex) is baked in at compile time
 (`SpeechSetup::from_vars`, ADR 0046 §9.4). Without them the build has no speech module; export the `QRTZ_SPEECH_*`
-variables before running the script if this release carries one.
+variables before running the script if this release carries one. They are all or none: `sign-notarize.sh` builds
+without speech when none is set and stops before building when only some are (it prints names, never values).
 
 ## Module releases in CI (ADR 0179)
 
