@@ -628,23 +628,28 @@ impl Dash {
 
     /// Approve a pending agent (an account-security gate, not a channel: the agent only sees writes accepted).
     pub fn approve(&mut self, agent_id: &str, now: u64) -> bool {
-        let ok = matches!(self.agent_mut(agent_id), Some(a) if a.status == AgentStatus::Pending);
-        if ok {
-            let a = self.agent_mut(agent_id).expect("checked");
-            a.status = AgentStatus::Approved;
-            self.log("approved", Some(agent_id), now);
-        }
-        ok
+        let Some(a) = self
+            .agent_mut(agent_id)
+            .filter(|a| a.status == AgentStatus::Pending)
+        else {
+            return false;
+        };
+        a.status = AgentStatus::Approved;
+        self.log("approved", Some(agent_id), now);
+        true
     }
 
     /// Reject a pending agent: its token answers 401 stop.
     pub fn reject(&mut self, agent_id: &str, now: u64) -> bool {
-        let ok = matches!(self.agent_mut(agent_id), Some(a) if a.status == AgentStatus::Pending);
-        if ok {
-            self.agent_mut(agent_id).expect("checked").status = AgentStatus::Rejected;
-            self.log("rejected", Some(agent_id), now);
-        }
-        ok
+        let Some(a) = self
+            .agent_mut(agent_id)
+            .filter(|a| a.status == AgentStatus::Pending)
+        else {
+            return false;
+        };
+        a.status = AgentStatus::Rejected;
+        self.log("rejected", Some(agent_id), now);
+        true
     }
 
     /// Delete one widget: tombstoned, so that agent's writes to (and re-registration of) the key answer 410.
@@ -932,7 +937,10 @@ impl Dash {
                 if !matches!(s, Some("running" | "idle")) {
                     return fail(422, "status is running or idle");
                 }
-                let a = self.agent_mut(agent).expect("authed");
+                // `route` runs only for an authenticated agent; fail closed if it vanished.
+                let Some(a) = self.agent_mut(agent) else {
+                    return stop(401, "token invalid or revoked");
+                };
                 a.heartbeat = s.map(str::to_owned);
                 resp(200, json!({"ok": true}))
             }
@@ -1010,7 +1018,9 @@ impl Dash {
             },
         );
         if flagged {
-            self.agent_mut(agent).expect("authed").flagged = true;
+            if let Some(a) = self.agent_mut(agent) {
+                a.flagged = true;
+            }
         }
         resp(201, json!({"key": key, "widget_id": id}))
     }
@@ -1041,11 +1051,12 @@ impl Dash {
             return fail(422, &e.0);
         }
         let flagged = scrub_value(&mut data);
-        let w = self
-            .widgets
-            .get_mut(agent)
-            .and_then(|ws| ws.get_mut(key))
-            .expect("checked");
+        let Some(w) = self.widgets.get_mut(agent).and_then(|ws| ws.get_mut(key)) else {
+            return resp(
+                404,
+                json!({"error": "no such widget", "action": "register_own_widget"}),
+            );
+        };
         w.updated_at = now;
         if append {
             let cap = if ty == BlockType::Log {
@@ -1061,7 +1072,9 @@ impl Dash {
             w.state = Some(data);
         }
         if flagged {
-            self.agent_mut(agent).expect("authed").flagged = true;
+            if let Some(a) = self.agent_mut(agent) {
+                a.flagged = true;
+            }
         }
         resp(200, json!({"ok": true}))
     }

@@ -911,7 +911,7 @@ impl Installer {
     ) -> Result<Plan, InstallError> {
         let mut changes = vec![];
         for k in lock.packages.keys().filter(|k| !next.packages.contains_key(*k)) {
-            let (n, v) = split_key(k).expect("valid");
+            let (n, v) = split_key(k).ok_or_else(|| bad_key(k))?;
             changes.push(Change::Remove {
                 name: n.into(),
                 version: v.into(),
@@ -919,7 +919,7 @@ impl Installer {
         }
         let mut wants = BTreeMap::new();
         for (k, l) in &next.packages {
-            let (n, v) = split_key(k).expect("valid");
+            let (n, v) = split_key(k).ok_or_else(|| bad_key(k))?;
             let installed = lock.packages.get(k).is_some_and(|h| h.sha256 == l.sha256)
                 && self.root.join(package_dir(n, v)).is_dir();
             if !lock.packages.contains_key(k) {
@@ -1106,7 +1106,7 @@ impl Installer {
                 if to.exists() {
                     fsutil::remove_tree(&to)?;
                 }
-                fsutil::mkdir_private(to.parent().expect("parent"))?;
+                fsutil::mkdir_private(to.parent().unwrap_or(&self.root))?;
                 std::fs::rename(staging.join(&w.name).join(&w.version), &to)?;
                 make_read_only(&to)?;
             }
@@ -1783,6 +1783,11 @@ fn revoked_in<'a>(
     Ok(())
 }
 
+/// A `qrtz.lock` key that isn't `name@version` (the parser refuses these, so this is a damaged lock).
+fn bad_key(k: &str) -> InstallError {
+    InstallError::Module(ModuleError::Lock(format!("{k}: key is not name@version")))
+}
+
 /// Rule 6 on `qrtz.lock`: what a fresh list revokes is disabled (with a notice), an extension depending on a
 /// disabled package is disabled too, and everything else loses its stale mark.
 pub fn recheck_lock(lock: &QrtzLock, fresh: &RevocationSnapshot) -> (QrtzLock, Vec<Notice>) {
@@ -1790,7 +1795,8 @@ pub fn recheck_lock(lock: &QrtzLock, fresh: &RevocationSnapshot) -> (QrtzLock, V
     let mut notices = vec![];
     let mut dead: BTreeMap<String, (String, String)> = BTreeMap::new();
     for (k, l) in next.packages.iter_mut() {
-        let (n, v) = split_key(k).expect("valid");
+        // `QrtzLock::parse` refuses keys that aren't `name@version`; skip one that slipped through.
+        let Some((n, v)) = split_key(k) else { continue };
         match fresh.revokes(n, v) {
             Some(r) => {
                 if l.disabled.is_none() {
@@ -1817,7 +1823,7 @@ pub fn recheck_lock(lock: &QrtzLock, fresh: &RevocationSnapshot) -> (QrtzLock, V
             .iter()
             .find_map(|(d, dv)| dead.get(&key(d, dv)).cloned());
         if let Some((pkg, reason)) = hit {
-            let (n, v) = split_key(k).expect("valid");
+            let Some((n, v)) = split_key(k) else { continue };
             if snapshot.get(k).is_some_and(|x| x.disabled.is_none()) {
                 notices.push(Notice {
                     module: n.into(),
