@@ -42,7 +42,7 @@ const ALLOWED_DEPS = new Set([
 export const PENDING = {
   scripts: ['start', 'make', 'e2e', 'release:mac'],
   deps: ['@playwright/test', 'axe-core'],
-  cargo: ['specta'],
+  cargo: [],
 };
 
 export function check(pkg, cargoToml, cargoUsers) {

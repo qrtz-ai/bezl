@@ -62,8 +62,6 @@ thiserror = "2"
 rusqlite = { version = "0.40", features = ["bundled"] }
 unicode-normalization = "0.1"
 indexmap = "2"
-# rc.22 = the tauri-specta 2.0.0-rc.21 line; rc.25 needs rustc >= 1.93 (fmt::from_fn).
-specta = { version = "=2.0.0-rc.22", features = ["derive"] }
 
 [profile.release]
 codegen-units = 1
