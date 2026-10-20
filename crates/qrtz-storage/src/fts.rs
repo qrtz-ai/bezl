@@ -23,6 +23,11 @@ pub fn to_fts_query(input: &str) -> Option<String> {
     Some(prefix_terms(&words))
 }
 
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 fn search_words(input: &str) -> Vec<String> {
     static SPLIT: OnceLock<Regex> = OnceLock::new();
     static POSSESSIVE: OnceLock<Regex> = OnceLock::new();
@@ -146,6 +151,11 @@ pub fn substring_snippet(text: &str, terms: &[String]) -> String {
 }
 
 /// The chat-retrieval query of `searchSegments`: words of 2+ letters/digits, at most 12, OR-ed as `"w"*`.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 pub fn to_chat_fts_query(input: &str) -> Option<String> {
     static WORD: OnceLock<Regex> = OnceLock::new();
     let word = WORD.get_or_init(|| Regex::new(r"[\p{L}\p{N}]{2,}").unwrap());
@@ -188,6 +198,11 @@ pub struct ChatPlan {
 /// `chatPlan`: words of 2+ letters, digits or combining marks with a letter or digit, at most 12. A word with a Han,
 /// kana, Thai, Lao, Khmer or Myanmar character becomes its bigrams; the others stay OR-ed `"w"*` terms. With neither
 /// such a word nor a mark, `fts` equals the old `to_chat_fts_query(input)`.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "constant regex literal; compiled by this crate's unit tests"
+)]
 pub fn chat_plan(input: &str) -> Option<ChatPlan> {
     static WORD: OnceLock<Regex> = OnceLock::new();
     static WORDY: OnceLock<Regex> = OnceLock::new();

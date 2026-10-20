@@ -110,18 +110,20 @@ impl MockSpeech {
                 let safe_point = matches!(e, qrtz_speech_types::SpeechEvent::Words { is_final: true, .. });
                 let _ = s.tx.try_send(e);
                 if safe_point && s.revoked {
-                    let s = st.sessions.remove(id).unwrap();
-                    let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
-                        reason: qrtz_speech_types::FailReason::Revoked,
-                    });
+                    if let Some(s) = st.sessions.remove(id) {
+                        let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
+                            reason: qrtz_speech_types::FailReason::Revoked,
+                        });
+                    }
                 }
             }
             Verdict::Fail(why) => {
                 tracing::warn!(%why, "mock speech module: protocol violations");
-                let s = st.sessions.remove(id).unwrap();
-                let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
-                    reason: qrtz_speech_types::FailReason::ProtocolViolations,
-                });
+                if let Some(s) = st.sessions.remove(id) {
+                    let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
+                        reason: qrtz_speech_types::FailReason::ProtocolViolations,
+                    });
+                }
             }
             Verdict::Ignore | Verdict::Dropped(_) => {}
         }

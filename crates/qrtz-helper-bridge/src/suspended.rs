@@ -142,7 +142,10 @@ mod posix {
         }
 
         fn resume(mut self) -> io::Result<ChildIo> {
-            let reaper = self.reaper.take().expect("a suspended child");
+            let reaper = self
+                .reaper
+                .take()
+                .ok_or_else(|| io::Error::other("suspended helper was already resumed"))?;
             let fds = (
                 self.stdout.try_clone(),
                 self.stdin.try_clone(),
@@ -381,19 +384,11 @@ mod tests {
             4242
         }
         fn resume(self) -> io::Result<ChildIo> {
-            self.0
-                 .0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push("SIGCONT");
+            self.0 .0.lock().unwrap().push("SIGCONT");
             Err(io::Error::other("resumed (a fake has no pipes)"))
         }
         fn kill(self) {
-            self.0
-                 .0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push("SIGKILL");
+            self.0 .0.lock().unwrap().push("SIGKILL");
         }
     }
 
@@ -407,10 +402,7 @@ mod tests {
         });
         assert_eq!(seen, Some(4242), "the check sees the suspended child's pid");
         assert!(r.err().unwrap().to_string().contains("resumed"));
-        assert_eq!(
-            *log.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
-            vec!["SIGCONT"]
-        );
+        assert_eq!(*log.0.lock().unwrap(), vec!["SIGCONT"]);
 
         let log = Arc::new(Log::default());
         let err = release_if_verified(Fake(log.clone()), |_| Err("not ai.qrtz.snap".into()))
@@ -418,10 +410,6 @@ mod tests {
             .unwrap();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         assert!(err.to_string().contains("not ai.qrtz.snap"), "{err}");
-        assert_eq!(
-            *log.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
-            vec!["SIGKILL"],
-            "killed, never resumed"
-        );
+        assert_eq!(*log.0.lock().unwrap(), vec!["SIGKILL"], "killed, never resumed");
     }
 }
