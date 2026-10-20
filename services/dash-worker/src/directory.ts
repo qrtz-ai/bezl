@@ -8,9 +8,15 @@
  * address ENROLL_IP_FAILS_PER_MIN: tripping the brake needs many independent allocations, not one attacker.
  * Also holds the one-time setup flag (Bozniak M1). Low traffic by design (codes are issued by hand), so one
  * instance is enough. Holds only HMACs.
+ *
+ * QRT-284: a code is `<id>.<secret>`. Rows are found by id and hold HMAC(DASH_ENROLL_KEY, id.secret), compared in
+ * constant time. Each wrong secret on an id is a strike; after ENROLL_CODE_STRIKES the row stays (until it expires)
+ * but can never be claimed. Unknown id, wrong secret and dead code all take the same path: one row lookup, one
+ * constant-time compare (against a dummy MAC when there is no row), one counted failure, the same 401.
  */
 import { DurableObject } from 'cloudflare:workers';
 import * as C from './constants';
+import { ctEq } from './crypto';
 import type { Env } from './env';
 
 /** HMACs of a client's limiter buckets (see src/ip.ts): `wide` is the IPv6 /48, null for IPv4. */
@@ -20,6 +26,9 @@ export type Claim =
   | { ok: true; dashId: string }
   | { ok: false; status: 401 | 429; retryAfterMs?: number };
 
+/** Compared against when no row matches the id: 64 hex characters no HMAC output equals in practice. */
+const DUMMY_MAC = '0'.repeat(64);
+
 export class EnrollDirectory extends DurableObject<Env> {
   private sql: SqlStorage;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -27,7 +36,9 @@ export class EnrollDirectory extends DurableObject<Env> {
     this.sql = ctx.storage.sql;
     ctx.blockConcurrencyWhile(async () => {
       this.sql.exec(`
-        CREATE TABLE IF NOT EXISTS codes (code_hash TEXT PRIMARY KEY, dash_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
+        DROP TABLE IF EXISTS codes;
+        CREATE TABLE IF NOT EXISTS enroll_codes (code_id TEXT PRIMARY KEY, secret_mac TEXT NOT NULL,
+          dash_id TEXT NOT NULL, expires_at INTEGER NOT NULL, strikes INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS failures (narrow TEXT NOT NULL, wide TEXT, at INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS failures_narrow ON failures (narrow, at);
         CREATE INDEX IF NOT EXISTS failures_wide ON failures (wide, at);
@@ -39,13 +50,15 @@ export class EnrollDirectory extends DurableObject<Env> {
   }
 
   async register(
-    codeHash: string,
+    codeId: string,
+    secretMac: string,
     dashId: string,
     expiresAt: number,
   ): Promise<void> {
     this.sql.exec(
-      'INSERT OR REPLACE INTO codes (code_hash, dash_id, expires_at) VALUES (?, ?, ?)',
-      codeHash,
+      'INSERT OR REPLACE INTO enroll_codes (code_id, secret_mac, dash_id, expires_at, strikes) VALUES (?, ?, ?, ?, 0)',
+      codeId,
+      secretMac,
       dashId,
       expiresAt,
     );
@@ -150,37 +163,49 @@ export class EnrollDirectory extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(now + C.PRUNE_EVERY_MS);
   }
 
-  /** Take a code: single use across the service (the row is gone after this), then the dashboard checks it again. */
+  /**
+   * Take a code: single use across the service (the row is gone after this), then the dashboard checks it again.
+   * A locked or rate-limited source gets 429 before any row is looked at.
+   */
   async claim(
     src: SourceHash,
-    codeHash: string,
+    codeId: string,
+    secretMac: string,
     now = Date.now(),
   ): Promise<Claim> {
     const gated = this.gate(src, now);
     if (gated) return gated;
     const row = this.sql
-      .exec<{ dash_id: string }>(
-        'SELECT dash_id FROM codes WHERE code_hash = ? AND expires_at > ?',
-        codeHash,
+      .exec<{ secret_mac: string; dash_id: string; strikes: number }>(
+        'SELECT secret_mac, dash_id, strikes FROM enroll_codes WHERE code_id = ? AND expires_at > ?',
+        codeId,
         now,
       )
       .toArray()[0];
-    if (!row) {
+    // Always one compare, so an unknown id costs the same as a wrong secret.
+    const match = ctEq(row?.secret_mac ?? DUMMY_MAC, secretMac);
+    const live = row !== undefined && row.strikes < C.ENROLL_CODE_STRIKES;
+    if (!match || !live) {
+      if (live && !match)
+        this.sql.exec(
+          'UPDATE enroll_codes SET strikes = strikes + 1 WHERE code_id = ?',
+          codeId,
+        );
       await this.fail(src, now);
       return { ok: false, status: 401 };
     }
-    this.sql.exec('DELETE FROM codes WHERE code_hash = ?', codeHash);
+    this.sql.exec('DELETE FROM enroll_codes WHERE code_id = ?', codeId);
     return { ok: true, dashId: row.dash_id };
   }
 
   async alarm(): Promise<void> {
     const now = Date.now();
-    this.sql.exec('DELETE FROM codes WHERE expires_at <= ?', now);
+    this.sql.exec('DELETE FROM enroll_codes WHERE expires_at <= ?', now);
     this.sql.exec('DELETE FROM failures WHERE at <= ?', now - C.DAY_MS);
     this.sql.exec('DELETE FROM locks WHERE until <= ?', now);
     const left = this.sql
       .exec<{ n: number }>(
-        'SELECT (SELECT COUNT(*) FROM codes) + (SELECT COUNT(*) FROM failures) + (SELECT COUNT(*) FROM locks) AS n',
+        'SELECT (SELECT COUNT(*) FROM enroll_codes) + (SELECT COUNT(*) FROM failures) + (SELECT COUNT(*) FROM locks) AS n',
       )
       .one().n;
     if (left > 0) await this.ctx.storage.setAlarm(now + C.PRUNE_EVERY_MS);
