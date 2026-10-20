@@ -12,7 +12,7 @@
 #
 # Never touches /Applications/qrtz.app (except --quit-installed asking it to quit), the real data dir
 # (~/Library/Application Support/ai.qrtz.desktop), R2, the keychain or any update key. ctrl, like on a real install,
-# still asks for its consent and has to be switched on in the dev app (ADR 0216).
+# still asks for its consent and has to be switched on in the dev app.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 say() { echo "[dev-local] $*" >&2; }

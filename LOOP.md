@@ -2,9 +2,9 @@
 
 Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
 
-1. **Read** `PLAN.md` (architecture and checklist) and the last entries in `PROGRESS.md`.
-2. **Pick** the first unchecked task in the lowest unfinished milestone. Tasks are
-   small (≤ ~30 min). If one is bigger, split it in PLAN.md first, then pick the first piece.
+1. **Read** the ticket you're working on and the last entries in `PROGRESS.md`.
+2. **Pick** one ticket. Tasks are small (≤ ~30 min). If one is bigger, split it into
+   smaller tickets first, then pick the first piece.
 3. **Build** only that task. Don't refactor unrelated code. Respect the boundary rules
    (`scripts/check-boundaries.mjs`).
 4. **Verify**, with all of these green from the repo root using bun ≥ 1.4
@@ -12,11 +12,11 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
    bun run lint && bun run typecheck && bun run test && bun run check:rust
    ```
    Also run `bun run e2e` when the renderer, the shell or the IPC contract changed.
-   A task is done only when its **acceptance criteria** in PLAN.md hold.
-5. **Commit** with a message of the form `M<n>.<k>: <task>`. Push **straight to `main`**:
-   no branches, no PRs, no GitHub Actions workflows (the token lacks workflow scope).
-6. **Log**: tick the box in PLAN.md and append to PROGRESS.md: date and time (PT),
-   task id, commit SHA, what was verified, and anything for the Mac.
+   A task is done only when its ticket's **acceptance criteria** hold.
+5. **Commit** with a message that names its ticket (`QRT-<n>`), authored as
+   `Jared Grimes <jlgrimes@users.noreply.github.com>` (see `AGENTS.md`), and push to `main`.
+6. **Log**: put the commit SHA on the ticket and append to PROGRESS.md: date and time (PT),
+   ticket id, commit SHA, what was verified, and anything for the Mac.
 7. Repeat until the time box ends. Before stopping, make sure `main` is green and
    PROGRESS.md says what's next.
 

@@ -39,7 +39,7 @@ launch broke dictation once already). The script warns when the installed app is
   (capabilities, permissions, entitlements, channels, views, provides, dependencies, code identity) beyond this
   build's manifest for that id.
 - An override skips only the signature and lock-hash check: the module counts as installed in the dev data dir.
-  It is never switched on for you; ctrl still asks for consent and its enable prompt (ADR 0216 unchanged).
+  It is never switched on for you; ctrl still asks for consent and its enable prompt.
 - Any failure refuses the start with a `dev-local:` error. No R2, keychain or update key is ever read.
 
 ## Privacy grants stick (one-time Accessibility grant)
