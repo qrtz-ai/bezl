@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Button, Progress, SettingRow, Stack, Text } from '@qrtz/ui';
+import {
+  Button,
+  ErrorCallout,
+  Progress,
+  SettingRow,
+  Stack,
+  Text,
+  userError,
+  type UserError,
+} from '@qrtz/ui';
 import type { AppUpdateStatus } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 
@@ -26,8 +35,13 @@ export function appUpdateLine(s: AppUpdateStatus): string {
     case 'ready':
       return `qrtz ${s.latest} is ready: restart to update`;
     case 'failed':
-      return `update failed: ${s.error ?? 'unknown error'}`;
+      return `${failedUpdate(s).title}: ${failedUpdate(s).next}`;
   }
+}
+
+/** QRT-311: a failed update says so plainly; a technical reason (codes, statuses) goes under details. */
+function failedUpdate(s: AppUpdateStatus): UserError {
+  return userError(s.error ?? '', 'update qrtz');
 }
 
 /**
@@ -39,27 +53,36 @@ export default function AppUpdateRow() {
   const qrtz = useQrtz();
   const [status, setStatus] = useState<AppUpdateStatus | null>(null);
   const live = useQrtzEvent('app-update:state');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
   useEffect(() => {
     void qrtz
       .invoke('app-update:status')
-      .then(setStatus, (e: Error) => setError(e.message));
+      .then(setStatus, (e: unknown) =>
+        setError(userError(e, 'check the update status')),
+      );
   }, [qrtz]);
   useEffect(() => {
     if (live) setStatus(live);
   }, [live]);
   const run = (p: Promise<AppUpdateStatus>) => {
     setError(null);
-    void p.then(setStatus, (e: Error) => setError(e.message));
+    void p.then(setStatus, (e: unknown) =>
+      setError(userError(e, 'reach the update server')),
+    );
   };
   const restart = () => {
     setError(null);
     void qrtz.invoke('app-update:restart').then(
       (r) => {
         if (!r.restarting)
-          setError("qrtz couldn't restart: quit and open it again");
+          setError({
+            title: "couldn't restart qrtz",
+            next: 'quit and open it again.',
+            detail: null,
+          });
       },
-      (e: Error) => setError(e.message),
+      (e: unknown) =>
+        setError(userError(e, 'restart qrtz', 'quit and open it again.')),
     );
   };
   const s = status;
@@ -113,7 +136,9 @@ export default function AppUpdateRow() {
           data-testid="app-update-progress"
         />
       ) : null}
-      {line ? (
+      {s?.state === 'failed' ? (
+        <ErrorCallout error={failedUpdate(s)} data-testid="update-result" />
+      ) : line ? (
         <Text variant="caption" muted role="status" data-testid="update-result">
           {line}
         </Text>
@@ -123,16 +148,11 @@ export default function AppUpdateRow() {
           {s.notes.toLowerCase()}
         </Text>
       ) : null}
-      {error ? (
-        <Text
-          variant="caption"
-          muted
-          role="alert"
-          data-testid="app-update-error"
-        >
-          {error}
-        </Text>
-      ) : null}
+      <ErrorCallout
+        error={error}
+        onDismiss={() => setError(null)}
+        data-testid="app-update-error"
+      />
     </Stack>
   );
 }

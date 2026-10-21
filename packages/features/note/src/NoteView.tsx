@@ -15,6 +15,9 @@ import {
   SpeechRequired,
   ModuleSettingsButton,
   ModuleSettingsModal,
+  ErrorCallout,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
 import {
   AppError,
@@ -89,7 +92,7 @@ export default function NoteView() {
     (t: MeetingTab) => selected && navigate(meetingPath(selected, t)),
     [navigate, selected],
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
   const toast = useToast();
   // Main defers the delete for UNDO_MS behind a durable tombstone (completed on next launch if we quit first).
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
@@ -106,7 +109,7 @@ export default function NoteView() {
       .invoke('note:delete', { id, deferMs: UNDO_MS })
       .catch((e: AppError) => {
         unhide(id);
-        setError(e.message);
+        setError(userError(e, 'delete the meeting'));
       });
     toast(`deleted “${title}”`, 'info', {
       durationMs: UNDO_MS,
@@ -143,7 +146,7 @@ export default function NoteView() {
         setHasMore(more);
         setItems(more ? r.slice(0, PAGE * pages) : r);
       })
-      .catch((e: AppError) => setError(e.message));
+      .catch((e: AppError) => setError(userError(e, 'load your meetings')));
   }, [qrtz, query, pages]);
   useEffect(() => {
     const h = setTimeout(refresh, query ? 150 : 0);
@@ -155,7 +158,7 @@ export default function NoteView() {
   const act = (p: Promise<SessionView>) =>
     p.catch((e: AppError) => {
       if (e.code !== 'E_FORBIDDEN' && e.code !== 'E_TIMEOUT')
-        setError(e.message);
+        setError(userError(e, 'do that'));
     });
 
   const optsModal = (
@@ -311,19 +314,10 @@ export default function NoteView() {
                 />
               ) : null}
               {error ? (
-                <Callout
-                  tone="danger"
-                  title={error}
+                <ErrorCallout
+                  error={error}
+                  onDismiss={() => setError(null)}
                   data-testid="note-error"
-                  action={
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setError(null)}
-                    >
-                      dismiss
-                    </Button>
-                  }
                 />
               ) : null}
               <CaptureStatus

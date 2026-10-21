@@ -29,6 +29,9 @@ import {
   Toolbar,
   TranscriptList,
   TranscriptRow,
+  ErrorCallout,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
 import {
   SUMMARY_TEMPLATES,
@@ -69,10 +72,10 @@ export function MeetingDetail({
   const qrtz = useQrtz();
   const [d, setD] = useState<Detail | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<UserError | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
-  const [retryError, setRetryError] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<UserError | null>(null);
   // Panels mount on first view and then stay mounted (hidden), so switching tabs never refetches notes,
   // reloads the audio or shows an empty frame.
   const [seen, setSeen] = useState<ReadonlySet<MeetingTab>>(
@@ -107,10 +110,10 @@ export function MeetingDetail({
         setD(r);
         setLoadError(null);
       })
-      .catch((e: Error) => {
+      .catch((e: unknown) => {
         if (!live) return;
         setD(null);
-        setLoadError(e.message || 'could not load this meeting.');
+        setLoadError(userError(e, 'load this meeting'));
       });
     return () => {
       live = false;
@@ -123,7 +126,9 @@ export function MeetingDetail({
     qrtz
       .invoke('note:resummarize', { id })
       .then((s) => setD((prev) => (prev ? { ...prev, summary: s } : prev)))
-      .catch((e: Error) => setRetryError(e.message))
+      .catch((e: unknown) =>
+        setRetryError(userError(e, 'summarize this meeting')),
+      )
       .finally(() => setRetrying(false));
   }, [qrtz, id]);
 
@@ -137,7 +142,9 @@ export function MeetingDetail({
       qrtz
         .invoke('note:set-template', { id, template })
         .then((s) => setD((prev) => (prev ? { ...prev, summary: s } : prev)))
-        .catch((e: Error) => setRetryError(e.message))
+        .catch((e: unknown) =>
+          setRetryError(userError(e, 'switch the template')),
+        )
         .finally(() => setRetrying(false));
     },
     [qrtz, id],
@@ -182,9 +189,8 @@ export function MeetingDetail({
 
   if (!d && loadError)
     return (
-      <Callout
-        tone="danger"
-        title={loadError}
+      <ErrorCallout
+        error={loadError}
         data-testid="detail-load-error"
         action={
           <Button
@@ -385,9 +391,11 @@ export function MeetingDetail({
                 }
               >
                 {retryError && !summary.llmError ? (
-                  <Text variant="caption" tone="danger" role="alert">
-                    {retryError}
-                  </Text>
+                  <ErrorCallout
+                    error={retryError}
+                    onDismiss={() => setRetryError(null)}
+                    data-testid="summary-error"
+                  />
                 ) : null}
               </Toolbar>
             }
@@ -395,7 +403,11 @@ export function MeetingDetail({
               summary.llmError ? (
                 <Callout
                   tone="warning"
-                  title={retryError ?? summary.llmError}
+                  title={(retryError ?? llmUserError(summary.llmError)).title}
+                  details={
+                    (retryError ?? llmUserError(summary.llmError)).detail ??
+                    undefined
+                  }
                   data-testid="llm-error"
                   action={
                     <Button
@@ -408,7 +420,9 @@ export function MeetingDetail({
                       {retrying ? 'retrying…' : 'retry'}
                     </Button>
                   }
-                />
+                >
+                  {(retryError ?? llmUserError(summary.llmError)).next}
+                </Callout>
               ) : undefined
             }
           />
@@ -473,4 +487,9 @@ function Segment({
       onSeek={seekHere}
     />
   );
+}
+
+/** QRT-311: the summarizer's own reason (provider codes, statuses) sits under details, not in the title. */
+function llmUserError(raw: string): UserError {
+  return userError(raw, 'summarize this meeting');
 }

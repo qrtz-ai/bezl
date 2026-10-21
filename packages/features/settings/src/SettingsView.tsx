@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
-  Callout,
   Dialog,
+  ErrorCallout,
   LongText,
   Page,
   Progress,
@@ -12,6 +12,8 @@ import {
   Stack,
   Switch,
   Text,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
 import type { IpcResponse } from '@qrtz/core';
 import { requestNavigate } from '@qrtz/core';
@@ -33,15 +35,17 @@ export default function SettingsView() {
     if (liveCfg) setCfg(liveCfg);
   }, [liveCfg]);
   const backupProgress = useQrtzEvent('data:backup-progress');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
+  /** QRT-311: a failure says what couldn't happen; the raw reason stays under details. */
+  const fail = (what: string) => (e: unknown) => setError(userError(e, what));
 
   const refresh = () => {
     setError(null);
     // Load each section independently so one failing call (e.g. the DB worker restarting) doesn't blank the page.
-    const fails: string[] = [];
+    const fails: { what: string; raw: string }[] = [];
     const load = <T,>(p: Promise<T>, set: (v: T) => void, what: string) =>
-      p.then(set, (e: Error) => {
-        fails.push(`${what}: ${e.message}`);
+      p.then(set, (e: unknown) => {
+        fails.push({ what, raw: userError(e, what).detail ?? String(e) });
       });
     void Promise.all([
       load(qrtz.invoke('app:get-info'), setInfo, 'app info'),
@@ -49,34 +53,42 @@ export default function SettingsView() {
       load(qrtz.invoke('helper:status'), setHelper, 'helper'),
       load(qrtz.invoke('config:get'), setCfg, 'settings'),
     ]).then(() => {
-      if (fails.length) setError(fails.join(' · '));
+      if (fails.length)
+        setError({
+          title: `couldn't load ${fails.map((f) => f.what).join(', ')}`,
+          next: 'the rest of opts still works. retry in a moment.',
+          detail: fails.map((f) => `${f.what}: ${f.raw}`).join('\n'),
+        });
     });
   };
   useEffect(refresh, [qrtz]);
   const h = live ?? helper;
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [logsMsg, setLogsMsg] = useState<string | null>(null);
+  const [backupErr, setBackupErr] = useState<UserError | null>(null);
+  const [logsErr, setLogsErr] = useState<UserError | null>(null);
   // Audit P0-4: the third-party notices built into this qrtz (THIRD_PARTY_NOTICES.md), loaded only when opened.
   const [licenses, setLicenses] = useState<string | null>(null);
   const openLicenses = () =>
-    void qrtz.invoke('app:licenses').then(
-      (r) => setLicenses(r.text),
-      (e: Error) => setError(e.message),
-    );
+    void qrtz
+      .invoke('app:licenses')
+      .then((r) => setLicenses(r.text), fail('open the licenses'));
   // ADR 0083: the local logs (~/Library/Logs/qrtz), for sending to us when something breaks.
   const logs = (reveal: boolean) => {
     setLogsMsg(null);
+    setLogsErr(null);
     void qrtz.invoke('logs:export', { reveal }).then(
       (r) =>
         setLogsMsg(
           reveal ? null : r.savedTo ? `saved ${r.files} log files` : 'canceled',
         ),
-      (e: Error) => setLogsMsg(e.message),
+      (e: unknown) => setLogsErr(userError(e, 'export the logs')),
     );
   };
   // Audit P1-3: the logs plus macOS's crash reports for qrtz and its helpers, in one file the user sends.
   const diagnostics = () => {
     setLogsMsg(null);
+    setLogsErr(null);
     void qrtz.invoke('logs:export', { diagnostics: true }).then(
       (r) =>
         setLogsMsg(
@@ -84,13 +96,14 @@ export default function SettingsView() {
             ? `saved ${r.files} log files and ${r.crashReports ?? 0} crash reports`
             : 'canceled',
         ),
-      (e: Error) => setLogsMsg(e.message),
+      (e: unknown) => setLogsErr(userError(e, 'save the diagnostics')),
     );
   };
   const [backupBusy, setBackupBusy] = useState(false);
   const backup = (kind: 'export' | 'import') => {
     setBackupBusy(true);
     setBackupMsg(null);
+    setBackupErr(null);
     const run =
       kind === 'export'
         ? qrtz
@@ -108,7 +121,14 @@ export default function SettingsView() {
                 : `verified and imported ${r.imported} meetings (${r.skipped} already here, ${r.audioFiles} recordings)`,
             );
     void run
-      .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
+      .then(setBackupMsg, (e: unknown) =>
+        setBackupErr(
+          userError(
+            e,
+            kind === 'export' ? 'back up your data' : 'import the backup',
+          ),
+        ),
+      )
       .finally(() => setBackupBusy(false));
   };
   // ADR 0184 amendment: the host's `modules.nano.installed` (ADR 0169); unknown until config loads.
@@ -126,7 +146,7 @@ export default function SettingsView() {
     return qrtz
       .invoke('config:set', { patch: { app: p } })
       .then(setCfg)
-      .catch((e: Error) => setError(e.message));
+      .catch(fail('save that setting'));
   };
   const toggle = (
     label: string,
@@ -148,9 +168,8 @@ export default function SettingsView() {
     // The opts page: qrtz's own opts, pinned to the bottom of the sidebar under apps.
     <Page title="opts" data-testid="settings">
       {error ? (
-        <Callout
-          tone="danger"
-          title={error}
+        <ErrorCallout
+          error={error}
           data-testid="settings-error"
           action={
             <Button variant="secondary" size="sm" onClick={refresh}>
@@ -179,7 +198,7 @@ export default function SettingsView() {
               void qrtz
                 .invoke('config:set', { patch: { theme: e.target.value } })
                 .then(setCfg)
-                .catch((err: Error) => setError(err.message))
+                .catch(fail('change the theme'))
             }
             data-testid="theme"
           >
@@ -219,7 +238,7 @@ export default function SettingsView() {
             void qrtz
               .invoke('config:set', { patch: { speech: { autoUpdate: v } } })
               .then(setCfg)
-              .catch((e: Error) => setError(e.message));
+              .catch(fail('save that setting'));
           },
         )}
         {toggle(
@@ -245,7 +264,7 @@ export default function SettingsView() {
                 patch: { speech: { warmAfterDownload: v } },
               })
               .then(setCfg)
-              .catch((e: Error) => setError(e.message));
+              .catch(fail('save that setting'));
           },
         )}
       </SettingsSection>
@@ -309,6 +328,11 @@ export default function SettingsView() {
             </Text>
           </Stack>
         ) : null}
+        <ErrorCallout
+          error={backupErr}
+          onDismiss={() => setBackupErr(null)}
+          data-testid="backup-error"
+        />
         {backupMsg ? (
           <Text
             variant="caption"
@@ -376,6 +400,11 @@ export default function SettingsView() {
             open-source licenses
           </Button>
         </Stack>
+        <ErrorCallout
+          error={logsErr}
+          onDismiss={() => setLogsErr(null)}
+          data-testid="logs-error"
+        />
         {logsMsg ? (
           <Text variant="caption" muted data-testid="logs-result" role="status">
             {logsMsg}

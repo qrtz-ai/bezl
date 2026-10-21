@@ -7,6 +7,8 @@ import {
   Select,
   Stack,
   Text,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
 import { AppError, type Doc, type DocSummary } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
@@ -49,7 +51,7 @@ export function Notes({
   const qrtz = useQrtz();
   const changed = useQrtzEvent('doc:changed');
   const [notes, setNotes] = useState<DocSummary[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Doc | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -125,7 +127,7 @@ export function Notes({
           if (isConflict(e)) {
             pending.current = text;
             setConflict(true);
-          } else setError(e instanceof Error ? e.message : String(e));
+          } else setError(userError(e, 'save this note'));
         },
       );
       return queue.current;
@@ -169,7 +171,7 @@ export function Notes({
     void queue.current.then(() =>
       qrtz
         .invoke('doc:get', { id })
-        .then(show, (e: Error) => setError(e.message)),
+        .then(show, (e: unknown) => setError(userError(e, 'open this note'))),
     );
   };
   const create = () => {
@@ -200,7 +202,9 @@ export function Notes({
       if (!c) return;
       qrtz
         .invoke('doc:trash', { id: c.id })
-        .catch((e: Error) => setError(e.message));
+        .catch((e: unknown) =>
+          setError(userError(e, 'move this note to the trash')),
+        );
     });
   };
   const keepMine = () => {
@@ -234,7 +238,11 @@ export function Notes({
           id: c.id,
           meetingId: mid,
         })
-        .then(show, (e: Error) => setError(e.message)),
+        .then(show, (e: unknown) =>
+          setError(
+            userError(e, on ? 'link the meeting' : 'unlink the meeting'),
+          ),
+        ),
     );
   };
 
