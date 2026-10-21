@@ -34,3 +34,5 @@ export const ENROLL_GLOBAL_FAILS_PER_MIN = 600;
 export const LIVE_THROTTLE_MS = 250;
 /** Server only: the retention alarm's period. */
 export const PRUNE_EVERY_MS = 60 * 60 * 1000;
+/** Server only (QRT-307): the stored size of one widget state or event (JSON, after scrubbing). */
+export const MAX_CONTENT_BYTES = 8 * 1024;

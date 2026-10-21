@@ -14,6 +14,8 @@ Every command below runs from `services/dash-worker` with this package's own scr
       `npx wrangler whoami` and check the account name. If several accounts are listed, export
       `CLOUDFLARE_ACCOUNT_ID=<that account id>` in this shell (an id, not a secret).
 - [ ] Tests and dry-run build pass: `bun run test && bun run typecheck && bun run check:build`.
+- [ ] No request logging will ship (QRT-307): `grep -n -A2 '\[observability\]' wrangler.toml` shows `enabled = false`
+      and `head_sampling_rate = 0`, and there is no `[env.` section. In the dashboard, Workers Logs for `qrtz-dash` stays off.
 - [ ] No local-mode config will ship: `wrangler.toml` must not mention `DASH_DEV_LOCAL` or have a `[vars]` table
       (`grep -n 'DASH_DEV_LOCAL\|\[vars\]' wrangler.toml` prints nothing; `test/dev.test.ts` also checks this).
       `.dev.vars` is gitignored and only read by `wrangler dev`; it is never uploaded by `wrangler deploy`.
