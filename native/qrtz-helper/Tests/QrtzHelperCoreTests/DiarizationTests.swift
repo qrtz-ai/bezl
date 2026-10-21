@@ -372,15 +372,22 @@ final class DiarizerRunScopeTests: XCTestCase {
 
 final class ModelsWarmCancelTests: XCTestCase {
     func testARecordingThatStartsDuringTheWarmCancelsItBetweenModels() async {
-        // N127: three "models" of 200 ms each, checking isCancelled between them like mac warmModels.
+        // N127: three "models", checking isCancelled between them like mac warmModels.
+        // The diarizer's load holds until the warm task is cancelled, so the recording
+        // always lands inside it, with no sleep-based timing.
         let out = Box<[HelperMessage]>([])
-        let loaded = Box<[String]>([]), resident = Box<Int>(0)
+        let started = Box<[String]>([]), loaded = Box<[String]>([]), resident = Box<Int>(0)
         var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")], transcribers: [FakeASR()],
                               helperVersion: "t", os: "linux", features: [])
+        let gated = Box<Bool>(true)  // only the first warm holds in the diarizer
         deps.modelWarmup = {
             for m in ["asr", "diarizer", "echo"] {
+                started.mutate { $0.append(m) }
                 resident.mutate { $0 += 1 }
-                try? await Task.sleep(nanoseconds: 200_000_000)
+                if gated.value && m == "diarizer" {
+                    var n = 0
+                    while !Task.isCancelled && n < 1000 { try? await Task.sleep(nanoseconds: 5_000_000); n += 1 }
+                }
                 loaded.mutate { $0.append(m) }
                 resident.mutate { $0 -= 1 }  // unloaded right after its load
                 if Task.isCancelled { return "models.warm cancelled after \(m)" }
@@ -389,17 +396,20 @@ final class ModelsWarmCancelTests: XCTestCase {
         }
         let c = HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
         let warm = await c.warmModels()
-        try? await Task.sleep(nanoseconds: 50_000_000)  // inside the first model
+        for _ in 0..<1000 where !started.value.contains("diarizer") { try? await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertEqual(started.value, ["asr", "diarizer"], "the warm is inside the diarizer")
         let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-n127-\(UUID()).wav").path
         await c.handle(.recordingStart(audioPath: path))
         await warm?.value
-        XCTAssertEqual(loaded.value, ["asr"], "stopped after the model it was in")
+        XCTAssertEqual(started.value, ["asr", "diarizer"], "echo never starts")
+        XCTAssertEqual(loaded.value, ["asr", "diarizer"], "stopped after the model it was in")
         XCTAssertEqual(resident.value, 0, "nothing left loaded next to the recording")
         XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models.warm cancelled: recording")))
-        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models.warm cancelled after asr")))
+        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models.warm cancelled after diarizer")))
         XCTAssertFalse(out.value.contains(.log(level: .info, msg: "models warmed: test")))
         await c.handle(.recordingStop())
         // After the recording a new warm runs in full.
+        gated.mutate { $0 = false }
         let again = await c.warmModels()
         XCTAssertNotNil(again)
         await again?.value
