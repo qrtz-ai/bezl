@@ -75,10 +75,24 @@ for bad_req in 'identifier \"ai.qrtz.p\" and anchor apple generic' \
                'identifier \"ai.qrtz.p\" and (certificate leaf[subject.OU] = \"ABCDE12345\" or identifier \"ai.qrtz.p\")' \
                'identifier \"ai.qrtz.p\" and not certificate leaf[subject.OU] = \"ABCDE12345\"' \
                'identifier \"ai.qrtz.p\" and ! certificate leaf[subject.OU] = \"ABCDE12345\"' \
-               'anchor apple or identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"'; do
+               'anchor apple or identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"or anchor apple' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"OR anchor apple' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\" and info [x] = \"y\"not anchor apple' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"||anchor apple' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\"|anchor apple' \
+               'identifier \"ai.qrtz.p\" and (certificate leaf[subject.OU] = \"ABCDE12345\")or(anchor apple)' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\" /* exists */or anchor apple' \
+               'identifier \"ai.qrtz.p\" and anchor apple /* certificate leaf[subject.OU] = \"ABCDE12345\" */' \
+               'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\" and info [x] = \"open'; do
   printf '{"code":{"bundleId":"ai.qrtz.p","designatedRequirement":"%s"}}' "$bad_req" >"$pm"
   expect_fail module_code "$pm" ABCDE12345
 done
+# Where csreq exists (macOS), a requirement the tokenizer can't fault but macOS can't compile is refused too.
+if command -v csreq >/dev/null 2>&1; then
+  printf '{"code":{"bundleId":"ai.qrtz.p","designatedRequirement":"%s"}}' 'identifier \"ai.qrtz.p\" and certificate leaf[subject.OU] = \"ABCDE12345\" and bogus' >"$pm"
+  expect_fail module_code "$pm" ABCDE12345
+fi
 printf '{"code":{"bundleId":"ai.qrtz.p",' >"$pm"; expect_fail module_code "$pm" ABCDE12345   # unparseable
 expect_fail module_code "$t/no-such-module.json" ABCDE12345
 printf '{"code":{"bundleId":"ai.qrtz.p","designatedRequirement":"identifier \\"ai.qrtz.p\\" and certificate leaf[subject.OU] = \\"ABCDE12345\\""}}' >"$pm"

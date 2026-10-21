@@ -7,12 +7,77 @@
 # so a helper can't be signed as one thing and launched as another, and a new helper needs no script edit.
 # Sourced by sign-mac.sh and verify-bundle.sh; no secret, no network.
 
+# req_has_bypass <requirement>: true if the requirement has an or / || / not / ! anywhere outside a string literal or
+# comment, in any spacing or case. It tokenizes rather than pattern-matching: a word is a run of identifier
+# characters (A-Z a-z 0-9 _ . -), so every other character, a `"` included, ends one, and `"T"or`, `)or(`, `]not`,
+# `*/or`, `a||b` and `OR` are all caught. Fails closed (true) on what it can't tokenize safely: a backslash, a
+# non-printable or non-ASCII character, an unterminated string or comment, and any comment other than csreq's own
+# `/* exists */` (a comment could otherwise hide the team pin the substring check looks for). Bash 3.2 compatible.
+req_has_bypass() {
+  local LC_ALL=C
+  local r="$1" i=0 n c word="" note="" state=code
+  [[ "$r" != *\\* && "$r" != *[^[:print:]]* ]] || return 0
+  n=${#r}
+  while ((i <= n)); do
+    c="${r:i:1}"
+    case "$state" in
+      string) [[ "$c" != '"' ]] || state=code; ((i < n)) || return 0 ;;
+      comment)
+        if [[ "$c" == '*' && "${r:i+1:1}" == / ]]; then
+          [[ "$note" == " exists " ]] || return 0
+          state=code; note=""; i=$((i + 1))
+        else
+          note+="$c"
+        fi
+        ((i < n)) || return 0 ;;
+      code)
+        if [[ -n "$c" && "$c" == [[:alnum:]_.-] ]]; then
+          word+="$c"
+        else
+          case "$(printf '%s' "$word" | tr '[:upper:]' '[:lower:]')" in or | not) return 0 ;; esac
+          word=""
+          case "$c" in
+            '!' | '|') return 0 ;;
+            '"') state=string ;;
+            /) if [[ "${r:i+1:1}" == '*' ]]; then state=comment; i=$((i + 1)); fi ;;
+          esac
+        fi ;;
+    esac
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# req_compiles_as_written <requirement>: on a Mac (csreq present; on Darwin csreq is required), compile the
+# requirement and decompile it; fail unless the decompiled form has no or/not clause and equals the requirement as
+# written, up to the quotes csreq drops around plain strings and whitespace. This catches anything macOS's parser reads
+# differently from the tokenizer above. Without csreq (Linux CI) it returns 0: req_has_bypass still applies.
+req_compiles_as_written() {
+  local req="$1" d bin got norm_req norm_got
+  if ! command -v csreq >/dev/null 2>&1; then
+    [[ "$(uname -s)" != Darwin ]] || { echo "module-code: csreq is missing on macOS" >&2; return 1; }
+    return 0
+  fi
+  d="$(mktemp -d)" || return 1
+  bin="$d/req.bin"
+  if ! csreq -r "=$req" -b "$bin" >/dev/null 2>&1 || ! got="$(csreq -r "$bin" -t 2>/dev/null)"; then
+    rm -rf "$d"; echo "module-code: csreq can't compile the requirement" >&2; return 1
+  fi
+  rm -rf "$d"
+  norm_req="$(printf '%s' "$req" | tr -d '"' | tr -s ' \t\n' '   ' | sed 's/^ //; s/ $//')"
+  norm_got="$(printf '%s' "$got" | tr -d '"' | tr -s ' \t\n' '   ' | sed 's/^ //; s/ $//')"
+  ! req_has_bypass "$got" || { echo "module-code: csreq reads the requirement with an or/not clause: $got" >&2; return 1; }
+  [[ "$norm_got" == "$norm_req" ]] || { echo "module-code: csreq reads the requirement as: $got" >&2; return 1; }
+}
+
 # module_code <module.json> <team>: prints "<code.bundleId>\t<code.designatedRequirement>" (QRT-292: shared by
 # bundled_helpers and scripts/modules/build-packages.sh, so packaged modules and bundled helpers obey one rule set).
 # Fails closed on: a module.json jq can't parse, a missing or malformed bundleId, a missing requirement, one that
 # doesn't name `identifier "<bundleId>"` or doesn't pin `certificate leaf[subject.OU] = "<team>"`, one with a tab or
 # newline, and one using `or`/`||`/`not`/`!`: those clauses could make the identifier or team pin optional
-# (`identifier "x" and ... or anchor apple`), so a substring match wouldn't prove the pin is enforced.
+# (`identifier "x" and ... or anchor apple`), so a substring match wouldn't prove the pin is enforced. Where macOS's
+# csreq exists it also compiles the requirement and refuses it unless the compiled form decompiles back to the same
+# requirement (req_compiles_as_written), so what the launcher would enforce is what was checked.
 module_code() {
   local m="${1:?module_code <module.json> <team>}" team="${2:-}" id req
   [[ "$team" =~ ^[0-9A-Z]{10}$ ]] || { echo "module-code: signing team '$team' must be 10 characters, A-Z and 0-9" >&2; return 1; }
@@ -26,8 +91,8 @@ module_code() {
   [[ "$req" != *$'\t'* && "$req" != *$'\n'* ]] || { echo "module-code: $m: designatedRequirement has a tab or newline" >&2; return 1; }
   [[ "$req" == "identifier \"$id\" and "* ]] || { echo "module-code: $m: designatedRequirement does not start with identifier \"$id\"" >&2; return 1; }
   [[ "$req" == *"certificate leaf[subject.OU] = \"$team\""* ]] || { echo "module-code: $m: designatedRequirement does not pin signing team $team" >&2; return 1; }
-  [[ ! "$req" =~ (^|[[:space:]\(\)])(or|not)([[:space:]\(\)]|$) && "$req" != *"||"* && "$req" != *"!"* ]] \
-    || { echo "module-code: $m: designatedRequirement has an or/not clause that could bypass the identifier or team pin" >&2; return 1; }
+  ! req_has_bypass "$req" || { echo "module-code: $m: designatedRequirement has an or/not clause that could bypass the identifier or team pin" >&2; return 1; }
+  req_compiles_as_written "$req" || { echo "module-code: $m: designatedRequirement does not compile (csreq) to the requirement as written" >&2; return 1; }
   printf '%s\t%s\n' "$id" "$req"
 }
 
