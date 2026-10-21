@@ -21,6 +21,9 @@
 set -euo pipefail
 
 die() { echo "build-packages: $*" >&2; exit 1; }
+# QRT-292: module_code / check_package, the module.json identifier and team-pin rules.
+# shellcheck source=./module-code.sh
+source "$(cd "$(dirname "$0")" && pwd)/module-code.sh"
 [[ "$(uname -s)" == Darwin ]] || die "macOS only (the module executables are Swift and AppKit)"
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$HOME/qrtz-packages"
@@ -52,6 +55,11 @@ if [[ -z "$identity" ]]; then
   [[ -n "$identity" ]] || identity="$(sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' <<<"$ids" | head -1)"
   [[ -n "$identity" ]] || identity="-"
 fi
+team="${QRTZ_TEAM_ID:-MR26CCZ496}"
+# Refuse before building: every requested module.json must parse and pin its identifier and the signing team.
+for m in "${want[@]}"; do
+  module_code "$repo/modules/$m/module.json" "$team" >/dev/null || die "$m: modules/$m/module.json fails the signing rules"
+done
 ts=(--timestamp=none)
 [[ "$identity" == "Developer ID Application:"* ]] && ts=(--timestamp)
 
@@ -76,13 +84,15 @@ for m in "${want[@]}"; do
   codesign --force --options runtime "${ts[@]}" --identifier "$id" --entitlements "$repo/$ent" --sign "$identity" "$exe"
   info="$(codesign -dv "$exe" 2>&1)"
   grep -qx "Identifier=$id" <<<"$info" || die "$exe: not signed as $id"
+  # QRT-292: codesign --verify --strict -R=<modules/$m/module.json designatedRequirement>; no override.
+  why="$(check_package "$exe" "$repo/modules/$m/module.json" "$id" "$team" "$identity")" || die "$m: $why"
+  [[ "$identity" == "Developer ID Application:"* ]] || echo "  $m: not Developer ID: checked the identifier clause only (dev-only package)" >&2
   echo "  $m: $exe ($id)"
 done
 
 [[ "$dev_index" == 1 ]] || { echo "built in $out/packages (publish: QRTZ_PUBLISH_PACKAGES=\"$out/packages/*\")"; exit 0; }
 
 echo "== dev index (throwaway keys; fake notarization; debug builds only)"
-team="${QRTZ_TEAM_ID:-MR26CCZ496}"
 models_dir="${QRTZ_MODELS_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/models}"
 (cd "$repo" && cargo build --release -p qrtz-publish)
 pub="${CARGO_TARGET_DIR:-$repo/target}/release/qrtz-publish"
