@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # QRT-275: the source every qrtz release attaches (AGPL-3.0 section 6, GPL-3.0 section 6 for the possibly
-# espeak-derived parts of FluidAudio). scripts/app/publish-local.sh runs it and scripts/app/upload.sh refuses a
-# release without its output; both go to modules.qrtz.ai/v1/app/<v>/ next to the dmg.
+# espeak-derived parts of FluidAudio). scripts/app/publish-local.sh and release.yml run it and
+# scripts/release/gh-store.sh upload-app refuses a release without its output; it goes up as the index release's
+# v1.app.<v>.* assets next to the dmg, and release.yml also attaches it to the app-v<v> release (QRT-297).
 #
 #   scripts/release/source-archives.sh <version> <out dir> [<commit>]   (commit: default HEAD, the one tagged app-v<v>)
 #
@@ -10,7 +11,7 @@
 #   qrtz_<v>_fluidaudio_source.tar.gz  FluidAudio at exactly the version and revision native/qrtz-helper/Package.resolved
 #                                   pins (fetched by revision and checked; never a branch or a newer tag)
 #   qrtz_<v>_build-scripts.tar.gz   the build and release scripts and the manifests/lockfiles they read
-#   qrtz_<v>_source.sha256          sha256 of the three, one per line (upload.sh uploads exactly these)
+#   qrtz_<v>_source.sha256          sha256 of the three, one per line (gh-store.sh upload-app uploads exactly these)
 # QRTZ_FLUIDAUDIO_GIT overrides the FluidAudio remote (tests use a local repo). Reads no key or secret.
 set -euo pipefail
 v="${1:?usage: source-archives.sh <version> <out dir> [<commit>]}"

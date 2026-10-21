@@ -3,7 +3,7 @@
 # timestamp and every package blob, content-addressed) lives as flat assets on the fixed `index` release, which the
 # app reads through https://github.com/qrtz-ai/qrtz/releases/download/index/<asset> (never api.github.com).
 #
-#   tag v<x.y.z>             qrtz.app (tauri.conf.json must say x.y.z)
+#   tag app-v<x.y.z>         qrtz.app (tauri.conf.json must say x.y.z)
 #   tag <module>-v<x.y.z>    one package: nano, ctrl or snap (modules/<module>/qrtz.json must say x.y.z)
 #   workflow_dispatch        tag=<one of the above> re-runs that release; tag=timestamp re-signs the timestamp;
 #                            tag=feed-refresh re-signs qrtz.app's update feed with a new 30-day expiry
@@ -21,11 +21,11 @@ name: release
 
 on:
   push:
-    tags: ['v*', 'nano-v*', 'ctrl-v*', 'snap-v*']
+    tags: ['app-v*', 'nano-v*', 'ctrl-v*', 'snap-v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: 'v<x.y.z>, <module>-v<x.y.z>, timestamp or feed-refresh'
+        description: 'app-v<x.y.z>, <module>-v<x.y.z>, timestamp or feed-refresh'
         required: true
   schedule:
     - cron: '0 16 * * *'
@@ -85,11 +85,11 @@ jobs:
               out on_main true
               exit 0
               ;;
-            v[0-9]*)
-              v="${tag#v}"; kind=app; m="" ;;
+            app-v[0-9]*)
+              v="${tag#app-v}"; kind=app; m="" ;;
             nano-v[0-9]* | ctrl-v[0-9]* | snap-v[0-9]*)
               m="${tag%%-v*}"; v="${tag#*-v}"; kind=pkg ;;
-            *) echo "::error::$tag: not v<x.y.z> or <nano|ctrl|snap>-v<x.y.z>"; exit 1 ;;
+            *) echo "::error::$tag: not app-v<x.y.z> or <nano|ctrl|snap>-v<x.y.z>"; exit 1 ;;
           esac
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$tag: not a plain x.y.z version"; exit 1; }
           sha="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")" || { echo "::error::no tag $tag"; exit 1; }
@@ -248,7 +248,7 @@ jobs:
             --expires-days 30 >"$out/feed.json"
           bash scripts/app/sign-feed.sh "$out/feed.json" "$out/latest.json"
           rm -f "$out/feed.json"
-      - name: publish qrtz.app (the v<x.y.z> release, then the update on the index release, latest.json last)
+      - name: publish qrtz.app (the app-v<x.y.z> release, then the update on the index release, latest.json last)
         if: needs.plan.outputs.kind == 'app'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -259,7 +259,11 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --verify-tag --title "qrtz $VERSION" --notes-file "$out/notes.md" >/dev/null
           fi
-          gh release upload "$TAG" "$DMG" "$out/$(basename "$DMG").sha256" --clobber
+          # QRT-275: every release attaches its source (qrtz at the tag commit, FluidAudio at its pin, the build scripts).
+          bash scripts/release/source-archives.sh "$VERSION" "$out" HEAD
+          gh release upload "$TAG" "$DMG" "$out/$(basename "$DMG").sha256" "$out/qrtz_${VERSION}_source.tar.gz" \
+            "$out/qrtz_${VERSION}_fluidaudio_source.tar.gz" "$out/qrtz_${VERSION}_build-scripts.tar.gz" \
+            "$out/qrtz_${VERSION}_source.sha256" --clobber
           bash scripts/release/gh-store.sh upload-app "$out" "$DMG"
           bash scripts/app/verify-live.sh "$out" "$DMG"
 
