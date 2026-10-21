@@ -21,10 +21,41 @@ req_has_bypass() {
   return 1
 }
 
+# req_clauses_ok <requirement> <bundleId> <team> <label>: the requirement, with /* */ comments removed and spaces
+# collapsed, is exactly a conjunction of these clauses, each once, identifier first (the shape verify-bundle.sh pins):
+#   identifier "<bundleId>"  anchor apple generic  certificate leaf[field.1.2.840.113635.100.6.1.13] (Developer ID leaf)
+#   certificate 1[field.1.2.840.113635.100.6.2.6] (Developer ID intermediate)  certificate leaf[subject.OU] = "<team>"
+# Any other clause, a missing one, a duplicate, an unterminated comment or a parenthesis is refused. Matching whole
+# clauses (not substrings) means a pin hidden in a comment or a string literal never counts. Without the anchor and
+# the two Developer ID markers, a self-signed certificate with OU=<team> would satisfy the requirement.
+req_clauses_ok() {
+  local r="$1" id="$2" team="$3" m="$4" c n=0 seen=" " want
+  r="$(printf '%s' "$r" | sed -E 's#/\*[^*]*\*/# #g')"
+  [[ "$r" != *"/*"* && "$r" != *"*/"* && "$r" != *"("* && "$r" != *")"* ]] \
+    || { echo "module-code: $m: designatedRequirement has an unterminated comment or a parenthesis" >&2; return 1; }
+  r="$(printf '%s' "$r" | tr -s ' ' | sed -E 's/^ //; s/ $//')"
+  r="${r// and /$'\n'}"
+  while IFS= read -r c; do
+    n=$((n + 1))
+    case "$c" in
+      "identifier \"$id\"") [[ $n == 1 ]] || c="" ;;
+      "anchor apple generic" | "certificate leaf[field.1.2.840.113635.100.6.1.13]" | \
+        "certificate 1[field.1.2.840.113635.100.6.2.6]" | "certificate leaf[subject.OU] = \"$team\"") ;;
+      *) c="" ;;
+    esac
+    [[ -n "$c" && "$seen" != *" <$c> "* ]] || { echo "module-code: $m: designatedRequirement clause $n isn't one module_code allows (or repeats one)" >&2; return 1; }
+    seen="$seen<$c> "
+  done <<<"$r"
+  for want in "anchor apple generic" "certificate leaf[field.1.2.840.113635.100.6.1.13]" \
+    "certificate 1[field.1.2.840.113635.100.6.2.6]" "certificate leaf[subject.OU] = \"$team\""; do
+    [[ "$seen" == *" <$want> "* ]] || { echo "module-code: $m: designatedRequirement does not require: $want" >&2; return 1; }
+  done
+}
+
 # module_code <module.json> <team>: prints "<code.bundleId>\t<code.designatedRequirement>". Fails closed on: a
 # module.json jq can't parse, a missing or malformed bundleId, a missing requirement, one with a tab or newline, one
-# that doesn't start with `identifier "<bundleId>" and` or doesn't pin `certificate leaf[subject.OU] = "<team>"`, and
-# one with an or/not clause (req_has_bypass).
+# that doesn't start with `identifier "<bundleId>" and`, one with an or/not clause (req_has_bypass), and one that
+# isn't exactly identifier + anchor apple generic + both Developer ID markers + the team pin (req_clauses_ok).
 module_code() {
   local m="${1:?module_code <module.json> <team>}" team="${2:-}" id req
   [[ "$team" =~ ^[0-9A-Z]{10}$ ]] || { echo "module-code: signing team '$team' must be 10 characters, A-Z and 0-9" >&2; return 1; }
@@ -37,8 +68,8 @@ module_code() {
   [[ -n "$req" ]] || { echo "module-code: $m: code.designatedRequirement missing" >&2; return 1; }
   [[ "$req" != *$'\t'* && "$req" != *$'\n'* && "$req" != *$'\r'* ]] || { echo "module-code: $m: designatedRequirement has a tab or newline" >&2; return 1; }
   [[ "$req" == "identifier \"$id\" and "* ]] || { echo "module-code: $m: designatedRequirement does not start with identifier \"$id\"" >&2; return 1; }
-  [[ "$req" == *"certificate leaf[subject.OU] = \"$team\""* ]] || { echo "module-code: $m: designatedRequirement does not pin signing team $team" >&2; return 1; }
   ! req_has_bypass "$req" || { echo "module-code: $m: designatedRequirement has an or/not clause that could bypass the identifier or team pin" >&2; return 1; }
+  req_clauses_ok "$req" "$id" "$team" "$m" || return 1
   printf '%s\t%s\n' "$id" "$req"
 }
 
