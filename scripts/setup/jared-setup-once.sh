@@ -3,13 +3,14 @@
 #   scripts/setup/jared-setup-once.sh                 create/verify what's missing, skip what exists
 #   scripts/setup/jared-setup-once.sh --force         also rotate the GitHub `release` environment secrets
 #   scripts/setup/jared-setup-once.sh --rotate-dash   also rotate the Dash worker secrets (logs out every agent/owner)
+#   scripts/setup/jared-setup-once.sh --release-only  only the `release` environment + signing secrets; no Dash/wrangler (QRT-322)
 # Prints item names and ok/skip only. No secret ever goes into argv, an env var, a temp file or output.
 # Requires QRT-284 and QRT-307 on main. Reads ~/.qrtz-keys/app-update.key only; never ~/qrtz-root-a or qrtz-root-b.
 set -euo pipefail
 set +x
-FORCE=0; ROTATE_DASH=0
+FORCE=0; ROTATE_DASH=0; RELEASE_ONLY=0
 for a in "$@"; do case "$a" in
-  --force) FORCE=1 ;; --rotate-dash) ROTATE_DASH=1 ;; *) echo "unknown argument: $a" >&2; exit 2 ;;
+  --force) FORCE=1 ;; --rotate-dash) ROTATE_DASH=1 ;; --release-only) RELEASE_ONLY=1 ;; *) echo "unknown argument: $a" >&2; exit 2 ;;
 esac; done
 ok()   { printf 'ok    %s\n' "$1"; }
 skip() { printf 'skip  %s\n' "$1"; }
@@ -18,48 +19,79 @@ die()  { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 [[ "$(uname -s)" == Darwin ]] || die "run this on your Mac"
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 [[ "$(git rev-parse --abbrev-ref HEAD)" == main ]] || die "check out main first"
+preflight() { # hard: fetched, clean (incl. untracked), HEAD == origin/main
+  git -C "$ROOT" fetch -q origin main || die "git fetch origin main failed; $1"
+  [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]] || die "working tree not clean (incl. untracked files); $1"
+  [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$(git -C "$ROOT" rev-parse origin/main)" ]] || die "HEAD is not origin/main (git pull --ff-only); $1"
+}
+if [[ $RELEASE_ONLY == 1 ]]; then preflight "nothing changed"; ok "clean tree at origin/main"
 # soft early warning only; the hard clean-tree + HEAD == origin/main guard runs right before wrangler deploy
-if git fetch -q origin main && [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+elif git fetch -q origin main && [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   printf 'warn  HEAD is not origin/main; the deploy step will refuse (git pull --ff-only)\n'
 fi
 REPO=qrtz-ai/qrtz
-TAGS=(app-v\* nano-v\* ctrl-v\* snap-v\* v\*)
+JARED=jlgrimes
+SIGNING=(MACOS_CERT_P12 MACOS_CERT_PASSWORD AC_API_KEY AC_KEY_ID AC_ISSUER_ID APP_UPDATE_KEY)
 command -v gh >/dev/null || die "gh not installed"
+command -v jq >/dev/null || die "jq not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
-ME_LOGIN="$(gh api user --jq .login)"; ME_ID="$(gh api user --jq .id)"
+ME_LOGIN="$(gh api user --jq .login)" || die "gh api user failed"
+[[ "$ME_LOGIN" == "$JARED" ]] || die "gh is logged in as '$ME_LOGIN', not $JARED; nothing changed"
+ME_ID="$(gh api user --jq .id)" || die "gh api user failed"
+[[ "$ME_ID" =~ ^[0-9]+$ ]] || die "could not resolve $JARED's user id"
 
-# ---- 1. environment `release` (confirmed before anything is uploaded) ----------------------------------------------
+# ---- 1. environment `release` (QRT-322: confirmed before anything is uploaded) -------------------------------------
 # prevent_self_review is false: Jared is the only reviewer and also starts releases. The real control is the bots'
 # fine-grained token (no Actions/Deployments/Environments/Secrets access), so no bot can trigger or approve.
-gh api -X PUT "repos/$REPO/environments/release" --input - >/dev/null <<JSON
+gh api -X PUT "repos/$REPO/environments/release" --input - >/dev/null <<JSON || die "could not create/update environment release; nothing uploaded"
 {"wait_timer":0,"prevent_self_review":false,"can_admins_bypass":false,
  "reviewers":[{"type":"User","id":$ME_ID}],
  "deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
 JSON
 ok "environment release"
-pol_list() { gh api "repos/$REPO/environments/release/deployment-branch-policies" --jq '.branch_policies[] | "\(.type):\(.name)"'; }
-have_pols="$(pol_list)"
-for p in branch:main "${TAGS[@]/#/tag:}"; do
-  if grep -qxF "$p" <<<"$have_pols"; then skip "deploy policy $p"; else
-    gh api -X POST "repos/$REPO/environments/release/deployment-branch-policies" -f name="${p#*:}" -f type="${p%%:*}" >/dev/null
-    ok "deploy policy $p"; fi
-done
-jq -e --argjson id "$ME_ID" '
+POL=("repos/$REPO/environments/release/deployment-branch-policies")
+pols="$(gh api "${POL[0]}?per_page=100" --jq '.branch_policies[] | "\(.id) \(.type):\(.name)"')" || die "could not list deploy policies; nothing uploaded"
+while read -r id tn; do
+  [[ -z "${id:-}" || "$tn" == "tag:app-v*" ]] && continue
+  gh api -X DELETE "${POL[0]}/$id" >/dev/null || die "could not delete deploy policy $tn; nothing uploaded"
+  ok "removed deploy policy $tn"
+done <<<"$pols"
+if grep -q ' tag:app-v\*$' <<<"$pols"; then skip "deploy policy tag:app-v*"; else
+  gh api -X POST "${POL[0]}" -f name='app-v*' -f type=tag >/dev/null || die "could not add deploy policy app-v*; nothing uploaded"
+  ok "deploy policy tag:app-v*"
+fi
+
+# ---- 2. read-back: every check must pass before any secret is uploaded ---------------------------------------------
+env_json="$(gh api "repos/$REPO/environments/release")" || die "could not read back environment release; nothing uploaded"
+jq -e --argjson id "$ME_ID" --arg login "$JARED" '
   .can_admins_bypass == false
   and .deployment_branch_policy.custom_branch_policies == true
   and .deployment_branch_policy.protected_branches == false
   and ([.protection_rules[] | select(.type=="required_reviewers")] | length == 1)
-  and ([.protection_rules[] | select(.type=="required_reviewers")][0].reviewers | map(.reviewer.id) == [$id])
-' <<<"$(gh api "repos/$REPO/environments/release")" >/dev/null || die "release environment protections did not verify; nothing uploaded"
-want="$(printf '%s\n' branch:main "${TAGS[@]/#/tag:}" | sort | paste -sd, -)"
-got="$(pol_list | sort | paste -sd, -)"
-[[ "$got" == "$want" ]] || die "release deploy policies are not exactly main, app-v*, nano-v*, ctrl-v*, snap-v*, v*; nothing uploaded"
-ok "release protections verified (reviewer $ME_LOGIN, no admin bypass, main + release tags)"
-
-# ---- 2. no repo-level secrets (checked before any upload) ---------------------------------------------------------
-repo_secrets="$(gh secret list --repo "$REPO" --json name --jq '.[].name')" || die "gh secret list (repo) failed"
-[[ -z "$repo_secrets" ]] || die "repo-level secrets exist; signing secrets must be environment-only (nothing uploaded)"
+  and ([.protection_rules[] | select(.type=="required_reviewers")][0].reviewers
+       | map({t: .type, id: .reviewer.id, l: .reviewer.login}) == [{t: "User", id: $id, l: $login}])
+' <<<"$env_json" >/dev/null || die "release environment protections did not verify (reviewer, admin bypass, branch policy); nothing uploaded"
+got="$(gh api "${POL[0]}?per_page=100" --jq '[.branch_policies[] | "\(.type):\(.name)"] | sort | join(",")')" \
+  || die "could not read back deploy policies; nothing uploaded"
+[[ "$got" == 'tag:app-v*' ]] || die "release deploy policies are not exactly [tag app-v*] (got: $got); nothing uploaded"
+ok "release protections verified (reviewer $ME_LOGIN only, no admin bypass, tag app-v* only)"
+signing_json="$(printf '%s\n' "${SIGNING[@]}" | jq -R . | jq -sc .)"
+hits() { jq -r --argjson s "$signing_json" '.secrets[]?.name | select(. as $n | $s | index($n))'; }
+repo_n="$(gh api "repos/$REPO/actions/secrets" --jq .total_count)" || die "could not list repo secrets; nothing uploaded"
+[[ "$repo_n" == 0 ]] || die "repo-level secrets exist ($repo_n); signing secrets must be environment-only (nothing uploaded)"
 ok "no repo-level secrets"
+org_json="$(gh api "repos/$REPO/actions/organization-secrets?per_page=100")" || die "GET repos/$REPO/actions/organization-secrets failed: token can't verify org secrets; don't bypass, ping Beve (nothing uploaded)"
+org_hits="$(hits <<<"$org_json")" || die "could not parse org secrets; nothing uploaded"
+[[ -z "$org_hits" ]] || die "org-level secrets visible to $REPO carry signing names ($(paste -sd, - <<<"$org_hits")); nothing uploaded"
+ok "no signing names in org secrets"
+envs="$(gh api "repos/$REPO/environments?per_page=100" --jq '.environments[].name')" || die "could not list environments; nothing uploaded"
+while IFS= read -r e; do
+  [[ -z "$e" || "$e" == release ]] && continue
+  ej="$(gh api "repos/$REPO/environments/$(jq -rn --arg e "$e" '$e|@uri')/secrets?per_page=100")" || die "could not list secrets of environment $e; nothing uploaded"
+  eh="$(hits <<<"$ej")" || die "could not parse secrets of environment $e; nothing uploaded"
+  [[ -z "$eh" ]] || die "environment $e holds signing secrets ($(paste -sd, - <<<"$eh")); nothing uploaded"
+done <<<"$envs"
+ok "no signing secrets in any other environment"
 
 # ---- 3. inputs: files (found or prompted, then validated) and keychain items (created with hidden prompts) ---------
 pick() { # var, label, candidate (from env or the repo's documented path; may be empty)
@@ -103,6 +135,7 @@ if need AC_KEY_ID;           then kc qrtz-release-asc-key-id | gset AC_KEY_ID; e
 if need AC_ISSUER_ID;        then kc qrtz-release-asc-issuer-id | gset AC_ISSUER_ID; else skip "secret AC_ISSUER_ID"; fi
 if need APP_UPDATE_KEY;      then tr -d '[:space:]' <"$UPD" | gset APP_UPDATE_KEY; else skip "secret APP_UPDATE_KEY"; fi
 gh secret list --repo "$REPO" --env release --json name --jq '.[].name' | sed 's/^/name  /'
+if [[ $RELEASE_ONLY == 1 ]]; then ok "release-only: Dash steps skipped"; exit 0; fi
 
 # ---- 5. Dash (services/dash-worker/DEPLOY.md) ---------------------------------------------------------------------
 cd "$ROOT/services/dash-worker"
@@ -131,9 +164,7 @@ names="$("$W" secret list --format json | jq -r '[.[].name] | sort | join(",")')
 [[ "$names" == DASH_ENROLL_KEY,DASH_PEPPER,DASH_SETUP_TOKEN ]] || die "dash secrets are not exactly the three (DEPLOY.md §1)"
 ok "dash secrets exactly three"
 bun run check:build >/dev/null; ok "check:build"
-git -C "$ROOT" fetch -q origin main || die "git fetch origin main failed; nothing deployed"
-[[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]] || die "working tree not clean (incl. untracked files); nothing deployed"
-[[ "$(git -C "$ROOT" rev-parse HEAD)" == "$(git -C "$ROOT" rev-parse origin/main)" ]] || die "HEAD is not origin/main (git pull --ff-only); nothing deployed"
+preflight "nothing deployed"
 ok "clean tree at origin/main"
 "$W" deploy >/dev/null; ok "deploy qrtz-dash + dash.qrtz.ai custom domain (DNS)"
 bash scripts/smoke-prod.sh >/dev/null || die "smoke-prod failed (rollback: $W rollback)"

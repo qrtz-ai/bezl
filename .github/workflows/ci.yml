@@ -59,6 +59,8 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
+      # QRT-322: setup script verifies the release environment before any secret upload (gh stubbed, no network).
+      - run: bash scripts/setup/jared-setup-once.test.sh
 
   e2e:
     name: playwright (renderer, mocked backend)
