@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.6 (2026-10-21)
+
+- Updates now come from GitHub releases.
+- Downloads are checked against GitHub's own hosts.
+- Clearer error messages.
+- One-click Copy prompt for Dash.
+- Signing fix.
+
 ## 0.2.5 (2026-10-21)
 
 - Updates now come from GitHub releases.
