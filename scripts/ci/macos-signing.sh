@@ -103,7 +103,7 @@ case "${1:-}" in
     genv QRTZ_NOTARY_PROFILE "$profile"
     genv QRTZ_NOTARY_KEYCHAIN "$kc"
     echo "macos-signing: notary profile $profile stored in the temp keychain ($how)"
-    [[ "$1" == setup ]] && write_keys
+    if [[ "$1" == setup ]]; then write_keys; fi
     ;;
   keys) write_keys ;;
   cleanup)
