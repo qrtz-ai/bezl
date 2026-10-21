@@ -328,17 +328,39 @@ fn history_older_than_retention_is_dropped_and_rings_cap() {
     let (_, tok) = approved(&mut d);
     post(&mut d, &tok, "/v1/widgets", json!({"key": "l", "type": "log"}));
     post(&mut d, &tok, "/v1/widgets/l/events", json!({"line": "old"}));
+    let ev_at = |d: &mut Dash, line: &str, at: u64| {
+        let r = d.handle(
+            &Request::new("POST", "/v1/widgets/l/events")
+                .bearer(&tok)
+                .json(json!({ "line": line })),
+            at,
+        );
+        assert_eq!(r.status, 200);
+    };
+    // A write half way keeps the agent and widget inside retention (QRT-307); only the old event ages out.
+    ev_at(&mut d, "mid", T0 + RETENTION_DAYS * DAY_MS / 2);
     let later = T0 + RETENTION_DAYS * DAY_MS + 1;
+    ev_at(&mut d, "new", later);
+    let ev = d.view(later)["agents"][0]["widgets"][0]["events"].clone();
+    assert_eq!(ev.as_array().unwrap().len(), 2);
+    assert_eq!(ev[0]["data"]["line"], "mid");
+    assert_eq!(ev[1]["data"]["line"], "new");
+}
+
+#[test]
+fn agents_and_widgets_quiet_past_retention_are_dropped() {
+    let mut d = dash();
+    let (_, tok) = approved(&mut d);
+    post(&mut d, &tok, "/v1/widgets", json!({"key": "s", "type": "status"}));
+    let later = T0 + RETENTION_DAYS * DAY_MS + 1;
+    assert_eq!(d.view(later)["agents"].as_array().unwrap().len(), 0);
     let r = d.handle(
-        &Request::new("POST", "/v1/widgets/l/events")
+        &Request::new("POST", "/v1/heartbeat")
             .bearer(&tok)
-            .json(json!({"line": "new"})),
+            .json(json!({"status": "idle"})),
         later,
     );
-    assert_eq!(r.status, 200);
-    let ev = d.view(later)["agents"][0]["widgets"][0]["events"].clone();
-    assert_eq!(ev.as_array().unwrap().len(), 1);
-    assert_eq!(ev[0]["data"]["line"], "new");
+    assert_eq!(r.status, 410);
 }
 
 #[test]
