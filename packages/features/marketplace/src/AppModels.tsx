@@ -6,6 +6,8 @@ import {
   SettingsSection,
   Stack,
   Text,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
 import type { SpeechSetupStatus } from '@qrtz/core';
 import { useQrtz } from '@qrtz/core/react';
@@ -30,14 +32,16 @@ export function AppModels({
 }) {
   const qrtz = useQrtz();
   const [status, setStatus] = useState<SpeechSetupStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
   const [confirming, setConfirming] = useState(false);
   const scope = { extensions: [app] };
   const read = useCallback(
     () =>
       qrtz
         .invoke('speech:status', { extensions: [app] })
-        .then(setStatus, (e: Error) => setError(e.message)),
+        .then(setStatus, (e: unknown) =>
+          setError(userError(e, `read ${app}'s models`)),
+        ),
     [qrtz, app],
   );
   useEffect(() => {
@@ -47,12 +51,18 @@ export function AppModels({
   }, [qrtz, read]);
   const run = (
     p: Promise<SpeechSetupStatus>,
-    friendly?: (m: string) => string,
+    what: string,
+    friendly?: (m: string) => string | null,
   ) => {
     setError(null);
-    p.then(setStatus, (e: Error) =>
-      setError(friendly ? friendly(e.message) : e.message),
-    );
+    p.then(setStatus, (e: Error) => {
+      const plain = friendly?.(e.message);
+      setError(
+        plain
+          ? { title: `couldn't ${what}`, next: plain, detail: null }
+          : userError(e, what),
+      );
+    });
   };
   const sets = keptFor(app, on);
   const kept = sets.filter((s) => s.keptFor.length);
@@ -65,9 +75,15 @@ export function AppModels({
         data-testid={`models-${app}-panel`}
         // Every set is someone else's too: a delete would remove nothing.
         deleteBlocked={sets.length > 0 && kept.length === sets.length}
-        onDownload={() => run(qrtz.invoke('speech:download', scope))}
-        onPause={() => run(qrtz.invoke('speech:pause', scope))}
-        onResume={() => run(qrtz.invoke('speech:resume', scope))}
+        onDownload={() =>
+          run(qrtz.invoke('speech:download', scope), 'download the models')
+        }
+        onPause={() =>
+          run(qrtz.invoke('speech:pause', scope), 'pause the download')
+        }
+        onResume={() =>
+          run(qrtz.invoke('speech:resume', scope), 'resume the download')
+        }
         onDelete={() => setConfirming(true)}
       />
       <Dialog
@@ -100,10 +116,13 @@ export function AppModels({
               icon="trash"
               onClick={() => {
                 setConfirming(false);
-                run(qrtz.invoke('speech:delete', scope), (m) =>
-                  isSharedBundle(m)
-                    ? "these models are part of qrtz's shared speech, so they can't be deleted for one app."
-                    : m,
+                run(
+                  qrtz.invoke('speech:delete', scope),
+                  'delete the models',
+                  (m) =>
+                    isSharedBundle(m)
+                      ? "these models are part of qrtz's shared speech, so they can't be deleted for one app."
+                      : null,
                 );
               }}
               data-testid={`models-${app}-confirm-delete`}

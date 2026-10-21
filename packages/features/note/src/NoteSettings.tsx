@@ -1,5 +1,5 @@
 import {
-  Callout,
+  ErrorCallout,
   Field,
   Input,
   Select,
@@ -7,6 +7,7 @@ import {
   SettingsSection,
   Switch,
   Text,
+  userError,
 } from '@qrtz/ui';
 import { SUMMARY_TEMPLATES } from '@qrtz/core';
 import { useModuleSettings } from '@qrtz/core/react';
@@ -55,9 +56,8 @@ export default function NoteSettings() {
   return (
     <>
       {error ? (
-        <Callout
-          tone="danger"
-          title={error}
+        <ErrorCallout
+          error={userError(error, "load nano's settings")}
           data-testid="note-settings-error"
         />
       ) : null}

@@ -33,6 +33,9 @@ import {
   useToast,
   type ExtensionStatus,
   type MenuItem,
+  ErrorCallout,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
 import {
   MODULE_IDS,
@@ -137,7 +140,7 @@ export default function MarketplaceView() {
   );
   const [state, setState] = useState<PackagesState | null>(null);
   const [cfg, setCfg] = useState<Pick<Config, 'modules'> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
   const [checking, setChecking] = useState(false);
   const [pending, setPending] = useState<{
     name: string;
@@ -172,7 +175,7 @@ export default function MarketplaceView() {
             ),
           })
           .catch(() => {});
-      } else setError(e.message);
+      } else setError(userError(e, 'finish that in the store'));
     },
     [qrtz],
   );
@@ -557,18 +560,13 @@ export default function MarketplaceView() {
     />
   ) : null;
 
-  const errorBox = error ? (
-    <Callout
-      tone="danger"
-      title={error}
+  const errorBox = (
+    <ErrorCallout
+      error={error}
+      onDismiss={() => setError(null)}
       data-testid="marketplace-error"
-      action={
-        <Button variant="secondary" size="sm" onClick={() => setError(null)}>
-          dismiss
-        </Button>
-      }
     />
-  ) : null;
+  );
 
   const restartBox = updated.length ? (
     <Callout
