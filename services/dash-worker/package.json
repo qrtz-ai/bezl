@@ -5,7 +5,7 @@
   "description": "Agent Dash server (ADR 0228 amendment): Cloudflare Worker + one SQLite Durable Object per dashboard. Not deployed.",
   "type": "module",
   "scripts": {
-    "test": "node scripts/gen-readme.mjs --check && vitest run",
+    "test": "node scripts/gen-readme.mjs --check && vitest run && bash scripts/edge.test.sh",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../../.oxlintrc.json --deny-warnings src test && oxfmt -c ../../.oxfmtrc.json --check src test",
     "check:build": "bunx --bun wrangler deploy --dry-run --outdir dist",
@@ -13,7 +13,8 @@
     "dev:local": "bash scripts/dev.sh",
     "token": "bash scripts/token.sh",
     "app": "bash scripts/app.sh",
-    "e2e": "bash scripts/e2e.sh"
+    "e2e": "bash scripts/e2e.sh",
+    "test:edge": "bash scripts/edge.test.sh"
   },
   "dependencies": {
     "zod": "^4.6.7"
