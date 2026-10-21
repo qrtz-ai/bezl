@@ -91,7 +91,7 @@ run dry --
 no_token dry
 
 # 3. Free plan: 5 / 10 s, block 10 s, printed and verified on read-back.
-run free -- --apply
+run free -- --use-wrangler-login --apply
 if [ "$(rc free)" = 0 ] && has free "applied rate limit: 5 requests / 10s, block 10s (plan: free)" \
   && has free "ok   rate-limit rule read back: 5 / 10s, block 10s"; then ok "free plan: 5/10s applied and read back"; else bad "free: $(cat "$T/free.out")"; fi
 body="$(grep -l '"rules"' "$T"/state/body.* 2>/dev/null | head -n1)"
@@ -107,12 +107,12 @@ has free "WARNING: using wrangler's OAuth login" && ok "warns that the wrangler 
 no_token free
 
 # 4. Pro plan: 20 / 60 s, block 600 s.
-run pro MOCK_PLAN=pro -- --apply
+run pro MOCK_PLAN=pro -- --use-wrangler-login --apply
 [ "$(rc pro)" = 0 ] && has pro "applied rate limit: 20 requests / 60s, block 600s (plan: pro)" \
   && has pro "ok   rate-limit rule read back: 20 / 60s, block 600s" && ok "pro plan: 20/60s applied and read back" || bad "pro: $(cat "$T/pro.out")"
 
 # 5. Read-back mismatch fails.
-run mismatch MOCK_BAD_READBACK=1 -- --apply
+run mismatch MOCK_BAD_READBACK=1 -- --use-wrangler-login --apply
 [ "$(rc mismatch)" != 0 ] && has mismatch 'FAIL min_tls_version "1.0"' && has mismatch "read-back mismatch" && ok "read-back mismatch exits non-zero" || bad "mismatch: $(cat "$T/mismatch.out")"
 
 # 6. Broad token warnings; scoped token from the hidden prompt is never printed.
@@ -127,14 +127,27 @@ no_token prompt
 
 # 7. Other rules in the phase survive apply and revert; revert removes only ours.
 SEED_RULES='[{"id":"x","version":"3","ref":"someone-else","expression":"true","action":"block","ratelimit":{"characteristics":["ip.src"],"period":10,"requests_per_period":99,"mitigation_timeout":10}}]'
-run keep -- --apply
+run keep -- --use-wrangler-login --apply
 [ "$(rc keep)" = 0 ] && [ "$(jq -r '[.[].ref] | sort | join(",")' "$T/state/rules")" = "qrt316-enroll,someone-else" ] && ok "apply keeps other rules" || bad "keep: $(cat "$T/state/rules" 2>/dev/null)"
 SEED_RULES="$(cat "$T/state/rules")"
-run revert -- --revert
+run revert -- --use-wrangler-login --revert
 [ "$(rc revert)" = 0 ] && [ "$(jq -r '[.[].ref] | join(",")' "$T/state/rules")" = "someone-else" ] && ok "revert removes only qrt316-enroll" || bad "revert: $(cat "$T/revert.out")"
 unset SEED_RULES
 
-# 8. Bad argument.
+# 8. --apply without --use-wrangler-login prompts; an empty prompt dies before any API call or write.
+run noflag -- --apply
+[ "$(rc noflag)" != 0 ] && has noflag "no token given; nothing written" && [ ! -s "$T/noflag.log" ] \
+  && ! has noflag "WARNING: using wrangler" && ok "--apply ignores wrangler login; empty prompt dies before any write" || bad "noflag: $(cat "$T/noflag.out")"
+run norevert -- --revert
+[ "$(rc norevert)" != 0 ] && [ ! -s "$T/norevert.log" ] && ok "--revert also needs the prompt or the flag" || bad "norevert: $(cat "$T/norevert.out")"
+# 9. --apply with the scoped token from the prompt works and gives no scope warning.
+RUN_STDIN="$T/tok" run scoped -- --apply
+[ "$(rc scoped)" = 0 ] && ! has scoped WARNING && has scoped "all edge settings applied and verified" && ok "--apply via prompt: applied, no warnings" || bad "scoped: $(cat "$T/scoped.out")"
+no_token scoped
+# 10. Dry run still falls back to wrangler and warns.
+has dry "WARNING: using wrangler's OAuth login" && ok "dry run uses wrangler login (warned)" || bad "dry: no wrangler warning"
+
+# 11. Bad argument.
 run badarg -- --yolo
 [ "$(rc badarg)" = 2 ] && ok "unknown argument rejected" || bad "badarg rc $(rc badarg)"
 

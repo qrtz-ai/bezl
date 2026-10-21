@@ -84,9 +84,8 @@ from another machine, the box or the Cloudflare connector.
 
 ```bash
 cd services/dash-worker
-bash scripts/edge.sh                     # dry run: current vs wanted, writes nothing
-bash scripts/edge.sh --token-prompt      # same, with a scoped token (Zone WAF:Edit + Zone Settings:Edit on qrtz.ai)
-bash scripts/edge.sh --apply             # (add --token-prompt) applies, prints the limit used, reads everything back
+bash scripts/edge.sh                     # dry run: current vs wanted, writes nothing (may use your wrangler login)
+bash scripts/edge.sh --apply             # prompts for the scoped token, applies, prints the limit used, reads back
 ```
 
 - Rate-limit rule `qrt316-enroll` on `POST dash.qrtz.ai/v1/enroll`, per `ip.src` + `cf.colo.id`: **20 requests /
@@ -94,8 +93,11 @@ bash scripts/edge.sh --apply             # (add --token-prompt) applies, prints 
   get `429 {"error":"rate limited","retry_after_ms":...}`. The script prints which limit it applied and fails unless
   that exact rule reads back. Other rate-limit rules in the zone are kept.
 - Always Use HTTPS on, minimum TLS 1.2, HSTS max-age 15552000 (180 days) without includeSubDomains or preload.
-- Without `--token-prompt` it uses your wrangler login and warns that it is broader than needed; it also warns if a
-  pasted token can see other zones, accounts, DNS or Workers routes. The token is never printed or stored.
+- Token: `--apply` and `--revert` always ask for a scoped API token (Zone WAF:Edit + Zone Settings:Edit on qrtz.ai
+  only) at a hidden prompt; an empty answer stops before anything is written. Your wrangler OAuth login is used for a
+  write only with an explicit `--use-wrangler-login`, and the script warns that it is broader than needed. A dry run
+  tries the wrangler login first, then the prompt (`--token-prompt` forces the prompt). It also warns if a token can
+  see other zones, accounts, DNS or Workers routes. The token is never printed or stored.
 - Undo the rule only: `bash scripts/edge.sh --revert` (HTTPS/TLS/HSTS stay; HSTS can't be recalled from browsers).
 - Then run `bash scripts/smoke-prod.sh --edge` (section 5).
 
