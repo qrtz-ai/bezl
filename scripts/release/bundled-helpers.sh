@@ -7,10 +7,16 @@
 # so a helper can't be signed as one thing and launched as another, and a new helper needs no script edit.
 # Sourced by sign-mac.sh and verify-bundle.sh; no secret, no network.
 
+# req_clauses_ok (QRT-292, folds in QRT-309) is shared with build-packages.sh, not copied: one allowlist for every
+# designatedRequirement the release signs against.
+# shellcheck source=../modules/module-code.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../modules/module-code.sh"
+
 # bundled_helpers <modules dir> <team>: one line per bundled helper, tab-separated:
 #   entry  identifier  entitlements(repo path | none)  designatedRequirement
 # Fails closed (nonzero, message on stderr) on anything it can't vouch for: a missing identifier or requirement, a
-# module.json jq can't parse, a requirement that doesn't name the identifier or doesn't pin the signing team <team>, an entry with a path in it, Agent Dash's network helper (ADR 0231:
+# module.json jq can't parse, a requirement that doesn't name the identifier or isn't exactly the req_clauses_ok allowlist (anchor, Developer ID
+# leaf and intermediate markers, signing team <team>), an entry with a path in it, Agent Dash's network helper (ADR 0231:
 # never bundled), or an entitlements file whose keys differ from module.json's entitlements list.
 bundled_helpers() {
   local dir="${1:?bundled_helpers <modules dir> <team>}" team="${2:-}" repo m kind entry id req ents want got f n=0 out=""
@@ -31,7 +37,9 @@ bundled_helpers() {
     [[ "$id" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "bundled-helpers: $m: code.bundleId missing or malformed" >&2; return 1; }
     [[ -n "$req" ]] || { echo "bundled-helpers: $m: code.designatedRequirement missing" >&2; return 1; }
     [[ "$req" == *"identifier \"$id\""* ]] || { echo "bundled-helpers: $m: designatedRequirement does not name identifier \"$id\"" >&2; return 1; }
-    [[ "$req" == *"certificate leaf[subject.OU] = \"$team\""* ]] || { echo "bundled-helpers: $m: designatedRequirement does not pin signing team $team" >&2; return 1; }
+    # Exactly identifier + anchor apple generic + the Developer ID leaf and intermediate markers + the team pin; a
+    # team-only requirement would let a self-signed certificate with OU=<team> through.
+    req_clauses_ok "$req" "$id" "$team" "$m" || return 1
     [[ "$req" != *$'\t'* && "$req" != *$'\n'* ]] || { echo "bundled-helpers: $m: designatedRequirement has a tab or newline" >&2; return 1; }
     want="$(jq -r '(.entitlements // [])[]' "$m")" || { echo "bundled-helpers: $m: can't read entitlements" >&2; return 1; }
     want="$(sort <<<"$want" | sed '/^$/d' | tr '\n' ' ')"
