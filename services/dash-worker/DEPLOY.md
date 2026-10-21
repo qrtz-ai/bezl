@@ -72,33 +72,32 @@ edge certificate for `dash.qrtz.ai` in the `qrtz.ai` zone. Do not add a manual D
       custom-domain attach fail). Remove it only if you know it's stale.
 - [ ] After deploy: Workers & Pages → `qrtz-dash` → Settings → Domains & Routes shows `dash.qrtz.ai` (Custom domain).
       DNS shows `dash` as a Worker record, proxied (orange cloud). No `*.workers.dev` URL is enabled.
-- [ ] HTTPS only: SSL/TLS → Edge Certificates → **Always Use HTTPS: On** (redirects http to https at the edge; if off,
-      the worker itself answers http with 400 `https only`, never content). Minimum TLS 1.2.
-- [ ] HSTS (Edge Certificates → HSTS): enable with max-age ≥ 6 months for `dash.qrtz.ai`. Only turn on
-      includeSubDomains/preload if every qrtz.ai subdomain is https-only.
+- [ ] HTTPS only, minimum TLS 1.2 and HSTS are set by `scripts/edge.sh` (section 3). If they are off, the worker
+      itself answers http with 400 `https only`, never content.
 
-## 3. Rate-limit rule on /v1/enroll
+## 3. Edge settings: rate limit on /v1/enroll, HTTPS, TLS 1.2, HSTS (QRT-316)
 
-The worker already limits wrong codes per IP, per /48 and per code (`src/constants.ts`, `src/directory.ts`). This edge
-rule is the outer layer so floods never reach the Durable Object.
+The worker already limits wrong codes per IP, per /48 and per code (`src/constants.ts`, `src/directory.ts`; QRT-284:
+5 wrong secrets kill a code, 10 wrong codes/min per dashboard and per IP get 429). The edge rule is the outer layer so
+floods never reach the Durable Object. Everything here is applied by `scripts/edge.sh` from this Mac, never by hand
+from another machine, the box or the Cloudflare connector.
 
-Dashboard → qrtz.ai → Security → WAF → Rate limiting rules → Create rule:
+```bash
+cd services/dash-worker
+bash scripts/edge.sh                     # dry run: current vs wanted, writes nothing
+bash scripts/edge.sh --token-prompt      # same, with a scoped token (Zone WAF:Edit + Zone Settings:Edit on qrtz.ai)
+bash scripts/edge.sh --apply             # (add --token-prompt) applies, prints the limit used, reads everything back
+```
 
-- Name: `dash enroll`
-- Expression (Edit expression):
-  ```
-  (http.host eq "dash.qrtz.ai" and http.request.uri.path eq "/v1/enroll" and http.request.method eq "POST")
-  ```
-- Characteristics: IP (`ip.src`); on plans that allow it, also Cloudflare data center (default).
-- Threshold: **20 requests per 1 minute** (period 60 s). The worker allows 10 wrong codes/min/IP, so honest retries
-  stay under this.
-- Action: **Block** for **10 minutes** (mitigation timeout 600 s), response 429.
-- Deploy, then confirm it is listed as Active. (Free plans offer only a 10 s period: use 10 requests / 10 s, block 10 s.)
-
-API alternative (same rule; token with Zone WAF edit on qrtz.ai only, kept in your shell env, never echoed):
-`PUT /zones/{zone_id}/rulesets/phases/http_ratelimit/entrypoint` with a rule `{ "action": "block", "expression": <above>,
-"ratelimit": { "characteristics": ["ip.src","cf.colo.id"], "period": 60, "requests_per_period": 20,
-"mitigation_timeout": 600 } }`. Prefer the dashboard; it avoids creating another token.
+- Rate-limit rule `qrt316-enroll` on `POST dash.qrtz.ai/v1/enroll`, per `ip.src` + `cf.colo.id`: **20 requests /
+  60 s, block 600 s** if the zone's plan allows a 60 s period, otherwise **5 / 10 s, block 10 s**. Blocked requests
+  get `429 {"error":"rate limited","retry_after_ms":...}`. The script prints which limit it applied and fails unless
+  that exact rule reads back. Other rate-limit rules in the zone are kept.
+- Always Use HTTPS on, minimum TLS 1.2, HSTS max-age 15552000 (180 days) without includeSubDomains or preload.
+- Without `--token-prompt` it uses your wrangler login and warns that it is broader than needed; it also warns if a
+  pasted token can see other zones, accounts, DNS or Workers routes. The token is never printed or stored.
+- Undo the rule only: `bash scripts/edge.sh --revert` (HTTPS/TLS/HSTS stay; HSTS can't be recalled from browsers).
+- Then run `bash scripts/smoke-prod.sh --edge` (section 5).
 
 ## 4. Deploy
 
@@ -121,6 +120,12 @@ bash scripts/smoke-prod.sh        # defaults to https://dash.qrtz.ai
 Checks (curl only, no secrets): `GET /v1/readme` is 200; `POST /v1/enroll` with a wrong code is 401 with
 `used, expired or wrong`; plain `http://dash.qrtz.ai` is redirected or refused, never served; `POST /v1/owner/test-codes`
 is 404. Exit 0 means all passed. It makes one wrong-code attempt from your IP (counted by the worker; harmless).
+
+After `scripts/edge.sh --apply`, run `bash scripts/smoke-prod.sh --edge`: it also checks the http→https redirect, that
+TLS 1.1 is refused and 1.2 works, the HSTS header, and that the `/v1/enroll` rule trips with a JSON 429. It trips the
+rule with non-JSON POSTs (the worker answers 422 before any code is checked, so they are not wrong codes); the run
+still sends only the one wrong code. It blocks `/v1/enroll` from your IP for up to 10 minutes: run it when no agent is
+enrolling.
 
 Then immediately connect the app and create the dashboard with the `DASH_SETUP_TOKEN` on your clipboard, clear the clipboard, and rotate `DASH_SETUP_TOKEN` (section 1). A 503 from the smoke test means a secret is missing: run `npx wrangler secret list`.
 
