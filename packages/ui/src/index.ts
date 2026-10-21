@@ -34,3 +34,4 @@ export * from './Menu';
 export * from './Onboarding';
 export * from './Slider';
 export * from './ModelRequirement';
+export * from './LongTextSample';

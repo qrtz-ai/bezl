@@ -34,9 +34,11 @@ for (const s of pages) {
     await open(page, s.id);
     // Always keep the run's own screenshot, pass or fail, so runner font differences can be inspected.
     await page.screenshot({ path: info.outputPath(`${s.id}.png`) });
-    // Tolerance: 2% of pixels may differ (font rendering across Linux images); a real layout change is more.
+    // Tolerance: up to 1500 pixels may differ by more than the 0.2 colour threshold (font antialiasing across
+    // Linux images). A changed label or a missing icon is more than that.
     await expect(page).toHaveScreenshot(`${s.id}.png`, {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 1500,
+      threshold: 0.2,
     });
   });
 }
