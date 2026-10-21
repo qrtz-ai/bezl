@@ -738,7 +738,7 @@ export class Dashboard extends DurableObject<Env> {
 
   /**
    * Remove an agent and everything it posted (widgets with their state_json, events, idempotency records). The
-   * agent id and token hash are tombstoned so its token answers 410 stop, never a fresh enrollment (QRT-307).
+   * token hash (only, no agent id) is tombstoned so its token answers 410 stop, never a fresh enrollment (QRT-307).
    * Callers hold a transaction.
    */
   private dropAgent(a: AgentRow, event: string, now: number) {
@@ -751,7 +751,6 @@ export class Dashboard extends DurableObject<Env> {
     this.sql.exec('DELETE FROM agents WHERE id = ?', a.id);
     // Its widget markers (`agent/key`) are moot once the token is tombstoned; keep no widget keys (QRT-307).
     this.dropWidgetTombs(a.id);
-    this.tomb('agent', a.id, now);
     this.tomb('agent', `token:${a.token_hash}`, now);
     this.log(event, a.id, now);
   }
