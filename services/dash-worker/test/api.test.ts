@@ -962,3 +962,148 @@ describe('live updates', () => {
     ws.close();
   });
 });
+
+describe('QRT-307: retention, unenroll, logging, content cap', () => {
+  const count = (stub: DurableObjectStub<Dashboard>, table: string) =>
+    runInDurableObject(
+      stub,
+      (_i: Dashboard, state) =>
+        state.storage.sql
+          .exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)
+          .one().n,
+    );
+  const old = () => Date.now() - (C.RETENTION_DAYS + 1) * C.DAY_MS;
+
+  it('prunes widgets (state_json) idle past 30 days and keeps fresh ones', async () => {
+    const { dashId, owner } = await setup();
+    const a = await approved(owner);
+    for (const key of ['old', 'new']) {
+      await call('POST', '/v1/widgets', {
+        bearer: a.token,
+        body: { key, type: 'log' },
+      });
+      await call('POST', `/v1/widgets/${key}/events`, {
+        bearer: a.token,
+        body: { line: `hi ${key}` },
+      });
+    }
+    const stub = env.DASHBOARD.getByName(dashId);
+    await runInDurableObject(stub, (_i: Dashboard, state) => {
+      state.storage.sql.exec(
+        "UPDATE widgets SET updated_at = ? WHERE key = 'old'",
+        old(),
+      );
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const keys = await runInDurableObject(stub, (_i: Dashboard, state) =>
+      state.storage.sql
+        .exec<{ key: string }>('SELECT key FROM widgets')
+        .toArray()
+        .map((r) => r.key),
+    );
+    expect(keys).toEqual(['new']);
+    expect(await count(stub, 'events')).toBe(1);
+    // An expired widget is not tombstoned: the agent can register the key again.
+    expect(
+      (
+        await call('POST', '/v1/widgets', {
+          bearer: a.token,
+          body: { key: 'old', type: 'log' },
+        })
+      ).status,
+    ).toBe(201);
+  });
+
+  it('prunes agent rows (any status) quiet past 30 days with all their content; the token then answers 410', async () => {
+    clearTombCache();
+    const { dashId, owner } = await setup();
+    const a = await approved(owner);
+    const p = await enroll(owner, 'pending bot');
+    const keep = await approved(owner, 'fresh bot');
+    await call('POST', '/v1/widgets', {
+      bearer: a.token,
+      body: { key: 's', type: 'status' },
+    });
+    await call('PUT', '/v1/widgets/s', {
+      bearer: a.token,
+      body: { status: 'running', text: 'private' },
+    });
+    const stub = env.DASHBOARD.getByName(dashId);
+    await runInDurableObject(stub, (_i: Dashboard, state) => {
+      state.storage.sql.exec(
+        'UPDATE agents SET last_seen = ? WHERE id IN (?, ?)',
+        old(),
+        a.id,
+        p.id,
+      );
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const ids = await runInDurableObject(stub, (_i: Dashboard, state) =>
+      state.storage.sql
+        .exec<{ id: string }>('SELECT id FROM agents')
+        .toArray()
+        .map((r) => r.id),
+    );
+    expect(ids).toEqual([keep.id]);
+    expect(await count(stub, 'widgets')).toBe(0);
+    const r = await call('POST', '/v1/heartbeat', {
+      bearer: a.token,
+      body: { status: 'idle' },
+    });
+    expect(r.status).toBe(410);
+    expect(r.json.scope).toBe('agent');
+  });
+
+  it('unenrolling an agent deletes its row, widgets, events and idempotency records', async () => {
+    const { dashId, owner } = await setup();
+    const a = await approved(owner);
+    await call('POST', '/v1/widgets', {
+      bearer: a.token,
+      body: { key: 'c', type: 'chart' },
+    });
+    await call('POST', '/v1/widgets/c/events', {
+      bearer: a.token,
+      body: { value: 1 },
+      headers: { 'idempotency-key': 'k1' },
+    });
+    const stub = env.DASHBOARD.getByName(dashId);
+    expect(await count(stub, 'idempotency')).toBe(1);
+    expect(
+      (await call('DELETE', `/v1/owner/agents/${a.id}`, { bearer: owner })).json
+        .ok,
+    ).toBe(true);
+    for (const t of ['agents', 'widgets', 'events', 'idempotency'])
+      expect(await count(stub, t), t).toBe(0);
+  });
+
+  it('deleting the dashboard deletes agent rows too', async () => {
+    const { dashId, owner } = await setup();
+    await approved(owner);
+    await call('DELETE', '/v1/owner/dashboard', { bearer: owner });
+    expect(await count(env.DASHBOARD.getByName(dashId), 'agents')).toBe(0);
+  });
+
+  it('caps one stored state or event at MAX_CONTENT_BYTES, batch ops included', async () => {
+    const { owner } = await setup();
+    const a = await approved(owner);
+    await call('POST', '/v1/widgets', {
+      bearer: a.token,
+      body: { key: 'l', type: 'log' },
+    });
+    const big = 'word '.repeat(2000);
+    const r = await call('POST', '/v1/batch', {
+      bearer: a.token,
+      body: { ops: [{ op: 'append', key: 'l', data: { line: big } }] },
+    });
+    expect(r.status).toBe(200);
+    expect(r.json.results[0].status).toBe(422);
+  });
+
+  it('the prod config logs no requests', () => {
+    const t = env.TEST_WRANGLER_TOML;
+    expect(t).toMatch(
+      /\[observability\]\nenabled = false\nhead_sampling_rate = 0\n/,
+    );
+    expect(t).not.toMatch(/^\[env\./m);
+  });
+});
