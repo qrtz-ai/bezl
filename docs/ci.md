@@ -2,11 +2,15 @@
 
 Both workflows live in `.github/workflows/`. They run on GitHub-hosted runners; nothing is self-hosted.
 
-## `ci.yml`: every push to main (and manual "run workflow")
+## `ci.yml`: push to main, PRs, tags, release.yml and manual runs (QRT-310)
 
-A newer push to main cancels the run still going for an older one. A manual run (`gh workflow run ci.yml`) is in its
-own concurrency group, so pushes don't cancel it. The caches are saved only by a job that finishes, so when main is
-busy a manual run is the way to warm them.
+On a push to main, a pull request or a plain manual run (`gh workflow run ci.yml --ref <branch>`), only the Linux jobs
+run: `js`, `e2e`, `rust` (and `workflow-changes` on a push). The macOS jobs (`macos`, `echo-warmup`, `keychain`,
+`release-unsigned`) run only for releases: a `v*` tag push, `release.yml` calling this workflow, or a manual run with
+`-f macos=true` (`gh workflow run ci.yml --ref <branch> -f macos=true`).
+
+There is one concurrency group per ref (`ci-<ref>`): a newer run on a branch, tag or PR cancels the older one, and main's
+runs are never cancelled. The caches are saved only by a job that finishes.
 
 | Job                | Runner         | Runs                                                                                                                                                                                                                     |
 | ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

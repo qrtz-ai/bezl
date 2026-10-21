@@ -1,4 +1,6 @@
-# CI for qrtz (docs/ci.md). The repo is public, so Actions minutes (macOS included) are free: Linux and macOS both
+# CI for qrtz (docs/ci.md). QRT-310: on push and pull_request only the Linux jobs run (lint, typecheck, vitest,
+# playwright, fmt, clippy, cargo test). The macOS jobs run only for releases: a tag push, release.yml calling this
+# workflow (workflow_call, macos: true), or a manual run with the macos input. With macOS, Linux and macOS both
 # run the full test suite, and macOS also builds an UNSIGNED release qrtz.app/.dmg and runs the parts of
 # scripts/release/verify-bundle.sh that don't need a Developer ID signature. No workflow here uses any secret;
 # signing, notarizing and publishing stay on Jared's Mac (bun run release:mac, scripts/app/publish-local.sh).
@@ -7,15 +9,27 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ['v*']
   # Public repo: outside PRs get CI too. pull_request (never pull_request_target): no secrets, read-only token.
   pull_request:
   workflow_dispatch:
+    inputs:
+      macos:
+        description: Also run the macOS jobs (swift/cargo tests, KeychainStore, echo warm-up, unsigned release build + verify-bundle)
+        type: boolean
+        default: false
+  # release.yml runs the whole suite, macOS included, before it builds.
+  workflow_call:
+    inputs:
+      macos:
+        type: boolean
+        default: true
 
-# A newer push cancels the older push's run. A manual run has its own group, so a busy main can't cancel it
-# (that is also how the caches get saved when pushes come faster than a cold run).
+# QRT-310: one run per workflow and ref. A newer run on a branch, tag or PR cancels the older one; main's runs are
+# never cancelled (each landed hash keeps its own result). A caller (release.yml) must not use this same group.
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -32,11 +46,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -53,11 +67,11 @@ jobs:
     env:
       QRTZ_TAURI_E2E_PORT: 1420
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -66,7 +80,7 @@ jobs:
       - name: playwright version
         id: pw
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         id: pw-cache
         with:
           path: ~/.cache/ms-playwright
@@ -79,7 +93,7 @@ jobs:
         run: npx playwright install-deps chromium webkit
       - run: bun run e2e
         working-directory: apps/desktop
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: playwright-results
@@ -91,7 +105,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: system deps (Tauri / WebKitGTK)
         run: |
           sudo apt-get update -q
@@ -100,13 +114,13 @@ jobs:
             libssl-dev libxdo-dev libdbus-1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev pkg-config
       - name: rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install && rustc --version && cargo clippy --version
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: linux
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -126,14 +140,16 @@ jobs:
 
   macos:
     name: macOS · swift test · cargo test · cargo check desktop
+    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: native/qrtz-helper/.build
           key: swiftpm-${{ runner.os }}-${{ hashFiles('native/qrtz-helper/Package.swift', 'native/qrtz-helper/Package.resolved') }}
@@ -144,10 +160,10 @@ jobs:
           bun run test:helper
       - name: rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install && rustc --version
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: macos
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -169,11 +185,13 @@ jobs:
   # native/qrtz-helper (scripts/echo-warmup-ci.sh); the model is fetched from its pinned revision and sha256s.
   echo-warmup:
     name: macOS · echo warm-up race (QRT-270)
+    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-26
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/cache@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/echo-warmup/models
           key: echo-asr-${{ hashFiles('crates/qrtz-app/src/local_models.json') }}
@@ -185,13 +203,15 @@ jobs:
   # are stored, no repo secret is used, and the token stays contents: read.
   keychain:
     name: macOS · KeychainStore (throwaway keychain)
+    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-26
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install && rustc --version
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: macos-keychain
       - name: type-check KeychainStore (debug and release cfg)
@@ -231,13 +251,15 @@ jobs:
   # Unsigned release build on macOS. Named "release", so no restored caches: always a cold, reproducible build.
   release-unsigned:
     name: macOS · unsigned release build · verify-bundle (no Developer ID)
+    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     timeout-minutes: 90
     env:
       SWIFT_BUILD_FLAGS: --disable-keychain
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
       - name: rust toolchain (rust-toolchain.toml)
@@ -284,7 +306,7 @@ jobs:
           grep -q 'no dev-local override strings' vb.log || { echo "dev-local scan did not run" >&2; exit 1; }
           if [ -s unexpected.log ]; then echo "unexpected verify-bundle failures:" >&2; cat unexpected.log >&2; exit 1; fi
           echo "only the Developer ID / notarization checks failed (expected for an unsigned build)"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: qrtz-unsigned-macos-${{ github.sha }}
           path: |
@@ -299,7 +321,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - name: commits touching .github/**
