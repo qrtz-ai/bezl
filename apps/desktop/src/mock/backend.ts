@@ -869,6 +869,9 @@ export function createMockBridge(): TauriBridge {
       code: 'ENR-7F3A-91C2',
       expiresAt: Date.now() + 15 * 60_000,
     }),
+    'dash:copy-prompt': () => {
+      throw new Error('not_connected');
+    },
     'dash:rotate-codes': () => ({ ok: true as const }),
     // The browser mock opens nothing; it says whether the host would (https only).
     'dash:open-link': ({ url }) => ({ opened: url.startsWith('https://') }),
