@@ -4,17 +4,20 @@
 #   scripts/setup/jared-setup-once.sh --force         also rotate the GitHub `release` environment secrets
 #   scripts/setup/jared-setup-once.sh --rotate-dash   also rotate the Dash worker secrets (logs out every agent/owner)
 #   scripts/setup/jared-setup-once.sh --release-only  only the `release` environment + signing secrets; no Dash/wrangler (QRT-322)
+#   scripts/setup/jared-setup-once.sh --dash-only     only section 5 (Dash); skips sections 1-4 (release env, read-back,
+#                                                     p12/p8/keychain inputs, signing secrets). Not with --release-only/--force (QRT-254)
 # Prints item names and ok/skip only. No secret ever goes into argv, an env var, a temp file or output.
 # Requires QRT-284 and QRT-307 on main. Reads ~/.qrtz-keys/app-update.key only; never ~/qrtz-root-a or qrtz-root-b.
 set -euo pipefail
 set +x
-FORCE=0; ROTATE_DASH=0; RELEASE_ONLY=0
+FORCE=0; ROTATE_DASH=0; RELEASE_ONLY=0; DASH_ONLY=0
 for a in "$@"; do case "$a" in
-  --force) FORCE=1 ;; --rotate-dash) ROTATE_DASH=1 ;; --release-only) RELEASE_ONLY=1 ;; *) echo "unknown argument: $a" >&2; exit 2 ;;
+  --force) FORCE=1 ;; --rotate-dash) ROTATE_DASH=1 ;; --release-only) RELEASE_ONLY=1 ;; --dash-only) DASH_ONLY=1 ;; *) echo "unknown argument: $a" >&2; exit 2 ;;
 esac; done
 ok()   { printf 'ok    %s\n' "$1"; }
 skip() { printf 'skip  %s\n' "$1"; }
 die()  { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
+if [[ $DASH_ONLY == 1 && ( $RELEASE_ONLY == 1 || $FORCE == 1 ) ]]; then die "--dash-only cannot be combined with --release-only or --force; nothing changed"; fi
 
 [[ "$(uname -s)" == Darwin ]] || die "run this on your Mac"
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
@@ -40,6 +43,7 @@ ME_LOGIN="$(gh api user --jq .login)" || die "gh api user failed"
 ME_ID="$(gh api user --jq .id)" || die "gh api user failed"
 [[ "$ME_ID" =~ ^[0-9]+$ ]] || die "could not resolve $JARED's user id"
 
+if [[ $DASH_ONLY == 1 ]]; then skip "dash-only: release environment, read-back, signing inputs and secrets (sections 1-4)"; else
 # ---- 1. environment `release` (QRT-322: confirmed before anything is uploaded) -------------------------------------
 # prevent_self_review is false: Jared is the only reviewer and also starts releases. The real control is the bots'
 # fine-grained token (no Actions/Deployments/Environments/Secrets access), so no bot can trigger or approve.
@@ -135,6 +139,7 @@ if need AC_KEY_ID;           then kc qrtz-release-asc-key-id | gset AC_KEY_ID; e
 if need AC_ISSUER_ID;        then kc qrtz-release-asc-issuer-id | gset AC_ISSUER_ID; else skip "secret AC_ISSUER_ID"; fi
 if need APP_UPDATE_KEY;      then tr -d '[:space:]' <"$UPD" | gset APP_UPDATE_KEY; else skip "secret APP_UPDATE_KEY"; fi
 gh secret list --repo "$REPO" --env release --json name --jq '.[].name' | sed 's/^/name  /'
+fi # DASH_ONLY
 if [[ $RELEASE_ONLY == 1 ]]; then ok "release-only: Dash steps skipped"; exit 0; fi
 
 # ---- 5. Dash (services/dash-worker/DEPLOY.md) ---------------------------------------------------------------------

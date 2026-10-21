@@ -94,5 +94,15 @@ for c in extra_reviewer admin_bypass branch_policy extra_policy missing_policy g
 done
 run org_secrets_error --release-only && rc=0 || rc=$?
 check "org_secrets_error -> abort, no secret set, says ping Beve" '[[ $rc != 0 ]] && ! grep -q "secret set" "$T/log" && grep -qF "token can'"'"'t verify org secrets; don'"'"'t bypass, ping Beve" "$T/out" && grep -qF "repos/qrtz-ai/qrtz/actions/organization-secrets" "$T/out"'
+# QRT-254: --dash-only skips sections 1-4 and reaches section 5 (repo wrangler stub fails whoami, so nothing deploys)
+mkdir -p "$T/repo/services/dash-worker/node_modules/.bin"
+printf '#!/bin/sh\necho "wrangler $*" >> "$STUB_LOG"\nexit 1\n' > "$T/repo/services/dash-worker/node_modules/.bin/wrangler"
+chmod +x "$T/repo/services/dash-worker/node_modules/.bin/wrangler"
+run good --dash-only && rc=0 || rc=$?
+check "dash-only -> no gh secret/environment calls, no p12/p8 prompt, reaches dash" '! grep -qE "^gh (secret|api .*environments|api .*secrets)" "$T/log" && ! grep -qE "path to|found Developer|found App Store|p12 valid|p8 valid" "$T/out" && grep -q "^bun install" "$T/log" && grep -q "^wrangler whoami" "$T/log" && grep -qF "wrangler is not logged in" "$T/out"'
+run good --dash-only --release-only && rc=0 || rc=$?
+check "dash-only + release-only -> dies, nothing called" '[[ $rc != 0 ]] && [[ ! -s "$T/log" ]] && grep -qF "cannot be combined" "$T/out"'
+run good --force --dash-only && rc=0 || rc=$?
+check "dash-only + force -> dies, nothing called" '[[ $rc != 0 ]] && [[ ! -s "$T/log" ]] && grep -qF "cannot be combined" "$T/out"'
 echo "jared-setup-once.test: $pass passed, $fail failed"
 [[ $fail == 0 ]]
