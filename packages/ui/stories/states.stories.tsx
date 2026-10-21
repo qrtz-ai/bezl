@@ -7,14 +7,12 @@ import {
   ErrorCallout,
   Field,
   Input,
-  ListItem,
-  LongText,
+  LongTextSample,
   PaneLoading,
   Progress,
   Select,
   Spinner,
   Switch,
-  Text,
   TextArea,
   userError,
 } from '../src';
@@ -24,12 +22,6 @@ import { noop, Row, Width } from './_util';
 const meta: Meta = { title: 'components/states' };
 export default meta;
 type S = StoryObj;
-
-const LONG =
-  'a very long name that keeps going well past the width of its container so we can see it wrap or truncate without pushing anything sideways: '.repeat(
-    3,
-  );
-const WORD = 'supercalifragilisticexpialidocious'.repeat(6);
 
 export const Loading: S = {
   render: () => (
@@ -101,29 +93,7 @@ export const Empty: S = {
 
 export const LongTextState: S = {
   name: 'long text',
-  render: () => (
-    <Width w={320}>
-      <Row label="text">
-        <Text>{LONG}</Text>
-      </Row>
-      <Row label="unbroken word">
-        <Text>{WORD}</Text>
-      </Row>
-      <Row label="button and badge">
-        <Button>{LONG.slice(0, 80)}</Button>
-        <Badge>{LONG.slice(0, 60)}</Badge>
-      </Row>
-      <Row label="list item">
-        <ListItem right={<Badge>new</Badge>}>{LONG}</ListItem>
-      </Row>
-      <Row label="error">
-        <ErrorCallout error={userError(LONG, 'load the long thing')} />
-      </Row>
-      <Row label="code">
-        <LongText>{WORD}</LongText>
-      </Row>
-    </Width>
-  ),
+  render: () => <LongTextSample />,
 };
 
 export const Disabled: S = {
