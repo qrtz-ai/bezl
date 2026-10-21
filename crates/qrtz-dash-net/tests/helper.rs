@@ -69,7 +69,10 @@ async fn every_channel_goes_to_its_owner_route_on_the_pinned_origin_with_the_key
     let (h, seen) = helper(200, json!({"ok": true, "readme_version": "2.1"}), Some(KEY));
     let mut v = h.call("dash:view", &Value::Null).await.unwrap();
     assert_eq!(v["connected"], true);
+    // QRT-298: the view names the origin this helper talks to, whatever the server said.
+    assert_eq!(v["origin"], qrtz_dash_net::origin());
     v.as_object_mut().unwrap().remove("connected");
+    v.as_object_mut().unwrap().remove("origin");
     assert_eq!(v, json!({"ok": true}));
     h.call("dash:issue-code", &Value::Null).await.unwrap();
     h.call("dash:rotate-codes", &Value::Null).await.unwrap();
