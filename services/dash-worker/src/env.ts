@@ -10,4 +10,6 @@ export interface Env {
   DASH_SETUP_TOKEN: string;
   /** Local test mode only (src/dev.ts): "1" from `wrangler dev --var`. Never set in production. */
   DASH_DEV_LOCAL?: string;
+  /** QRT-298, local test mode only: the origin `wrangler dev` serves on (http://127.0.0.1:<port>), from .dev.vars. */
+  DASH_DEV_ORIGIN?: string;
 }
