@@ -68,6 +68,9 @@ export function Button({
       style={
         {
           display: 'inline-flex',
+          // A long label stays inside its container: clipped, never wider than it (QRT-304).
+          maxWidth: '100%',
+          overflow: 'hidden',
           alignItems: 'center',
           justifyContent: 'center',
           gap: t.space[2],
