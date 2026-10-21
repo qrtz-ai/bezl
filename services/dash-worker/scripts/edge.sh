@@ -4,7 +4,9 @@
 #   bash scripts/edge.sh             dry run: shows current vs wanted, writes nothing
 #   bash scripts/edge.sh --apply     applies, then reads every value back and fails on any mismatch
 #   bash scripts/edge.sh --revert    removes only the QRT-316 rate-limit rule (HTTPS/TLS/HSTS stay)
-#   add --token-prompt to skip wrangler's login and paste a scoped API token at a hidden prompt (recommended)
+# Token: --apply and --revert always ask for a scoped API token at a hidden prompt, unless you pass
+#   --use-wrangler-login (broad OAuth login; warned about). A dry run tries the wrangler login first, then prompts.
+#   --token-prompt forces the prompt for a dry run too.
 # What it sets on the qrtz.ai zone:
 #   - rate-limit rule (ref qrt316-enroll) on POST dash.qrtz.ai/v1/enroll, per ip.src + cf.colo.id:
 #     20 req / 60 s (block 600 s) if the zone's plan allows a 60 s period, otherwise 5 req / 10 s (block 10 s);
@@ -22,13 +24,14 @@ API="${CF_API_BASE:-https://api.cloudflare.com/client/v4}"
 EXPR="(http.host eq \"$HOST\" and http.request.uri.path eq \"/v1/enroll\" and http.request.method eq \"POST\")"
 HSTS_MAX_AGE=15552000
 
-mode=dry; prompt=0
+mode=dry; prompt=0; use_wrangler=0
 for a in "$@"; do
   case "$a" in
     --apply) mode=apply ;;
     --revert) mode=revert ;;
     --token-prompt) prompt=1 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --use-wrangler-login) use_wrangler=1 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "[edge] error: unknown argument $a" >&2; exit 2 ;;
   esac
 done
@@ -46,19 +49,25 @@ TOKEN=""
 cleanup() { TOKEN=""; rm -rf "$tmp"; }
 trap cleanup EXIT
 
+# Writes (--apply/--revert) use the wrangler login only when explicitly asked; a dry run may fall back to it.
+[ "$prompt" -eq 1 ] && [ "$use_wrangler" -eq 1 ] && die "--token-prompt and --use-wrangler-login are exclusive"
+try_wrangler=0
+if [ "$use_wrangler" -eq 1 ]; then try_wrangler=1
+elif [ "$mode" = dry ] && [ "$prompt" -eq 0 ]; then try_wrangler=1; fi
 from_wrangler=0
-if [ "$prompt" -eq 0 ]; then
+if [ "$try_wrangler" -eq 1 ]; then
   cd "$(dirname "$0")/.." || die "cannot cd to services/dash-worker"
   TOKEN="$(npx --no-install wrangler auth token 2>/dev/null | tail -n 1 | tr -d '[:space:]')" || TOKEN=""
   [ -n "$TOKEN" ] && from_wrangler=1
 fi
 if [ -z "$TOKEN" ]; then
-  [ "$prompt" -eq 1 ] || say "no token from wrangler login; paste a scoped API token instead"
+  [ "$use_wrangler" -eq 1 ] && die "--use-wrangler-login given but wrangler returned no token (npx wrangler login?)"
+  [ "$try_wrangler" -eq 1 ] && say "no token from wrangler login; paste a scoped API token instead"
   say "token needs only Zone WAF:Edit + Zone Settings:Edit on $ZONE_NAME (input hidden, never printed)"
   printf 'Cloudflare API token: ' >&2
   IFS= read -rs TOKEN || TOKEN=""
   echo >&2
-  [ -n "$TOKEN" ] || die "no token given"
+  [ -n "$TOKEN" ] || die "no token given; nothing written"
 fi
 
 # cf METHOD PATH [json-file]: response body to stdout; returns 1 on HTTP >= 400 or success != true.
@@ -101,7 +110,7 @@ if cf GET '/accounts?per_page=5' >"$tmp/acc.json" && [ "$(jq -r '.result | lengt
 fi
 cf GET "/zones/$ZONE_ID/dns_records?per_page=1" >/dev/null && { warn "token can read DNS (not needed)"; broad=1; }
 cf GET "/zones/$ZONE_ID/workers/routes" >/dev/null && { warn "token can read Workers routes (not needed)"; broad=1; }
-[ "$broad" -eq 1 ] && warn "prefer a token with only Zone WAF:Edit + Zone Settings:Edit on $ZONE_NAME (--token-prompt)"
+[ "$broad" -eq 1 ] && warn "prefer a token with only Zone WAF:Edit + Zone Settings:Edit on $ZONE_NAME (the default prompt)"
 
 # --- wanted state ---
 jq -n --arg ref "$RULE_REF" --arg expr "$EXPR" --argjson p "$PERIOD" --argjson r "$REQS" --argjson m "$MITIGATION" '{
