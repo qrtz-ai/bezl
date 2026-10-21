@@ -435,3 +435,64 @@ fn wrong_codes_are_rate_limited_then_force_rotation() {
     let fresh = d.issue_code(t).unwrap();
     assert_eq!(try_code(&mut d, &fresh, t + 62_000), 201);
 }
+
+/// A table state whose stored JSON is exactly `n` bytes (8192 or 8193): 16 cells of 160 three-byte chars and one of
+/// 133 plus `aa` (`aaa` for one more byte). Bytes, not characters. Same builder as the Worker's test.
+fn table_of(n: usize) -> Value {
+    assert!(n == MAX_CONTENT_BYTES || n == MAX_CONTENT_BYTES + 1);
+    let mut rows: Vec<Value> = (0..16).map(|_| json!(["\u{20ac}".repeat(160)])).collect();
+    let tail = "\u{20ac}".repeat(133) + if n > MAX_CONTENT_BYTES { "aaa" } else { "aa" };
+    rows.push(json!([tail]));
+    let v = json!({"columns": ["c"], "rows": rows});
+    assert_eq!(serde_json::to_string(&v).unwrap().len(), n);
+    v
+}
+
+/// Twin of the Worker's `the content cap edge matches the Rust twin` test (QRT-307): 8192 stored bytes pass, 8193
+/// are 422, for batch ops and single writes.
+#[test]
+fn content_cap_edge_matches_the_worker() {
+    assert_eq!(MAX_CONTENT_BYTES, 8 * 1024);
+    let mut d = dash();
+    let (_, tok) = approved(&mut d);
+    post(&mut d, &tok, "/v1/widgets", json!({"key": "t", "type": "table"}));
+    let mut batch = |data: Value| {
+        let r = post(
+            &mut d,
+            &tok,
+            "/v1/batch",
+            json!({"ops": [{"op": "put", "key": "t", "data": data}]}),
+        );
+        assert_eq!(r.status, 200, "{:?}", r.body);
+        r.body["results"][0]["status"].as_u64().unwrap()
+    };
+    assert_eq!(batch(table_of(MAX_CONTENT_BYTES)), 200);
+    assert_eq!(batch(table_of(MAX_CONTENT_BYTES + 1)), 422);
+    let put = |d: &mut Dash, v: Value| {
+        d.handle(&Request::new("PUT", "/v1/widgets/t").bearer(&tok).json(v), T0)
+            .status
+    };
+    assert_eq!(put(&mut d, table_of(MAX_CONTENT_BYTES)), 200);
+}
+
+#[test]
+fn audit_entries_hold_only_event_agent_id_and_time() {
+    let mut d = dash();
+    let (id, tok) = approved(&mut d);
+    post(
+        &mut d,
+        &tok,
+        "/v1/widgets",
+        json!({"key": "w", "type": "status", "title": "secret title"}),
+    );
+    assert!(d.delete_widget(&id, "w", T0));
+    assert!(d.delete_agent(&id, T0));
+    let audit = d.view(T0)["audit"].clone();
+    assert!(!audit.as_array().unwrap().is_empty());
+    for e in audit.as_array().unwrap() {
+        let mut keys: Vec<_> = e.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["agentId", "at", "event"], "{e}");
+    }
+    assert!(!audit.to_string().contains("secret title") && !audit.to_string().contains("grok"));
+}

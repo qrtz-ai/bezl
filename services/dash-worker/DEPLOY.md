@@ -14,8 +14,15 @@ Every command below runs from `services/dash-worker` with this package's own scr
       `npx wrangler whoami` and check the account name. If several accounts are listed, export
       `CLOUDFLARE_ACCOUNT_ID=<that account id>` in this shell (an id, not a secret).
 - [ ] Tests and dry-run build pass: `bun run test && bun run typecheck && bun run check:build`.
-- [ ] No request logging will ship (QRT-307): `grep -n -A2 '\[observability\]' wrangler.toml` shows `enabled = false`
-      and `head_sampling_rate = 0`, and there is no `[env.` section. In the dashboard, Workers Logs for `qrtz-dash` stays off.
+- [ ] Only route-level request logs will ship (QRT-307). Workers Logs keeps exactly one line per request, written by
+      the Worker (`src/reqlog.ts`): `{"method","route","status","ms"}`, where `route` is the route template
+      (e.g. `/v1/owner/agents/:id`, `/v1/widgets/:key`; unknown paths are `unmatched`). Never
+      the real path, query string, full URL, headers (so no IP, user agent or bearer), or request/response bodies.
+      `grep -n -A12 '\[observability\]' wrangler.toml` shows `enabled = true`, `head_sampling_rate = 1`,
+      `redact_query_string = true`, `[observability.logs]` with `invocation_logs = false` (Cloudflare's automatic
+      per-request log, which carries the URL and headers, stays off) and `[observability.traces] enabled = false`;
+      there is no `[env.` section. After deploy, in the dashboard check that Workers Logs for `qrtz-dash` shows only
+      those JSON lines and no invocation (URL) entries; if any appear, set `enabled = false` again and redeploy.
 - [ ] No local-mode config will ship: `wrangler.toml` must not mention `DASH_DEV_LOCAL` or have a `[vars]` table
       (`grep -n 'DASH_DEV_LOCAL\|\[vars\]' wrangler.toml` prints nothing; `test/dev.test.ts` also checks this).
       `.dev.vars` is gitignored and only read by `wrangler dev`; it is never uploaded by `wrangler deploy`.

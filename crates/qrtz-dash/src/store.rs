@@ -677,6 +677,10 @@ impl Dash {
         let a = self.agents.remove(i);
         self.widgets.remove(&a.id);
         self.idempotency.retain(|(id, _), _| *id != a.id);
+        // Its widget markers (`agent/key`) are moot once the token is tombstoned; keep no widget keys (QRT-307).
+        let pre = format!("{}/", a.id);
+        self.tombstones
+            .retain(|(s, r)| !(*s == Scope::Widget && r.starts_with(&pre)));
         self.tombstones.insert((Scope::Agent, a.id.clone()));
         self.tombstones
             .insert((Scope::Agent, format!("token:{}", a.token_hash)));
@@ -691,6 +695,8 @@ impl Dash {
         // Agent names, descriptions and heartbeats are user content too (QRT-307).
         self.agents.clear();
         self.idempotency.clear();
+        // The dashboard marker answers 410 for everything; no per-widget keys need to stay (QRT-307).
+        self.tombstones.retain(|(s, _)| *s != Scope::Widget);
         self.tombstones.insert((Scope::Dashboard, String::new()));
         self.log("dashboard-deleted", None, now);
     }
@@ -1058,6 +1064,11 @@ impl Dash {
             return fail(422, &e.0);
         }
         let flagged = scrub_value(&mut data);
+        // Agent posts are free-form user content (QRT-307, twin of the Worker): cap what one widget state or event
+        // can store as JSON after scrubbing, batch ops included.
+        if serde_json::to_string(&data).map_or(usize::MAX, |s| s.len()) > MAX_CONTENT_BYTES {
+            return fail(422, &format!("data is at most {MAX_CONTENT_BYTES} bytes"));
+        }
         let w = self
             .widgets
             .get_mut(agent)
@@ -1227,5 +1238,49 @@ mod tests {
         assert_eq!(skeleton("Adm1n"), skeleton("admin"));
         assert_eq!(skeleton("Sуstеm"), skeleton("system"));
         assert!(valid_key("state-farm") && !valid_key("State") && !valid_key("a--b") && !valid_key(""));
+    }
+
+    /// QRT-307 (Bozniak ruling 2): markers are (scope, ref) with ref an agent id, `token:<hmac>` or `agent/key` of a
+    /// live agent's deleted widget; a removed agent's widget markers go with it, and a dashboard delete drops them all.
+    #[test]
+    fn markers_hold_no_content_and_go_with_their_agent() {
+        let mut d = Dash::new(Pepper::from_bytes([7; 32]));
+        let mut ids = vec![];
+        for name in ["grok bot", "second helper"] {
+            let code = d.issue_code(0).unwrap();
+            let r = d.handle(
+                &Request::new("POST", "/v1/enroll").json(json!({"code": code, "name": name})),
+                0,
+            );
+            let id = r.body["agent_id"].as_str().unwrap().to_owned();
+            let tok = r.body["agent_token"].as_str().unwrap().to_owned();
+            assert!(d.approve(&id, 0));
+            let r = d.handle(
+                &Request::new("POST", "/v1/widgets")
+                    .bearer(&tok)
+                    .json(json!({"key": "w", "type": "status", "title": "secret title"})),
+                0,
+            );
+            assert_eq!(r.status, 201);
+            ids.push(id);
+        }
+        let (a, b) = (ids[0].clone(), ids[1].clone());
+        assert!(d.delete_widget(&a, "w", 0));
+        assert!(d.delete_widget(&b, "w", 0));
+        assert!(d.delete_agent(&a, 0));
+        let widget: Vec<_> = d.tombstones.iter().filter(|(s, _)| *s == Scope::Widget).collect();
+        assert_eq!(widget, [&(Scope::Widget, format!("{b}/w"))]);
+        assert!(d.tombstones.contains(&(Scope::Agent, a.clone())));
+        assert_eq!(
+            d.tombstones
+                .iter()
+                .filter(|(_, r)| r.starts_with("token:"))
+                .count(),
+            1
+        );
+        let all = format!("{:?}", d.tombstones);
+        assert!(!all.contains("grok") && !all.contains("secret"));
+        d.delete_dashboard(0);
+        assert!(d.tombstones.iter().all(|(s, _)| *s != Scope::Widget));
     }
 }
