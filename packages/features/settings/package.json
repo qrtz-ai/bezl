@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./manifest": "./src/manifest.ts"
+    "./manifest": "./src/manifest.ts",
+    "./app-update-row": "./src/AppUpdateRow.tsx"
   },
   "dependencies": {
     "@qrtz/core": "workspace:*",

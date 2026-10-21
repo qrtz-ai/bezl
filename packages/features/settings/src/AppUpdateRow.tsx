@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
+  Callout,
   ErrorCallout,
+  Link,
   Progress,
   SettingRow,
   Stack,
@@ -39,9 +41,58 @@ export function appUpdateLine(s: AppUpdateStatus): string {
   }
 }
 
+export const RELEASES_URL = 'https://github.com/qrtz-ai/qrtz/releases';
+const RELEASES_LINK_TEXT = 'qrtz releases page';
+
+/**
+ * QRT-313: the download was redirected off GitHub's asset hosts. The refused host (and its scheme, when it isn't
+ * https) only ever goes under details.
+ */
+export function redirectBlocked(s: AppUpdateStatus): UserError {
+  const d = s.errorDetails;
+  const detail = d
+    ? d.scheme.toLowerCase() === 'https'
+      ? `blocked host: ${d.host}`
+      : `blocked host: ${d.host} (${d.scheme})`
+    : s.error || null;
+  return {
+    title: "couldn't download the update",
+    next: `The download was sent to an unexpected server, so qrtz stopped it. Your current version is fine. Try again later, or get the update from the ${RELEASES_LINK_TEXT}.`,
+    detail,
+  };
+}
+
 /** QRT-311: a failed update says so plainly; a technical reason (codes, statuses) goes under details. */
-function failedUpdate(s: AppUpdateStatus): UserError {
+export function failedUpdate(s: AppUpdateStatus): UserError {
+  if (s.errorCode === 'update_redirect_blocked') return redirectBlocked(s);
   return userError(s.error ?? '', 'update qrtz');
+}
+
+/** The failed-update callout; a redirect block links its "qrtz releases page" to GitHub releases. */
+function FailedUpdate({ s }: { s: AppUpdateStatus }) {
+  const e = failedUpdate(s);
+  if (s.errorCode !== 'update_redirect_blocked')
+    return <ErrorCallout error={e} data-testid="update-result" />;
+  const [before, after] = e.next.split(RELEASES_LINK_TEXT);
+  return (
+    <Callout
+      tone="danger"
+      title={e.title}
+      details={e.detail ?? undefined}
+      data-testid="update-result"
+    >
+      {before}
+      <Link
+        href={RELEASES_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="app-update-releases-link"
+      >
+        {RELEASES_LINK_TEXT}
+      </Link>
+      {after}
+    </Callout>
+  );
 }
 
 /**
@@ -137,7 +188,7 @@ export default function AppUpdateRow() {
         />
       ) : null}
       {s?.state === 'failed' ? (
-        <ErrorCallout error={failedUpdate(s)} data-testid="update-result" />
+        <FailedUpdate s={s} />
       ) : line ? (
         <Text variant="caption" muted role="status" data-testid="update-result">
           {line}

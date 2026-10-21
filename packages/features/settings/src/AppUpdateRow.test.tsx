@@ -6,7 +6,11 @@ import type { AppUpdateStatus, QrtzClient } from '@qrtz/core';
 import { appUpdateDot } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ThemeProvider } from '@qrtz/ui';
-import AppUpdateRow, { appUpdateLine } from './AppUpdateRow';
+import AppUpdateRow, {
+  appUpdateLine,
+  failedUpdate,
+  RELEASES_URL,
+} from './AppUpdateRow';
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -176,5 +180,46 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
         state === 'available' || state === 'ready',
       );
     }
+  });
+
+  it('QRT-313: a blocked redirect says what happened, links the releases page, and keeps the host under details', async () => {
+    const blocked = st({
+      state: 'failed',
+      latest: '0.2.5',
+      error: 'update_redirect_blocked: evil.example.com',
+      errorCode: 'update_redirect_blocked',
+      errorDetails: { host: 'evil.example.com', scheme: 'https' },
+    });
+    const e = failedUpdate(blocked);
+    expect(e.title).toBe("couldn't download the update");
+    expect(e.next).toBe(
+      'The download was sent to an unexpected server, so qrtz stopped it. Your current version is fine. Try again later, or get the update from the qrtz releases page.',
+    );
+    expect(e.detail).toBe('blocked host: evil.example.com');
+    expect(e.next).not.toContain('evil.example.com');
+    expect(
+      failedUpdate({
+        ...blocked,
+        errorDetails: { host: 'evil.example.com', scheme: 'http' },
+      }).detail,
+    ).toBe('blocked host: evil.example.com (http)');
+    expect(failedUpdate({ ...blocked, errorDetails: null }).detail).toBe(
+      'update_redirect_blocked: evil.example.com',
+    );
+
+    const m = await mount(blocked);
+    const r = m.q('update-result');
+    expect(r?.getAttribute('role')).toBe('alert');
+    expect(r?.textContent).toContain("couldn't download the update");
+    expect(r?.textContent).toContain('Your current version is fine.');
+    const link = m.q('app-update-releases-link') as HTMLAnchorElement;
+    expect(link.textContent).toBe('qrtz releases page');
+    expect(link.getAttribute('href')).toBe(RELEASES_URL);
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(m.q('update-result-details')?.textContent).toContain(
+      'blocked host: evil.example.com',
+    );
+    expect(m.q('app-update-download')).not.toBeNull();
+    m.done();
   });
 });
