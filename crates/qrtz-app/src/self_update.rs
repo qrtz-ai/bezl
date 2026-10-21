@@ -1154,7 +1154,9 @@ mod tests {
         let now = 1_792_386_000;
         assert!(check_fresh(now + 60 * DAY, now).is_ok(), "today's 60-day feeds");
         assert!(check_fresh(now + 90 * DAY, now).is_ok(), "a 90-day feed");
-        assert!(check_fresh(now + 90 * DAY + 1, now).unwrap_err().contains("too long"));
+        assert!(check_fresh(now + 90 * DAY + 1, now)
+            .unwrap_err()
+            .contains("too long"));
         assert!(check_fresh(now + 91 * DAY, now).unwrap_err().contains("too long"));
         assert!(check_fresh(now - 1, now).unwrap_err().contains("expired"));
         assert!(check_fresh(now - 90 * DAY, now).unwrap_err().contains("expired"));

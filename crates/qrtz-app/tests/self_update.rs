@@ -202,11 +202,21 @@ async fn an_expired_feed_is_refused() {
     let (u, f) = setup("0.2.0", Some("0.3.0-expired"));
     assert!(matches!(u.check(false).await, State::Failed { ref message, .. } if message.contains("expired")));
     assert!(f.installed.lock().unwrap().is_empty());
-    // The good feed, judged after it expired, or long before (more than 60 days ahead).
-    for now in ["2026-11-15T00:00:00Z", "2026-09-01T00:00:00Z"] {
+    // The good feed (expires 2026-11-15), judged after it expired, or long before (more than 90 days ahead, QRT-314).
+    for now in [
+        "2026-11-15T00:00:00Z",
+        "2026-08-16T23:59:59Z",
+        "2026-08-01T00:00:00Z",
+    ] {
         let (u, _) = setup("0.2.0", Some("0.3.0"));
         let u = u.with_clock(move || parse_utc(now).unwrap());
         assert!(matches!(u.check(false).await, State::Failed { .. }), "{now}");
+    }
+    // Exactly 90 days ahead, or 75 (refused by 0.2.4's 60-day cap), is accepted (QRT-314).
+    for now in ["2026-08-17T00:00:00Z", "2026-09-01T00:00:00Z"] {
+        let (u, _) = setup("0.2.0", Some("0.3.0"));
+        let u = u.with_clock(move || parse_utc(now).unwrap());
+        assert!(matches!(u.check(false).await, State::Available(_)), "{now}");
     }
     // Quiet: logged, the row stays as it was.
     let (u, _) = setup("0.2.0", Some("0.3.0-expired"));
