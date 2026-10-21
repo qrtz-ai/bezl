@@ -15,12 +15,18 @@ fn run(origin: Option<&str>) -> std::process::Output {
     }
     let mut child = c.spawn().unwrap();
     // One harmless line (an unknown channel), then EOF.
-    child
+    let res = child
         .stdin
         .take()
         .unwrap()
-        .write_all(b"{\"id\":1,\"channel\":\"dash:nope\",\"capability\":\"dash.read\"}\n")
-        .unwrap();
+        .write_all(b"{\"id\":1,\"channel\":\"dash:nope\",\"capability\":\"dash.read\"}\n");
+    match res {
+        Ok(()) => {}
+        // A helper that refuses to start can exit before we write; the refusal itself is asserted by
+        // the caller via exit status, stdout and stderr. A helper that should start must accept input.
+        Err(e) if origin.is_some() && e.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(e) => panic!("writing helper stdin: {e}"),
+    }
     child.wait_with_output().unwrap()
 }
 
