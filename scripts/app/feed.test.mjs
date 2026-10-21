@@ -30,10 +30,10 @@ describe('scripts/app/feed.mjs', () => {
     expect(f.pub_date).toBe('2026-10-19T05:00:00Z');
     expect(f.expires).toBe('2026-11-18T05:00:00Z');
     expect(p.url).toBe(
-      'https://modules.qrtz.ai/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz',
+      'https://github.com/qrtz-ai/qrtz/releases/download/app-v0.3.0/qrtz_0.3.0_aarch64.app.tar.gz',
     );
     expect(archivePath('0.3.0')).toBe(
-      'v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz',
+      'app-v0.3.0/qrtz_0.3.0_aarch64.app.tar.gz',
     );
     expect(p.size).toBe(fs.statSync(path.join(fx, 'artifact.tar.gz')).size);
     expect(p.sha256).toMatch(/^[0-9a-f]{64}$/);

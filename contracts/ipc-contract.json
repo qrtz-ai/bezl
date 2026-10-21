@@ -7949,6 +7949,42 @@
               "null"
             ]
           },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "update_redirect_blocked"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorDetails": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "host",
+                  "scheme"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "checkedAtMs": {
             "anyOf": [
               {
@@ -8048,6 +8084,42 @@
               "null"
             ]
           },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "update_redirect_blocked"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorDetails": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "host",
+                  "scheme"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "checkedAtMs": {
             "anyOf": [
               {
@@ -8145,6 +8217,42 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "update_redirect_blocked"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorDetails": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "host",
+                  "scheme"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "checkedAtMs": {
@@ -14052,6 +14160,42 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "update_redirect_blocked"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorDetails": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "host",
+                  "scheme"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "checkedAtMs": {

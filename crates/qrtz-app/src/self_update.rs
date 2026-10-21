@@ -1,15 +1,18 @@
-//! ADR 0181: qrtz updates itself, the way the marketplace updates apps, from the same pinned host.
+//! ADR 0181: qrtz updates itself from its GitHub releases (QRT-313; it was the package host before).
 //!
-//! The feed is `https://modules.qrtz.ai/v1/app/latest.json`, a signed envelope `{"feed": <base64>, "signature":
+//! The feed is `https://github.com/qrtz-ai/qrtz/releases/latest/download/latest.json` ([`FEED_URL`]), a signed envelope `{"feed": <base64>, "signature":
 //! <base64 minisign>}` ([`open_feed`]). The signature (the **app-update key**) covers the feed's exact bytes, and the
 //! feed (Tauri's static updater JSON plus `sha256`, `size` and `expires`) names one `darwin-aarch64` release whose
-//! archive is the immutable `v1/app/<version>/qrtz_<version>_aarch64.app.tar.gz` of a notarized, stapled qrtz.app.
+//! archive is the release asset `<RELEASES>/download/app-v<version>/qrtz_<version>_aarch64.app.tar.gz` of a notarized,
+//! stapled qrtz.app. GitHub redirects both to its asset storage; `update_redirect.rs` allows only HTTPS hops that end on
+//! exactly `objects.githubusercontent.com` or `release-assets.githubusercontent.com` (else `update_redirect_blocked`).
+//! Hosts are untrusted either way: everything below is checked on the bytes, wherever they came from.
 //! A release is taken only if, in this order:
 //!
 //! 0. the envelope's signature verifies and the feed hasn't expired (`expires`, at most [`MAX_FEED_LIFETIME`] ahead;
 //!    `app-feed-refresh.yml` re-signs it weekly), so a host or network replaying an old feed can hide an update for
 //!    weeks at most, never forever (a freeze attack, [`check_fresh`]);
-//! 1. the feed parses and names exactly that archive path on the pinned host ([`parse_feed`]);
+//! 1. the feed parses and names exactly that archive URL under [`ARCHIVE_BASE`] ([`parse_feed`]);
 //! 2. its version is strictly newer than this build (plain `x.y.z`, never a downgrade or a re-install, [`is_update`]);
 //! 3. the archive has the feed's size and sha256, and its minisign signature verifies against the **app-update key**
 //!    compiled into this build (`app_update_key.pub`; not the module root, index or timestamp key), with the signed
@@ -31,9 +34,12 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Where the feed and archives live on the pinned package host (`module_hosts.json` `primary`).
-pub const APP_DIR: &str = "v1/app/";
-pub const FEED_PATH: &str = "v1/app/latest.json";
+/// QRT-313: qrtz's GitHub releases; the feed and every archive are assets of one of them.
+pub const RELEASES: &str = "https://github.com/qrtz-ai/qrtz/releases";
+/// The newest release's signed feed (GitHub redirects `latest` to the tagged release's asset).
+pub const FEED_URL: &str = "https://github.com/qrtz-ai/qrtz/releases/latest/download/latest.json";
+/// What every archive URL starts with: `<ARCHIVE_BASE>/` + [`archive_path`] (`scripts/app/feed.mjs` `HOST`).
+pub const ARCHIVE_BASE: &str = "https://github.com/qrtz-ai/qrtz/releases/download";
 /// The one platform qrtz ships (Apple Silicon).
 pub const TARGET: &str = "darwin-aarch64";
 /// The app's bundle identifier (tauri.conf.json `identifier`), the only one a new bundle may carry.
@@ -69,9 +75,9 @@ pub fn key_is_valid(key_b64: &str) -> bool {
         .is_ok()
 }
 
-/// `v1/app/<v>/qrtz_<v>_aarch64.app.tar.gz`
+/// `app-v<v>/qrtz_<v>_aarch64.app.tar.gz` (the release tag, then the asset release.yml uploads)
 pub fn archive_path(version: &str) -> String {
-    format!("{APP_DIR}{version}/qrtz_{version}_aarch64.app.tar.gz")
+    format!("app-v{version}/qrtz_{version}_aarch64.app.tar.gz")
 }
 
 /// One release as the feed announces it.
@@ -79,7 +85,7 @@ pub fn archive_path(version: &str) -> String {
 pub struct Release {
     pub version: String,
     pub notes: Option<String>,
-    /// Host-relative, always [`archive_path`] of `version`.
+    /// Relative to [`ARCHIVE_BASE`], always [`archive_path`] of `version`.
     pub path: String,
     pub signature: String,
     pub sha256: String,
@@ -96,7 +102,7 @@ fn plain_version(v: &str) -> Result<semver::Version, String> {
     Ok(p)
 }
 
-/// Parse `latest.json` from host `host` (`https://modules.qrtz.ai`). The archive URL must be exactly
+/// Parse `latest.json` with archives under `host` ([`ARCHIVE_BASE`]). The archive URL must be exactly
 /// `<host>/` + [`archive_path`] of the announced version: a feed can't point qrtz anywhere else, or pair a version
 /// with another version's archive.
 pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
@@ -185,7 +191,7 @@ pub fn parse_utc(s: &str) -> Option<u64> {
 /// The feed is still good at `now` (unix seconds): not expired, and not claiming more than [`MAX_FEED_LIFETIME`].
 pub fn check_fresh(expires: u64, now: u64) -> Result<(), String> {
     if expires <= now {
-        return Err("the update feed has expired (modules.qrtz.ai serves an old one)".into());
+        return Err("the update feed has expired (the release host serves an old one)".into());
     }
     if expires - now > MAX_FEED_LIFETIME.as_secs() {
         return Err("the update feed claims to be good for too long".into());
@@ -362,6 +368,10 @@ impl State {
 /// The `app-update:status` answer (and `app-update:state` event).
 pub fn to_json(current: &str, s: &State, checked_at_ms: Option<u64>) -> Value {
     let r = s.release();
+    let blocked = match s {
+        State::Failed { message, .. } => crate::update_redirect::RedirectBlocked::from_message(message),
+        _ => None,
+    };
     json!({
         "current": current,
         "state": s.name(),
@@ -370,11 +380,14 @@ pub fn to_json(current: &str, s: &State, checked_at_ms: Option<u64>) -> Value {
         "sizeBytes": r.map(|r| r.size),
         "doneBytes": match s { State::Downloading { done, .. } => Some(*done), _ => None },
         "error": match s { State::Failed { message, .. } => Some(message.clone()), _ => None },
+        // QRT-313: a download sent somewhere other than GitHub's asset hosts (foo's "couldn't download" message).
+        "errorCode": blocked.as_ref().map(|_| crate::update_redirect::CODE),
+        "errorDetails": blocked.map(|b| json!({ "host": b.host, "scheme": b.scheme })),
         "checkedAtMs": checked_at_ms,
     })
 }
 
-/// What the controller needs from the outside world: the pinned host, and the swap.
+/// What the controller needs from the outside world: the release files, and the swap.
 #[async_trait]
 pub trait Backend: Send + Sync {
     /// The feed's bytes (`None` = the host has no feed yet).
@@ -395,7 +408,7 @@ pub trait Backend: Send + Sync {
         archive: &std::path::Path,
         commit: HighWaterCommit,
     ) -> Result<(), String>;
-    /// The pinned host (`https://modules.qrtz.ai`) the archive URL must be on.
+    /// What the archive URL must start with ([`ARCHIVE_BASE`]).
     fn host(&self) -> String;
 }
 
@@ -762,17 +775,27 @@ impl SelfUpdate {
     }
 }
 
-/// The pinned host's app files through the package manager's one fetcher (ADR 0157 §5, ADR 0181).
+/// QRT-313: the release files from GitHub, through [`crate::module_hosting::ReleaseTransport`] (every redirect
+/// hop judged by `update_redirect.rs`).
 #[cfg(feature = "runtime")]
-pub struct PinnedBackend {
-    pub transport: crate::module_hosting::HttpTransport,
+#[derive(Default)]
+pub struct GithubBackend {
+    pub transport: crate::module_hosting::ReleaseTransport,
 }
 
 #[cfg(feature = "runtime")]
 #[async_trait]
-impl Backend for PinnedBackend {
+impl Backend for GithubBackend {
     async fn fetch_feed(&self) -> Result<Option<Vec<u8>>, String> {
-        self.transport.app_meta(FEED_PATH, MAX_FEED_BYTES).await
+        let mut out = Vec::new();
+        let found = self
+            .transport
+            .get(FEED_URL, MAX_FEED_BYTES as u64, &mut |c: &[u8]| {
+                out.extend_from_slice(c);
+                Ok(())
+            })
+            .await?;
+        Ok(found.then_some(out))
     }
     async fn fetch_archive(
         &self,
@@ -781,22 +804,27 @@ impl Backend for PinnedBackend {
         progress: &(dyn Fn(u64, u64) + Send + Sync),
     ) -> Result<(), String> {
         use std::io::Write;
-        const CHUNK: u64 = 8 << 20;
         let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(dest)
             .map_err(|e| format!("{}: {e}", dest.display()))?;
+        let url = format!("{ARCHIVE_BASE}/{}", r.path);
         let mut done = 0u64;
-        while done < r.size {
-            let len = CHUNK.min(r.size - done);
-            let b = self.transport.app_range(&r.path, done, len).await?;
-            if b.len() as u64 != len {
-                return Err(format!("{}: short read", r.path));
-            }
-            f.write_all(&b).map_err(|e| format!("{}: {e}", dest.display()))?;
-            done += len;
-            progress(done, r.size);
+        let found = self
+            .transport
+            .get(&url, r.size, &mut |c: &[u8]| {
+                f.write_all(c).map_err(|e| format!("{}: {e}", dest.display()))?;
+                done += c.len() as u64;
+                progress(done, r.size);
+                Ok(())
+            })
+            .await?;
+        if !found {
+            return Err(format!("{}: not found", r.path));
+        }
+        if done != r.size {
+            return Err(format!("{}: short read", r.path));
         }
         f.sync_all().map_err(|e| format!("{}: {e}", dest.display()))
     }
@@ -816,7 +844,7 @@ impl Backend for PinnedBackend {
         .map_err(|e| e.to_string())?
     }
     fn host(&self) -> String {
-        crate::module_hosting::Hosts::pinned().primary
+        ARCHIVE_BASE.into()
     }
 }
 

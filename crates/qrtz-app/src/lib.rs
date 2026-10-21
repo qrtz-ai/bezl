@@ -54,6 +54,7 @@ pub mod summary;
 #[cfg(feature = "runtime")]
 pub mod talk;
 pub mod tcc;
+pub mod update_redirect;
 #[cfg(feature = "runtime")]
 pub mod vault_port;
 #[cfg(feature = "runtime")]

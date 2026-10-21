@@ -65,6 +65,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "tracing-log",
 ] }
 minisign-verify = "0.3.0"
+# QRT-313: parse the update download's redirect hops (update_redirect.rs; a URL parser, no network).
+url = "2"
 base64 = { workspace = true }
 
 # ADR 0181: the self-update download and stage dirs; RENAME_SWAP's errno.

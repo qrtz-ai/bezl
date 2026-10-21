@@ -132,7 +132,7 @@ jobs:
           cp "$RUNNER_TEMP/app/qrtz_${V}_aarch64.dmg" "$out/"   # notarized + stapled by sign-notarize.sh
           bun scripts/release-notes.mjs "$V" >"$RUNNER_TEMP/notes.md" 2>/dev/null || : >"$RUNNER_TEMP/notes.md"
           # 60 days: 0.2.4 clients cap at 60 (self_update.rs MAX_FEED_LIFETIME).
-          # Feed host stays the feed.mjs default (modules.qrtz.ai); it flips to GitHub in QRT-313, which must land before app-v0.2.5.
+          # QRT-313: the feed.mjs default host is this release's assets (github.com/qrtz-ai/qrtz/releases/download/app-v$V/).
           node scripts/app/feed.mjs --version "$V" --archive "$tgz" --sig "$tgz.sig" \
             --notes-file "$RUNNER_TEMP/notes.md" --expires-days 60 >"$RUNNER_TEMP/feed.json"
           bash scripts/app/sign-feed.sh "$RUNNER_TEMP/feed.json" "$out/latest.json"

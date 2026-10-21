@@ -138,36 +138,45 @@ impl HttpTransport {
     }
 }
 
-/// ADR 0181: qrtz's own update files (`v1/app/…`: the feed and the archives), from the pinned package host only,
-/// through the same fetcher. Nothing else is reachable here: a path outside `v1/app/` is refused.
-impl HttpTransport {
-    fn app_host(&self, path: &str) -> Result<&Downloader, String> {
-        if !path.starts_with(crate::self_update::APP_DIR) || path.contains("..") || path.contains("//") {
-            return Err(format!("{path}: not an app update file"));
-        }
-        if self.dir.is_some() || !self.configured {
-            return Err("the package hosts aren't set up yet".into());
-        }
-        self.hosts.first().ok_or_else(|| "no package host".to_string())
-    }
-    /// A small file (the feed), at most `max` bytes; `None` = not there.
-    pub async fn app_meta(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
-        let b = self
-            .app_host(path)?
-            .fetch_meta(path)
-            .await
-            .map_err(|e| e.to_string())?;
-        match b {
-            Some(b) if b.len() > max => Err(format!("{path}: too large")),
-            b => Ok(b),
+/// ADR 0181, QRT-313: qrtz's own update files (the feed and the archives), GitHub release assets of qrtz-ai/qrtz,
+/// through the same downloader with no automatic redirects: every hop is judged by [`crate::update_redirect::allow`]
+/// (HTTPS only, exactly github.com then exactly GitHub's asset hosts), and a refused hop ends the fetch with
+/// `update_redirect_blocked` before any byte of it is read. Nothing outside [`crate::self_update::RELEASES`] is
+/// asked for.
+pub struct ReleaseTransport {
+    dl: Downloader,
+}
+
+impl Default for ReleaseTransport {
+    fn default() -> Self {
+        Self {
+            dl: Downloader::no_redirects(),
         }
     }
-    /// `len` bytes of an archive from `start`.
-    pub async fn app_range(&self, path: &str, start: u64, len: u64) -> Result<Vec<u8>, String> {
-        self.app_host(path)?
-            .fetch_range(path, start, len, &self.ctl)
+}
+
+impl ReleaseTransport {
+    /// GET `url` (under [`crate::self_update::RELEASES`]), at most `max` bytes, into `sink`; `Ok(false)` = 404.
+    pub async fn get(
+        &self,
+        url: &str,
+        max: u64,
+        sink: &mut (dyn FnMut(&[u8]) -> Result<(), String> + Send),
+    ) -> Result<bool, String> {
+        let ours = url
+            .strip_prefix(crate::self_update::RELEASES)
+            .is_some_and(|rest| rest.starts_with('/') && !rest.contains("..") && !rest.contains("//"));
+        if !ours {
+            return Err(format!("{url}: not a qrtz release file"));
+        }
+        use qrtz_speech::download::FollowError;
+        self.dl
+            .fetch_following(url, &crate::update_redirect::allow, max, sink)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| match e {
+                FollowError::Blocked(u) => crate::update_redirect::RedirectBlocked::of(&u).message(),
+                FollowError::Other(e) => e.to_string(),
+            })
     }
 }
 

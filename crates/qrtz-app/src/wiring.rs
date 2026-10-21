@@ -596,14 +596,13 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 .with_app_version(app_version),
         ));
     }
-    // ADR 0181: qrtz's own updater, over the pinned host; quiet checks start with the app (`start_app_update_checks`).
+    // ADR 0181, QRT-313: qrtz's own updater, from its GitHub releases; quiet checks start with the app
+    // (`start_app_update_checks`).
     service.set_self_update(
         crate::self_update::SelfUpdate::new(
             service_version.clone(),
             crate::self_update::pinned_key().map(str::to_owned),
-            Arc::new(crate::self_update::PinnedBackend {
-                transport: crate::module_hosting::HttpTransport::pinned(),
-            }),
+            Arc::new(crate::self_update::GithubBackend::default()),
         )
         .with_high_water(dirs.data.join(crate::self_update::HIGH_WATER_FILE))
         .with_work_dir(dirs.data.clone())

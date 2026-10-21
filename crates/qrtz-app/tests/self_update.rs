@@ -7,7 +7,7 @@ use qrtz_app::self_update::{
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
-const HOST: &str = "https://modules.qrtz.ai";
+const HOST: &str = qrtz_app::self_update::ARCHIVE_BASE;
 
 fn fixture(name: &str) -> Vec<u8> {
     std::fs::read(format!(
@@ -117,7 +117,11 @@ fn the_feed_parses_and_pins_the_archive_path() {
     let v = feed("0.3.0", &text("good-0.3.0.sig"));
     let r = parse_feed(&serde_json::to_vec(&v).unwrap(), HOST).unwrap();
     assert_eq!(r.version, "0.3.0");
-    assert_eq!(r.path, "v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz");
+    assert_eq!(r.path, "app-v0.3.0/qrtz_0.3.0_aarch64.app.tar.gz");
+    assert_eq!(
+        format!("{HOST}/{}", r.path),
+        "https://github.com/qrtz-ai/qrtz/releases/download/app-v0.3.0/qrtz_0.3.0_aarch64.app.tar.gz"
+    );
     assert_eq!(r.notes.as_deref(), Some("faster dictation"));
     let bad = |f: &dyn Fn(&mut Value)| {
         let mut v = feed("0.3.0", &text("good-0.3.0.sig"));
@@ -128,6 +132,15 @@ fn the_feed_parses_and_pins_the_archive_path() {
     bad(&|v| {
         v["platforms"][TARGET]["url"] =
             json!("https://evil.example/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz")
+    });
+    // QRT-313: the old package host, or another repo's release, is no longer the archive's place.
+    bad(&|v| {
+        v["platforms"][TARGET]["url"] =
+            json!("https://modules.qrtz.ai/v1/app/0.3.0/qrtz_0.3.0_aarch64.app.tar.gz")
+    });
+    bad(&|v| {
+        v["platforms"][TARGET]["url"] =
+            json!("https://github.com/evil/qrtz/releases/download/app-v0.3.0/qrtz_0.3.0_aarch64.app.tar.gz")
     });
     bad(&|v| v["platforms"][TARGET]["url"] = json!(format!("{HOST}/{}", archive_path("0.2.5"))));
     bad(&|v| v["version"] = json!("0.3.0-beta.1"));

@@ -57,6 +57,17 @@ pub fn is_loopback_url(url: &str) -> bool {
     }
 }
 
+/// QRT-313: the most redirects [`Downloader::fetch_following`] follows (GitHub uses one or two).
+pub const MAX_HOPS: usize = 5;
+
+/// Why [`Downloader::fetch_following`] stopped.
+#[derive(Debug)]
+pub enum FollowError {
+    /// The caller's `allow` refused this URL (a hop or the final answer); nothing was read from it.
+    Blocked(String),
+    Other(SpeechError),
+}
+
 pub struct Downloader {
     client: reqwest::Client,
     base: String,
@@ -154,6 +165,84 @@ impl Downloader {
             return Err(SpeechError::Network(format!("{path}: short range")));
         }
         Ok(out)
+    }
+
+    /// QRT-313: a client that follows no redirect by itself, for [`Downloader::fetch_following`] (the caller's
+    /// `allow` judges every hop). HTTPS only.
+    pub fn no_redirects() -> Self {
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .read_timeout(std::time::Duration::from_secs(60))
+            .https_only(true)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("http client");
+        Self {
+            client,
+            base: String::new(),
+        }
+    }
+
+    /// QRT-313: GET the absolute `url`, following at most [`MAX_HOPS`] redirects by hand. `allow(url, last)` is
+    /// asked about every URL before it is requested (`last == false`) and again about the one that finally answers
+    /// (`last == true`); a `false` stops at once with [`FollowError::Blocked`] naming that URL, before any byte of
+    /// it is read. The body (at most `max` bytes, else refused) goes to `sink` chunk by chunk. `Ok(false)` = 404.
+    pub async fn fetch_following(
+        &self,
+        url: &str,
+        allow: &(dyn Fn(&str, bool) -> bool + Send + Sync),
+        max: u64,
+        sink: &mut (dyn FnMut(&[u8]) -> Result<(), String> + Send),
+    ) -> Result<bool, FollowError> {
+        let net = |e: String| FollowError::Other(SpeechError::Network(e));
+        let mut cur = reqwest::Url::parse(url).map_err(|e| net(format!("{url}: {e}")))?;
+        for _ in 0..=MAX_HOPS {
+            if !allow(cur.as_str(), false) {
+                return Err(FollowError::Blocked(cur.to_string()));
+            }
+            let r = self
+                .client
+                .get(cur.clone())
+                .send()
+                .await
+                .map_err(|e| net(e.to_string()))?;
+            let st = r.status();
+            if st.is_redirection() {
+                let loc = r
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|v| v.to_str().ok())
+                    .ok_or_else(|| net(format!("{cur}: http {st} without a location")))?;
+                cur = cur
+                    .join(loc)
+                    .map_err(|e| net(format!("{cur}: bad location: {e}")))?;
+                continue;
+            }
+            if !allow(cur.as_str(), true) {
+                return Err(FollowError::Blocked(cur.to_string()));
+            }
+            if st == reqwest::StatusCode::NOT_FOUND {
+                return Ok(false);
+            }
+            if !st.is_success() {
+                return Err(net(format!("{}: http {st}", cur.path())));
+            }
+            if r.content_length().is_some_and(|n| n > max) {
+                return Err(FollowError::Other(SpeechError::TooLarge));
+            }
+            let mut done = 0u64;
+            let mut s = r.bytes_stream();
+            while let Some(c) = s.next().await {
+                let c = c.map_err(|e| net(e.to_string()))?;
+                done += c.len() as u64;
+                if done > max {
+                    return Err(FollowError::Other(SpeechError::TooLarge));
+                }
+                sink(&c).map_err(net)?;
+            }
+            return Ok(true);
+        }
+        Err(net(format!("{url}: more than {MAX_HOPS} redirects")))
     }
 
     /// Download every file of `m` into `staging` (resuming `.part` files, skipping finished ones). Each file is

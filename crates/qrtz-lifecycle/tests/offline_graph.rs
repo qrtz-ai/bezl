@@ -339,6 +339,8 @@ const FETCH_NAMES: &[&str] = &[
     "fetch_range",
     "download_bundle",
     "download_files",
+    // QRT-313: the updater's redirect-checked GET (GitHub release assets), module_hosting.rs only.
+    "fetch_following",
 ];
 /// The downloader's pause and progress types: plain data, no transport.
 const DOWNLOAD_TYPES: &[&str] = &["DownloadControl", "Progress"];
@@ -351,7 +353,7 @@ const FETCH_CALLERS: &[(&str, &[&str])] = &[
     ("crates/qrtz-app/src/setup.rs", &["Downloader"]),
     (
         "crates/qrtz-app/src/module_hosting.rs",
-        &["Downloader", "fetch_meta", "fetch_range"],
+        &["Downloader", "fetch_meta", "fetch_range", "fetch_following"],
     ),
 ];
 /// Sources that may import the pause/progress types from `qrtz_speech::download`, and nothing else from it.
