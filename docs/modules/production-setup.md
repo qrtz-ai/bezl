@@ -123,7 +123,7 @@ the assets `v1.root.1.root.json` (+ `.sig`).
 
 ## Releases on GitHub (QRT-297)
 
-**Where things live.** Each release is a tag. `v<x.y.z>` is qrtz.app. `nano-v<x.y.z>`, `ctrl-v<x.y.z>` and
+**Where things live.** Each release is a tag. `app-v<x.y.z>` is qrtz.app. `nano-v<x.y.z>`, `ctrl-v<x.y.z>` and
 `snap-v<x.y.z>` are packages. Each tag gets its own GitHub release with the signed dmg or package attached, for people.
 The app itself reads only the fixed `index` release, through direct download URLs such as
 `https://github.com/qrtz-ai/qrtz/releases/download/index/v1.timestamp.json` (never `api.github.com`, which is
@@ -146,7 +146,8 @@ follows GitHub's redirect only to `objects.githubusercontent.com` and `release-a
    was signed.
 
 To release: bump the version (`node scripts/app/version.mjs bump`, or `node scripts/modules/version.mjs bump <m>`),
-push to main, then `git tag v<x.y.z>` (or `<m>-v<x.y.z>`) and `git push origin <tag>`. Approve the `sign` job when
+push to main, then `node scripts/app/version.mjs tag --push` (it tags `app-v<x.y.z>`), or for a package
+`git tag <m>-v<x.y.z> && git push origin <m>-v<x.y.z>`. Approve the `sign` job when
 GitHub asks.
 
 ### One-time setup (on your Mac)
@@ -157,7 +158,7 @@ GitHub asks.
   - Tick **Required reviewers** and add yourself (`jlgrimes`). Leave **Prevent self-review** unticked (you are the
     only reviewer).
   - **Deployment branches and tags** → **Selected branches and tags** → add the branch rule `main` and the tag rules
-    `v*`, `nano-v*`, `ctrl-v*`, `snap-v*`.
+    `app-v*`, `nano-v*`, `ctrl-v*`, `snap-v*`.
 - **New environment** `release-timestamp`:
   - No required reviewer (it runs daily on its own).
   - **Deployment branches and tags** → **Selected branches and tags** → add the branch rule `main` only.
@@ -170,7 +171,7 @@ gh api -X PUT repos/qrtz-ai/qrtz/environments/release \
   -F "reviewers[][type]=User" -F "reviewers[][id]=$id" \
   -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"
 for p in main; do gh api -X POST repos/qrtz-ai/qrtz/environments/release/deployment-branch-policies -f name="$p" -f type=branch; done
-for p in 'v*' 'nano-v*' 'ctrl-v*' 'snap-v*'; do gh api -X POST repos/qrtz-ai/qrtz/environments/release/deployment-branch-policies -f name="$p" -f type=tag; done
+for p in 'app-v*' 'nano-v*' 'ctrl-v*' 'snap-v*'; do gh api -X POST repos/qrtz-ai/qrtz/environments/release/deployment-branch-policies -f name="$p" -f type=tag; done
 gh api -X PUT repos/qrtz-ai/qrtz/environments/release-timestamp \
   -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"
 gh api -X POST repos/qrtz-ai/qrtz/environments/release-timestamp/deployment-branch-policies -f name=main -f type=branch
