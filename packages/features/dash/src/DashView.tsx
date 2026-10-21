@@ -214,7 +214,7 @@ export default function DashView() {
           ) : (
             <Stack gap={2}>
               <Text variant="caption" muted>
-                {`local only: agents can't reach it. connect to ${view.origin} with its setup token.`}
+                {`local only: agents can't reach it. connect a dash server with its setup token.`}
               </Text>
               <Stack dir="row" gap={2} align="end">
                 <Field label="setup token">

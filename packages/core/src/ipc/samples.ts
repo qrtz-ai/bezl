@@ -298,6 +298,10 @@ const dashSamples = {
     request: undefined,
     response: { code: 'ENR-7F3A-91C2', expiresAt: T0 + 900_000 },
   },
+  'dash:copy-prompt': {
+    request: undefined,
+    response: { copied: true as const },
+  },
   'dash:rotate-codes': { request: undefined, response: { ok: true as const } },
   'dash:open-link': {
     request: { url: 'https://qrtz.ai/docs' },

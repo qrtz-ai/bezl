@@ -147,7 +147,11 @@ export const DashAgent = z.object({
 export type DashAgent = z.infer<typeof DashAgent>;
 
 export const DashView = z.object({
-  origin: z.string(),
+  /**
+   * QRT-298: the origin of the dash server this view came from (the one agents must use), e.g. https://dash.qrtz.ai,
+   * or http://127.0.0.1:<port> in a debug dev-local build. Absent when not connected: never DASH_ORIGIN as a guess.
+   */
+  origin: z.string().max(64).optional(),
   /** ADR 0231: true when this view came from the dash server (agents can reach it); absent or false in memory. */
   connected: z.boolean().optional(),
   readmeVersion: z.string(),
