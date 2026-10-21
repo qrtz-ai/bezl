@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Screenshot comparisons for the page stories (QRT-304). One browser (chromium), one Linux image in CI, so
-// font rendering is stable. A difference fails; baselines change only with `bun run screenshots:update`.
+// font rendering is stable. More than 2% differing pixels fails; baselines change only with
+// `bun run screenshots:update`. Each run's own screenshots are kept under test-results/screenshots.
 // `bun run e2e` runs it first, so the existing CI playwright job covers it with no workflow change.
 const port = 6126;
 export default defineConfig({
