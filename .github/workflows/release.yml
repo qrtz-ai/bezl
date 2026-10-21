@@ -119,6 +119,8 @@ jobs:
           ditto -x -k "$RUNNER_TEMP/in/qrtz-unsigned.zip" "$RUNNER_TEMP/app"
           bash scripts/release/sign-notarize.sh --app "$RUNNER_TEMP/app/qrtz.app"
           bash scripts/release/verify-bundle.sh "$RUNNER_TEMP/app/qrtz.app"
+      - name: minisign for sign-feed.sh's signature self-check (not on the macOS runner image)
+        run: brew install minisign && minisign -v
       - name: update archive + signed latest.json (app-update key; same steps as scripts/app/publish-local.sh)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.APP_UPDATE_KEY }}
