@@ -71,11 +71,13 @@ pub fn accepted_origin(o: &str) -> bool {
     o == PROD_ORIGIN || (cfg!(all(debug_assertions, feature = "dev-local")) && is_loopback_dev_origin(o))
 }
 
-/// `ENR-XXXX-XXXX` (A-Z, 0-9): the only code shape `dash:copy-prompt` will put in a prompt.
+/// QRT-284's `ENR-<id>.<secret>`: `ENR-`, 8 id chars, `.`, 17 secret chars, all from the dash server's code
+/// alphabet (A-Z and 2-9 without I, L, O, U). The only code shape `dash:copy-prompt` will put in a prompt.
 pub fn is_enroll_code(c: &str) -> bool {
+    const ALPHABET: &[u8] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
     let b = c.as_bytes();
-    let part = |r: &[u8]| r.iter().all(|x| x.is_ascii_uppercase() || x.is_ascii_digit());
-    b.len() == 13 && c.starts_with("ENR-") && b[8] == b'-' && part(&b[4..8]) && part(&b[9..13])
+    let part = |r: &[u8]| r.iter().all(|x| ALPHABET.contains(x));
+    b.len() == 30 && c.starts_with("ENR-") && b[12] == b'.' && part(&b[4..12]) && part(&b[13..30])
 }
 
 /// The text "Copy prompt" puts on the clipboard.
@@ -166,6 +168,12 @@ impl DashPort {
             _ => {
                 let mut net = self.net.lock().await;
                 match net.as_mut() {
+                    // QRT-298 (Bozniak): while connected, a code reaches an agent only through dash:copy-prompt, which
+                    // writes the clipboard in Rust. dash:issue-code would hand the code to the renderer, so refuse it.
+                    Some(_) if channel == "dash:issue-code" => Err(AppError::new(
+                        ErrorCode::Unavailable,
+                        "codes go out only through copy prompt while connected",
+                    )),
                     Some(h) => {
                         let cap = Self::capability(channel)?;
                         let mut r = h.call(channel, &cap, p).await;
@@ -372,7 +380,7 @@ while IFS= read -r l; do
   ch=${{l#*\"channel\":\"}}
   ch=${{ch%%\"*}}
   printf '%s\n' "$ch" >>'{log}'
-  printf '{{"id":%s,"ok":{{"echo":%s,"env":"%s","origin":"{origin}","code":"ENR-AB12-CD34","expiresAt":1}}}}\n' "$id" "$l" "${{CARGO_MANIFEST_DIR:-}}"
+  printf '{{"id":%s,"ok":{{"echo":%s,"env":"%s","origin":"{origin}","code":"ENR-AB23CD45.EFGH2345JKMN6789P","expiresAt":1}}}}\n' "$id" "$l" "${{CARGO_MANIFEST_DIR:-}}"
 done
 "#,
                 log = dir.join("calls.log").display()
@@ -460,17 +468,22 @@ done
 
     #[test]
     fn the_prompt_names_the_origin_and_a_valid_code() {
-        let p = enroll_prompt("http://127.0.0.1:8799", "ENR-AB12-CD34");
+        let p = enroll_prompt("http://127.0.0.1:8799", "ENR-AB23CD45.EFGH2345JKMN6789P");
         assert_eq!(
             p.as_str(),
-            "Read http://127.0.0.1:8799/v1/readme and enroll in my qrtz Dash with code ENR-AB12-CD34"
+            "Read http://127.0.0.1:8799/v1/readme and enroll in my qrtz Dash with code ENR-AB23CD45.EFGH2345JKMN6789P"
         );
-        assert!(is_enroll_code("ENR-AB12-CD34"));
+        assert!(is_enroll_code("ENR-AB23CD45.EFGH2345JKMN6789P"));
         for c in [
-            "TST-AB12-CD34",
-            "ENR-ab12-CD34",
-            "ENR-AB12CD34",
-            "ENR-AB12-CD345",
+            "ENR-AB12-CD34",                   // the old in-app shape: no server issues it
+            "TST-AB23CD45.EFGH2345JKMN6789P",  // local test codes never go in a prompt
+            "ENR-ab23cd45.EFGH2345JKMN6789P",  // lower case
+            "ENR-AB23CD45EFGH2345JKMN6789P",   // no dot
+            "ENR-AB23CD45.EFGH2345JKMN6789PQ", // secret too long
+            "ENR-AB23CD4.EFGH2345JKMN6789PQ",  // id too short
+            "ENR-AB23CD45.EFGH2345JKMN6789I",  // I is not in the alphabet
+            "ENR-AB23CD40.EFGH2345JKMN6789P",  // nor 0
+            "ENR-AB23CD45.EFGH2345JKMN6789P ",
             "",
         ] {
             assert!(!is_enroll_code(c), "{c}");
@@ -520,6 +533,13 @@ done
             assert_eq!(v["origin"], PROD_ORIGIN);
         }
         assert!(!calls(d.path()).iter().any(|c| c == "dash:issue-code"));
+        // QRT-298 (Bozniak): connected, the renderer's dash:issue-code is refused and never reaches the server.
+        let e = port
+            .call_async("dash:issue-code", &Value::Null)
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::Unavailable);
+        assert!(!calls(d.path()).iter().any(|c| c == "dash:issue-code"));
         let mut clip = String::new();
         let r = port
             .copy_prompt(|t| {
@@ -532,7 +552,7 @@ done
         assert!(!r.to_string().contains("ENR-"));
         assert_eq!(
             clip,
-            "Read https://dash.qrtz.ai/v1/readme and enroll in my qrtz Dash with code ENR-AB12-CD34"
+            "Read https://dash.qrtz.ai/v1/readme and enroll in my qrtz Dash with code ENR-AB23CD45.EFGH2345JKMN6789P"
         );
         assert_eq!(
             calls(d.path()).iter().filter(|c| *c == "dash:issue-code").count(),
