@@ -77,10 +77,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          no-cache: true
-      - run: bun install --frozen-lockfile
       - name: diff of .github/ and scripts/release/ since the last release tag
         run: |
           last="$(git describe --tags --abbrev=0 --match 'app-v*' --match 'nano-v*' --match 'ctrl-v*' --match 'snap-v*' --match 'v*' HEAD^ 2>/dev/null || true)"
@@ -106,6 +102,10 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
             --source-ref "$GITHUB_REF"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
+      - run: bun install --frozen-lockfile --ignore-scripts
       - name: temporary keychain + Developer ID identity
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
@@ -132,7 +132,7 @@ jobs:
           cp "$RUNNER_TEMP/app/qrtz_${V}_aarch64.dmg" "$out/"   # notarized + stapled by sign-notarize.sh
           bun scripts/release-notes.mjs "$V" >"$RUNNER_TEMP/notes.md" 2>/dev/null || : >"$RUNNER_TEMP/notes.md"
           # 60 days: 0.2.4 clients cap at 60 (self_update.rs MAX_FEED_LIFETIME).
-          # Host stays the feed.mjs default until the updater-from-GitHub change lands (separate ticket).
+          # Feed host stays the feed.mjs default (modules.qrtz.ai); it flips to GitHub in QRT-313, which must land before app-v0.2.5.
           node scripts/app/feed.mjs --version "$V" --archive "$tgz" --sig "$tgz.sig" \
             --notes-file "$RUNNER_TEMP/notes.md" --expires-days 60 >"$RUNNER_TEMP/feed.json"
           bash scripts/app/sign-feed.sh "$RUNNER_TEMP/feed.json" "$out/latest.json"
@@ -153,7 +153,7 @@ jobs:
           mkdir "$RUNNER_TEMP/live" && gh release download "app-v$V" -D "$RUNNER_TEMP/live"
           (cd "$RUNNER_TEMP/out" && shasum -a 256 *) | (cd "$RUNNER_TEMP/live" && shasum -a 256 -c -)
           for f in "$RUNNER_TEMP"/live/*; do
-            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref "$GITHUB_REF"
           done
       - name: delete the keychain and every secret file
         if: always()
