@@ -317,7 +317,7 @@ async fn only_dash_reads_and_manages_the_dashboard() {
         .keys()
         .filter(|c| c.starts_with("dash:"))
         .collect();
-    assert_eq!(channels.len(), 8);
+    assert_eq!(channels.len(), 9);
     let others: Vec<&String> = contract().manifests.keys().filter(|k| *k != "dash").collect();
     assert!(others.len() >= 7);
     for ch in &channels {
