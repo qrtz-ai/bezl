@@ -26,8 +26,11 @@ const run = (fn, ...args) => {
 };
 
 const T = 'ABCDE12345';
-const pin = `certificate leaf[subject.OU] = "${T}"`;
-const good = `identifier "ai.qrtz.p" and anchor apple generic and ${pin}`;
+const devId =
+  'anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */';
+const ou = `certificate leaf[subject.OU] = "${T}"`;
+const pin = `${devId} and ${ou}`;
+const good = `identifier "ai.qrtz.p" and ${pin}`;
 const manifest = (req, extra = {}) => {
   const f = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), 'mc-')),
@@ -52,26 +55,41 @@ describe('scripts/modules/module-code.sh module_code', () => {
     });
   }
 
-  it('passes a requirement that pins identifier and team with only and', () => {
+  it('passes identifier + anchor + both Developer ID markers + team, in any order after identifier', () => {
     expect(run('module_code', manifest(good), T)).toBe(true);
-    expect(
-      run('module_code', manifest(`identifier "ai.qrtz.p" and ${pin}`), T),
-    ).toBe(true);
-    // a keyword inside a string literal is data, not an operator
     expect(
       run(
         'module_code',
         manifest(
-          `identifier "ai.qrtz.p" and ${pin} and info[CFBundleName] = "or not !"`,
+          `identifier "ai.qrtz.p" and ${ou} and certificate leaf[field.1.2.840.113635.100.6.1.13] and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6]`,
         ),
         T,
       ),
     ).toBe(true);
   });
 
+  // QRT-292 (Bozniak): without the anchor and the Developer ID markers a self-signed certificate with OU=<team> passes.
+  const weak = {
+    'no anchor apple generic': `identifier "ai.qrtz.p" and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and ${ou}`,
+    'no Developer ID leaf marker': `identifier "ai.qrtz.p" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and ${ou}`,
+    'no Developer ID intermediate marker': `identifier "ai.qrtz.p" and anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] and ${ou}`,
+    'identifier and team only (self-signed passes)': `identifier "ai.qrtz.p" and ${ou}`,
+    'anchor only in a comment': `identifier "ai.qrtz.p" and /* anchor apple generic and */ certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and ${ou}`,
+    'anchor only inside a string literal': `identifier "ai.qrtz.p" and info[x] = "a and anchor apple generic and b" and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and ${ou}`,
+    'a different anchor': `identifier "ai.qrtz.p" and anchor trusted and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and ${ou}`,
+    'an extra clause': `${good} and info[CFBundleName] = "x"`,
+    'a repeated clause': `${good} and anchor apple generic`,
+    'unterminated comment': `${good} /* exists`,
+  };
+  for (const [name, req] of Object.entries(weak)) {
+    it(`refuses: ${name}`, () => {
+      expect(run('module_code', manifest(req), T)).toBe(false);
+    });
+  }
+
   const bypasses = {
     'quote then or': `identifier "ai.qrtz.p" and ${pin}or anchor apple`,
-    'quote then or, Bozniak case': `identifier "ai.qrtz.p" and certificate leaf[subject.OU] = "${T}"or anchor apple`,
+    'quote then or, Bozniak case': `identifier "ai.qrtz.p" and ${devId} and certificate leaf[subject.OU] = "${T}"or anchor apple`,
     'or then quote': `identifier "ai.qrtz.p" and anchor apple or"x" = "x" and ${pin}`,
     'quote then not': `identifier "ai.qrtz.p" and ${pin} and "x"not anchor apple`,
     'paren then or': `identifier "ai.qrtz.p" and (${pin})or(anchor apple)`,
