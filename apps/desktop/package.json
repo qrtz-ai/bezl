@@ -15,8 +15,12 @@
     "tauri:build": "tauri build",
     "start": "bun ../../scripts/build-helper.mjs && bun --bun run tauri:dev",
     "make": "bun ../../scripts/build-helper.mjs && bun --bun run tauri:build",
-    "e2e": "playwright test -c ../../e2e-tauri/playwright.config.ts",
-    "typecheck": "tsc -b"
+    "e2e": "bun run build-storybook && bun run screenshots && playwright test -c ../../e2e-tauri/playwright.config.ts",
+    "typecheck": "tsc -b",
+    "storybook": "storybook dev -p 6106",
+    "build-storybook": "storybook build -o storybook-static && bun .storybook/strip-fonts.mjs",
+    "screenshots": "playwright test -c screenshots/playwright.config.ts",
+    "screenshots:update": "playwright test -c screenshots/playwright.config.ts --update-snapshots=all"
   },
   "dependencies": {
     "@qrtz/core": "workspace:*",
@@ -44,7 +48,9 @@
     "@vitejs/plugin-react": "^5.0.0",
     "axe-core": "^4.14.0",
     "jsdom": "^26.1.0",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "@storybook/react-vite": "^10.6.2",
+    "storybook": "^10.6.2"
   },
   "engines": {
     "bun": ">=1.4.0"
