@@ -24,7 +24,7 @@ export const HOST = 'https://github.com/qrtz-ai/qrtz/releases/download';
 export const TARGET = 'darwin-aarch64';
 export const archivePath = (v) => `app-v${v}/qrtz_${v}_aarch64.app.tar.gz`;
 /** The app refuses a feed whose expires is further ahead than this (self_update.rs MAX_FEED_LIFETIME). */
-export const MAX_LIFETIME_DAYS = 60;
+export const MAX_LIFETIME_DAYS = 90; // QRT-314 (0.2.5); release.yml still issues 60 until the release after 0.2.5
 export const DEFAULT_LIFETIME_DAYS = 30;
 
 const utc = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');

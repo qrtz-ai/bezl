@@ -60,10 +60,13 @@ describe('scripts/app/feed.mjs', () => {
     expect(keyFrom('not a key')).toBeNull();
   });
 
-  it('expires 1 to 60 days out, in the one format the app parses', () => {
+  it('expires 1 to 90 days out, in the one format the app parses', () => {
     const now = new Date('2026-10-19T05:00:00.900Z');
     expect(expiresIn(30, now)).toBe('2026-11-18T05:00:00Z');
-    expect(() => expiresIn(61, now)).toThrow(/days/);
+    expect(expiresIn(60, now)).toBe('2026-12-18T05:00:00Z');
+    expect(expiresIn(90, now)).toBe('2027-01-17T05:00:00Z');
+    expect(() => expiresIn(91, now)).toThrow(/days/);
+    expect(() => expiresIn(-1, now)).toThrow(/days/);
     expect(() => expiresIn(0, now)).toThrow(/days/);
     expect(() =>
       feed({

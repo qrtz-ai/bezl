@@ -47,7 +47,8 @@ pub const APP_IDENTIFIER: &str = "ai.qrtz.desktop";
 pub const MAX_FEED_BYTES: usize = 64 * 1024;
 pub const MAX_ARCHIVE_BYTES: u64 = 1 << 30;
 /// The furthest ahead a feed's `expires` may be: one that claims longer is refused (a mis-signed or forged lifetime).
-pub const MAX_FEED_LIFETIME: Duration = Duration::from_secs(60 * 24 * 3600);
+/// 90 days from 0.2.5 (QRT-314); 0.2.4 capped at 60, so feeds stay 60-day until the release after 0.2.5.
+pub const MAX_FEED_LIFETIME: Duration = Duration::from_secs(90 * 24 * 3600);
 const MAX_NOTES: usize = 4000;
 pub const FIRST_CHECK_AFTER: Duration = Duration::from_secs(60);
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
@@ -1144,6 +1145,19 @@ mod tests {
         assert!(check_fresh(now - 1, now).is_err());
         assert!(check_fresh(now + MAX_FEED_LIFETIME.as_secs(), now).is_ok());
         assert!(check_fresh(now + MAX_FEED_LIFETIME.as_secs() + 1, now).is_err());
+    }
+
+    #[test]
+    fn feeds_may_live_90_days_and_no_longer() {
+        const DAY: u64 = 24 * 3600;
+        assert_eq!(MAX_FEED_LIFETIME.as_secs(), 90 * DAY);
+        let now = 1_792_386_000;
+        assert!(check_fresh(now + 60 * DAY, now).is_ok(), "today's 60-day feeds");
+        assert!(check_fresh(now + 90 * DAY, now).is_ok(), "a 90-day feed");
+        assert!(check_fresh(now + 90 * DAY + 1, now).unwrap_err().contains("too long"));
+        assert!(check_fresh(now + 91 * DAY, now).unwrap_err().contains("too long"));
+        assert!(check_fresh(now - 1, now).unwrap_err().contains("expired"));
+        assert!(check_fresh(now - 90 * DAY, now).unwrap_err().contains("expired"));
     }
 
     #[test]
