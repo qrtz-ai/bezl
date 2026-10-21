@@ -671,8 +671,8 @@ impl Dash {
         true
     }
 
-    /// Remove the agent at `i` and everything it posted (widgets, events, idempotency records), tombstoning its id
-    /// and token so the token answers 410 stop (QRT-307, twin of the Worker's `dropAgent`).
+    /// Remove the agent at `i` and everything it posted (widgets, events, idempotency records), tombstoning only its
+    /// token hash (no agent id) so the token answers 410 stop (QRT-307, twin of the Worker's `dropAgent`).
     fn drop_agent(&mut self, i: usize, event: &str, now: u64) {
         let a = self.agents.remove(i);
         self.widgets.remove(&a.id);
@@ -681,7 +681,6 @@ impl Dash {
         let pre = format!("{}/", a.id);
         self.tombstones
             .retain(|(s, r)| !(*s == Scope::Widget && r.starts_with(&pre)));
-        self.tombstones.insert((Scope::Agent, a.id.clone()));
         self.tombstones
             .insert((Scope::Agent, format!("token:{}", a.token_hash)));
         self.log(event, Some(&a.id), now);
@@ -1240,7 +1239,7 @@ mod tests {
         assert!(valid_key("state-farm") && !valid_key("State") && !valid_key("a--b") && !valid_key(""));
     }
 
-    /// QRT-307 (Bozniak ruling 2): markers are (scope, ref) with ref an agent id, `token:<hmac>` or `agent/key` of a
+    /// QRT-307 (Bozniak ruling 2): markers are (scope, ref) with ref `token:<hmac>` (a removed agent, no agent id) or `agent/key` of a
     /// live agent's deleted widget; a removed agent's widget markers go with it, and a dashboard delete drops them all.
     #[test]
     fn markers_hold_no_content_and_go_with_their_agent() {
@@ -1270,7 +1269,11 @@ mod tests {
         assert!(d.delete_agent(&a, 0));
         let widget: Vec<_> = d.tombstones.iter().filter(|(s, _)| *s == Scope::Widget).collect();
         assert_eq!(widget, [&(Scope::Widget, format!("{b}/w"))]);
-        assert!(d.tombstones.contains(&(Scope::Agent, a.clone())));
+        // Removed-agent markers are only the token hash (plus the deletion time in the Worker's table): no agent id.
+        let agent: Vec<_> = d.tombstones.iter().filter(|(s, _)| *s == Scope::Agent).collect();
+        assert_eq!(agent.len(), 1);
+        assert!(agent[0].1.starts_with("token:") && !agent[0].1.contains(&a));
+        assert!(!d.tombstones.iter().any(|(_, r)| r.contains(&a)));
         assert_eq!(
             d.tombstones
                 .iter()

@@ -1169,7 +1169,9 @@ describe('QRT-307: retention, unenroll, logging, content cap', () => {
     expect(rows.tombs.filter((t) => t.startsWith('widget|'))).toEqual([
       `widget|${b.id}/w`,
     ]);
-    expect(rows.tombs).toContain(`agent|${a.id}`);
+    // Removed-agent markers are only the token hmac and the deletion time: no agent id anywhere in the table.
+    expect(rows.tombs.filter((t) => t.startsWith('agent|'))).toHaveLength(1);
+    expect(rows.tombs.some((t) => t.includes(a.id))).toBe(false);
     expect(rows.tombs.filter((t) => t.startsWith('agent|token:')).length).toBe(
       1,
     );
