@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { Button, Chip, Input, Select, Stack, Text } from '@qrtz/ui';
+import {
+  Button,
+  Chip,
+  ErrorCallout,
+  Input,
+  Select,
+  Stack,
+  useUserError,
+} from '@qrtz/ui';
 import type { Segment } from '@qrtz/core';
 import { useQrtz } from '@qrtz/core/react';
 
@@ -14,7 +22,7 @@ export function Speakers({
   const qrtz = useQrtz();
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear } = useUserError();
   const counts = new Map<string, number>();
   for (const s of segments) {
     const k = s.speakerName ?? s.speaker;
@@ -26,11 +34,11 @@ export function Speakers({
   const apply = (from: string, to: string) => {
     const target = to.trim();
     if (!target || target === from) return setEditing(null);
-    setError(null);
+    clear();
     qrtz
       .invoke('note:rename-speaker', { meetingId, from, to: target })
       .then(() => setEditing(null))
-      .catch((e: Error) => setError(e.message));
+      .catch(fail('rename the speaker'));
   };
 
   return (
@@ -98,11 +106,11 @@ export function Speakers({
           </Button>
         </Stack>
       ) : null}
-      {error ? (
-        <Text variant="caption" tone="danger" role="alert">
-          {error}
-        </Text>
-      ) : null}
+      <ErrorCallout
+        error={error}
+        onDismiss={clear}
+        data-testid="speaker-error"
+      />
     </Stack>
   );
 }
