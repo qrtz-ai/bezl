@@ -1,0 +1,149 @@
+# Release (design cleared by Bozniak, 2026-10-20). DRAFT, not pushed. App releases only (app-v* tags).
+# build: no environment, no secrets, no caches. sign: environment `release` (only reviewer Jared,
+# no admin bypass, deploys only from main or app-v*/nano-v*/ctrl-v*/snap-v*/v* tags; env secrets only).
+# Only an app-v* tag push; never workflow_dispatch, pull_request, pull_request_target or workflow_run.
+name: release
+on:
+  push:
+    tags: ['app-v*']
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  build:
+    name: unsigned build + attestation (no secrets)
+    runs-on: macos-15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - run: bun install --frozen-lockfile
+      - id: v
+        run: echo "version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+      - name: unsigned bundle (same build as ci.yml release-unsigned; nothing signed or notarized)
+        env:
+          SWIFT_BUILD_FLAGS: --disable-keychain
+        run: |
+          env -u APPLE_SIGNING_IDENTITY -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID \
+            -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_KEY_PATH bun run --cwd apps/desktop make
+          APP="$(find target apps/desktop/src-tauri/target -path '*/release/bundle/macos/qrtz.app' -maxdepth 5 -type d 2>/dev/null | head -n1)"
+          [ -n "$APP" ] || { echo "no qrtz.app built" >&2; exit 1; }
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/qrtz-unsigned.zip"
+          shasum -a 256 "$RUNNER_TEMP/qrtz-unsigned.zip"
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ runner.temp }}/qrtz-unsigned.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: qrtz-unsigned
+          path: ${{ runner.temp }}/qrtz-unsigned.zip
+          retention-days: 7
+
+  sign:
+    name: sign · notarize · publish (waits for Jared's Approve)
+    needs: build
+    runs-on: macos-15
+    environment: release
+    permissions:
+      contents: write   # create the GitHub release
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
+      - run: bun install --frozen-lockfile
+      - name: diff of .github/ and scripts/release/ since the last release tag
+        run: |
+          last="$(git describe --tags --abbrev=0 --match 'app-v*' --match 'nano-v*' --match 'ctrl-v*' --match 'snap-v*' --match 'v*' HEAD^ 2>/dev/null || true)"
+          if [ -z "$last" ]; then echo "no previous release tag"; git ls-files .github scripts/release
+          else echo "== $last..HEAD -- .github/ scripts/release/"; git diff "$last" HEAD -- .github/ scripts/release/; fi
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: qrtz-unsigned
+          path: ${{ runner.temp }}/in
+      - name: the ref is exactly refs/tags/app-v<tauri.conf.json version>
+        run: |
+          V="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          [ "$GITHUB_REF" = "refs/tags/app-v$V" ] || { echo "::error::ref $GITHUB_REF is not refs/tags/app-v$V"; exit 1; }
+      - name: the tag's commit is on origin/main
+        run: |
+          git fetch -q origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF ($GITHUB_SHA) is not on origin/main"; exit 1; }
+      - name: verify the build attestation (this workflow, this exact ref) before touching any key
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify "$RUNNER_TEMP/in/qrtz-unsigned.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref "$GITHUB_REF"
+      - name: temporary keychain + Developer ID identity
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          AC_API_KEY: ${{ secrets.AC_API_KEY }}
+          AC_KEY_ID: ${{ secrets.AC_KEY_ID }}
+          AC_ISSUER_ID: ${{ secrets.AC_ISSUER_ID }}
+        run: bash scripts/ci/macos-signing.sh setup-identity
+      - name: sign, notarize (App Store Connect API key), staple, verify-bundle
+        run: |
+          ditto -x -k "$RUNNER_TEMP/in/qrtz-unsigned.zip" "$RUNNER_TEMP/app"
+          bash scripts/release/sign-notarize.sh --app "$RUNNER_TEMP/app/qrtz.app"
+          bash scripts/release/verify-bundle.sh "$RUNNER_TEMP/app/qrtz.app"
+      - name: update archive + signed latest.json (app-update key; same steps as scripts/app/publish-local.sh)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.APP_UPDATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          V: ${{ needs.build.outputs.version }}
+        run: |
+          out="$RUNNER_TEMP/out"; mkdir -p "$out"; tgz="$out/qrtz_${V}_aarch64.app.tar.gz"
+          env COPYFILE_DISABLE=1 tar -C "$RUNNER_TEMP/app" -czf "$tgz" qrtz.app
+          node_modules/.bin/tauri signer sign --app-version "$V" "$tgz" >/dev/null
+          [ -s "$tgz.sig" ] || { echo "no signature written" >&2; exit 1; }
+          cp "$RUNNER_TEMP/app/qrtz_${V}_aarch64.dmg" "$out/"   # notarized + stapled by sign-notarize.sh
+          bun scripts/release-notes.mjs "$V" >"$RUNNER_TEMP/notes.md" 2>/dev/null || : >"$RUNNER_TEMP/notes.md"
+          # 60 days: 0.2.4 clients cap at 60 (self_update.rs MAX_FEED_LIFETIME).
+          # Host stays the feed.mjs default until the updater-from-GitHub change lands (separate ticket).
+          node scripts/app/feed.mjs --version "$V" --archive "$tgz" --sig "$tgz.sig" \
+            --notes-file "$RUNNER_TEMP/notes.md" --expires-days 60 >"$RUNNER_TEMP/feed.json"
+          bash scripts/app/sign-feed.sh "$RUNNER_TEMP/feed.json" "$out/latest.json"
+          (cd "$out" && shasum -a 256 *.tar.gz *.dmg > SHA256SUMS)
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ runner.temp }}/out/*
+      - name: publish GitHub release app-v${{ needs.build.outputs.version }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.build.outputs.version }}
+        run: gh release create "app-v$V" --verify-tag --latest=true --title "qrtz $V" --notes-file "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP"/out/*
+      - name: what GitHub serves is what was signed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.build.outputs.version }}
+        run: |
+          mkdir "$RUNNER_TEMP/live" && gh release download "app-v$V" -D "$RUNNER_TEMP/live"
+          (cd "$RUNNER_TEMP/out" && shasum -a 256 *) | (cd "$RUNNER_TEMP/live" && shasum -a 256 -c -)
+          for f in "$RUNNER_TEMP"/live/*; do
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+          done
+      - name: delete the keychain and every secret file
+        if: always()
+        run: bash scripts/ci/macos-signing.sh cleanup
