@@ -23,8 +23,14 @@ async function clean(page: Page, name: string) {
   // Let state settle and CSS transitions finish first: a button that enables after mount fades
   // from opacity 0.55, and axe measuring mid-fade reports a false contrast failure.
   await page.evaluate(async () => {
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+    await new Promise((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(r)),
+    );
+    // Only transitions: spinners and other looping animations never finish.
+    const fades = document
+      .getAnimations()
+      .filter((a) => a instanceof CSSTransition);
+    await Promise.all(fades.map((a) => a.finished.catch(() => undefined)));
   });
   expect(await axe(page, name)).toEqual([]);
 }
