@@ -5,6 +5,7 @@ import { Input } from './Input';
 import { EmptyState } from './EmptyState';
 import { IconButton, ListRow } from './Layout';
 import { typeStyle } from './tokens';
+import type { UserError } from './UserError';
 
 export interface NotesAppItem {
   id: string;
@@ -46,7 +47,8 @@ export function NotesApp({
   compact?: boolean;
   /** Save state shown under the editor ("saved", "saving…"). */
   status?: ReactNode;
-  error?: string | null;
+  /** QRT-311: a quiet footer line ("couldn't save: …"); the raw reason is only the line's tooltip. */
+  error?: UserError | null;
   onQuery: (q: string) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
@@ -194,8 +196,14 @@ export function NotesApp({
               }}
             >
               {error ? (
-                <Text variant="caption" tone="danger" role="alert">
-                  {error}
+                <Text
+                  variant="caption"
+                  tone="danger"
+                  role="alert"
+                  data-testid="notes-error"
+                  {...(error.detail ? { title: error.detail } : {})}
+                >
+                  {error.title}: {error.next}
                 </Text>
               ) : (
                 <Text variant="caption" muted data-testid="note-status">

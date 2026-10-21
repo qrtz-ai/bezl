@@ -142,9 +142,8 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     const m = await mount(
       st({ state: 'failed', latest: '0.2.1', error: 'signature mismatch' }),
     );
-    expect(m.q('update-result')?.textContent).toBe(
-      'update failed: signature mismatch',
-    );
+    expect(m.q('update-result')?.textContent).toContain("couldn't update qrtz");
+    expect(m.q('update-result')?.textContent).toContain('signature mismatch');
     expect(m.q('app-update-download')).not.toBeNull();
     m.done();
     const n = await mount(st({ state: 'not-set-up' }));

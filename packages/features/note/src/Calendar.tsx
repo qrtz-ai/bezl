@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
+  ErrorCallout,
   Icon,
   SettingRow,
   SettingsSection,
   Stack,
   Switch,
   Text,
+  userError,
+  type UserError,
 } from '@qrtz/ui';
-import type { AppError, CalendarEvent, CalendarStatus } from '@qrtz/core';
+import type { CalendarEvent, CalendarStatus } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 
 /** ADR 0217: what the access state means to the user (lowercase, no jargon). */
@@ -33,12 +36,14 @@ export function useCalendar() {
   const qrtz = useQrtz();
   const [status, setStatus] = useState<CalendarStatus | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserError | null>(null);
   const live = useQrtzEvent('calendar:changed');
   const load = useCallback(() => {
     void qrtz
       .invoke('calendar:status')
-      .then(setStatus, (e: AppError) => setError(e.message));
+      .then(setStatus, (e: unknown) =>
+        setError(userError(e, 'read the calendar')),
+      );
     void qrtz.invoke('calendar:upcoming').then(
       (r) => setEvents(r.events),
       () => setEvents([]),
@@ -59,7 +64,7 @@ export function useCalendar() {
     return qrtz.invoke('calendar:connect').then(
       // H1: connect answers the access state only; the full status is calendar:status.
       () => load(),
-      (e: AppError) => setError(e.message),
+      (e: unknown) => setError(userError(e, 'connect the calendar')),
     );
   }, [qrtz, load]);
   return { status, events, error, connect, reload: load };
@@ -110,9 +115,11 @@ export function Upcoming({
         >
           connect calendar
         </Button>
-        {error || (status.access !== 'not-determined' && accessNote(status)) ? (
+        {error ? (
+          <ErrorCallout error={error} data-testid="upcoming-access" />
+        ) : status.access !== 'not-determined' && accessNote(status) ? (
           <Text variant="caption" muted data-testid="upcoming-access">
-            {error ?? accessNote(status)}
+            {accessNote(status)}
           </Text>
         ) : null}
       </Stack>
@@ -190,7 +197,7 @@ export function CalendarSettings({
     const everything = all.every((x) => next.includes(x));
     patch({ calendar: { calendars: everything ? null : next } });
   };
-  const note = error ?? accessNote(status);
+  const note = accessNote(status);
   return (
     <SettingsSection title="calendar" data-testid="note-settings-calendar">
       <SettingRow label="use apple calendar">
@@ -217,6 +224,7 @@ export function CalendarSettings({
             </SettingRow>
           ))
         : null}
+      <ErrorCallout error={error} data-testid="calendar-error" />
       {note && (status.enabled || status.access !== 'not-determined') ? (
         <Text variant="caption" muted data-testid="calendar-access">
           {note}

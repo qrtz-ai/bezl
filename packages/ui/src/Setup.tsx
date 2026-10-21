@@ -3,6 +3,7 @@ import { useTheme } from './theme';
 import { Icon } from './Icon';
 import { Button } from './Button';
 import { Callout } from './Callout';
+import { ErrorCallout, type UserError } from './UserError';
 import { Stack } from './Layout';
 import { Progress } from './Progress';
 import { Spinner } from './Spinner';
@@ -357,7 +358,8 @@ export function ModelsPanel({
 }: {
   status: SpeechSetupView | null;
   sets: readonly ModelSetView[];
-  error?: string | null;
+  /** QRT-311: what couldn't happen and the next step; the raw reason sits under details. */
+  error?: UserError | null;
   onDownload: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -423,7 +425,7 @@ export function ModelsPanel({
     <Stack gap={3} data-testid={testId} aria-live="polite">
       {lines}
       {error ? (
-        <Callout tone="danger" title={error} data-testid={`${testId}-error`} />
+        <ErrorCallout error={error} data-testid={`${testId}-error`} />
       ) : null}
       <ModelRequirement
         layout="row"
