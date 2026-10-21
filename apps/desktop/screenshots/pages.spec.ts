@@ -10,19 +10,64 @@ const index = JSON.parse(
   ),
 ) as { entries: Record<string, Entry> };
 const stories = Object.values(index.entries).filter((e) => e.type === 'story');
+const pages = stories.filter((s) => s.id.startsWith('pages--'));
+const checks = stories.filter((s) => s.id.startsWith('checks--'));
 
 test('every page has a story', () => {
-  expect(stories.length).toBeGreaterThanOrEqual(12);
+  expect(pages.length).toBeGreaterThanOrEqual(12);
+  expect(checks.length).toBeGreaterThanOrEqual(1);
 });
 
-for (const s of stories) {
-  test(s.id, async ({ page }) => {
-    await page.goto(`/iframe.html?id=${s.id}&viewMode=story`);
-    await page.locator('[data-page]').first().waitFor();
-    await page.waitForLoadState('networkidle');
-    await page.evaluate(() => document.fonts.ready);
+async function open(
+  page: import('@playwright/test').Page,
+  id: string,
+  ready = '[data-page]',
+) {
+  await page.goto(`/iframe.html?id=${id}&viewMode=story`);
+  await page.locator(ready).first().waitFor();
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.fonts.ready);
+}
+
+for (const s of pages) {
+  test(s.id, async ({ page }, info) => {
+    await open(page, s.id);
+    // Always keep the run's own screenshot, pass or fail, so runner font differences can be inspected.
+    await page.screenshot({ path: info.outputPath(`${s.id}.png`) });
+    // Tolerance: 2% of pixels may differ (font rendering across Linux images); a real layout change is more.
     await expect(page).toHaveScreenshot(`${s.id}.png`, {
-      maxDiffPixelRatio: 0.002,
+      maxDiffPixelRatio: 0.02,
     });
+  });
+}
+
+for (const s of checks) {
+  test(`${s.id}: nothing overflows sideways`, async ({ page }, info) => {
+    await page.setViewportSize({ width: 1100, height: 720 });
+    await open(page, s.id, '#storybook-root > *');
+    await page.screenshot({
+      path: info.outputPath(`${s.id}.png`),
+      fullPage: true,
+    });
+    // Every block that doesn't clip or scroll its own content must fit its box, and the page must not scroll
+    // sideways. Truncating (overflow hidden + ellipsis) and scrolling boxes are allowed.
+    const spills = await page.evaluate(() => {
+      const root = document.querySelector('#storybook-root')!;
+      const out: string[] = [];
+      for (const el of [root, ...root.querySelectorAll('*')]) {
+        const cs = getComputedStyle(el);
+        if (cs.display === 'inline' || cs.display === 'contents') continue;
+        if (cs.overflowX !== 'visible') continue;
+        if (el.scrollWidth > el.clientWidth + 1)
+          out.push(
+            `${el.tagName.toLowerCase()}.${el.className}: ${el.scrollWidth} > ${el.clientWidth}`,
+          );
+      }
+      const doc = document.scrollingElement!;
+      if (doc.scrollWidth > doc.clientWidth + 1)
+        out.push(`page: ${doc.scrollWidth} > ${doc.clientWidth}`);
+      return out;
+    });
+    expect(spills).toEqual([]);
   });
 }

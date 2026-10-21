@@ -73,7 +73,8 @@ export function Text({
               whiteSpace: 'nowrap',
               minWidth: 0,
             }
-          : null),
+          : // An unbroken word (a path, a token) wraps instead of pushing its container sideways (QRT-304).
+            { overflowWrap: 'anywhere' }),
         ...style,
       }}
     >
