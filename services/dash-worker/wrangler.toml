@@ -22,9 +22,12 @@ class_name = "EnrollDirectory"
 tag = "v1"
 new_sqlite_classes = ["Dashboard", "EnrollDirectory"]
 
+# QRT-307: no request logging. Workers Logs is off and samples nothing, so no URL, query string, header or body
+# is kept by Cloudflare's log pipeline, and the Worker has no console calls. test/api.test.ts checks this block, and
+# there is no [env.*] section, so this is also the prod config.
 [observability]
-enabled = true
-head_sampling_rate = 1
+enabled = false
+head_sampling_rate = 0
 
 # Secrets (never in this file): DASH_PEPPER (64 hex), DASH_ENROLL_KEY (64 hex, QRT-284: keys only the enrollment-code
 # HMAC) and DASH_SETUP_TOKEN, set with `wrangler secret put`.

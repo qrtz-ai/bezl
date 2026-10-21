@@ -27,6 +27,9 @@ import { charCount, cleanName, RESERVED, skeleton, validKey } from './names';
 import { scrub, scrubValue } from './scrub';
 import type { Env } from './env';
 
+const utf8 = new TextEncoder();
+const utf8Len = (s: string) => utf8.encode(s).length;
+
 type AgentStatus = 'pending' | 'approved' | 'rejected';
 type AgentRow = {
   id: string;
@@ -542,6 +545,10 @@ export class Dashboard extends DurableObject<Env> {
     if (err) return fail(422, err);
     const s = scrubValue(data);
     const json = JSON.stringify(s.value);
+    // Agent posts are free-form user content (QRT-307): cap what one widget state or event can store, batch ops
+    // included (the 64 KiB batch body would otherwise allow one 64 KiB state).
+    if (utf8Len(json) > C.MAX_CONTENT_BYTES)
+      return fail(422, `data is at most ${C.MAX_CONTENT_BYTES} bytes`);
     if (append) {
       this.sql.exec(
         'INSERT INTO events (widget_id, at, data_json) VALUES (?, ?, ?)',
@@ -710,19 +717,28 @@ export class Dashboard extends DurableObject<Env> {
       .exec<AgentRow>('SELECT * FROM agents WHERE id = ?', agentId)
       .toArray()[0];
     if (!a) return false;
-    this.ctx.storage.transactionSync(() => {
-      this.sql.exec(
-        'DELETE FROM events WHERE widget_id IN (SELECT id FROM widgets WHERE agent_id = ?)',
-        agentId,
-      );
-      this.sql.exec('DELETE FROM widgets WHERE agent_id = ?', agentId);
-      this.sql.exec('DELETE FROM idempotency WHERE agent_id = ?', agentId);
-      this.sql.exec('DELETE FROM agents WHERE id = ?', agentId);
-      this.tomb('agent', agentId, now);
-      this.tomb('agent', `token:${a.token_hash}`, now);
-      this.log('agent-deleted', agentId, now);
-    });
+    this.ctx.storage.transactionSync(() =>
+      this.dropAgent(a, 'agent-deleted', now),
+    );
     return true;
+  }
+
+  /**
+   * Remove an agent and everything it posted (widgets with their state_json, events, idempotency records). The
+   * agent id and token hash are tombstoned so its token answers 410 stop, never a fresh enrollment (QRT-307).
+   * Callers hold a transaction.
+   */
+  private dropAgent(a: AgentRow, event: string, now: number) {
+    this.sql.exec(
+      'DELETE FROM events WHERE widget_id IN (SELECT id FROM widgets WHERE agent_id = ?)',
+      a.id,
+    );
+    this.sql.exec('DELETE FROM widgets WHERE agent_id = ?', a.id);
+    this.sql.exec('DELETE FROM idempotency WHERE agent_id = ?', a.id);
+    this.sql.exec('DELETE FROM agents WHERE id = ?', a.id);
+    this.tomb('agent', a.id, now);
+    this.tomb('agent', `token:${a.token_hash}`, now);
+    this.log(event, a.id, now);
   }
 
   private deleteDashboard(now: number) {
@@ -732,21 +748,39 @@ export class Dashboard extends DurableObject<Env> {
       this.sql.exec('DELETE FROM events');
       this.sql.exec('DELETE FROM widgets');
       this.sql.exec('DELETE FROM idempotency');
+      // Agent names, descriptions and heartbeats are user content too (QRT-307).
+      this.sql.exec('DELETE FROM agents');
       this.tomb('dashboard', '', now);
       this.log('dashboard-deleted', null, now);
     });
   }
 
-  /** Drop history older than RETENTION_DAYS, old audit entries, expired codes and idempotency records. */
+  /**
+   * Retention (QRT-307). Everything an agent posts is user content and lives at most RETENTION_DAYS past its last
+   * write: events and audit entries by their time, widgets (title and state_json) by updated_at, and agents (any
+   * status) by last_seen, dropped with all their widgets like an owner delete. Expired codes and idempotency
+   * records go too.
+   */
   prune(now: number) {
     const cutoff = now - C.RETENTION_DAYS * C.DAY_MS;
-    this.sql.exec('DELETE FROM events WHERE at < ?', cutoff);
-    this.sql.exec('DELETE FROM audit WHERE at < ?', cutoff);
-    this.sql.exec(
-      'DELETE FROM enroll_code_macs WHERE used_at IS NOT NULL OR expires_at <= ?',
-      now,
-    );
-    this.sql.exec('DELETE FROM idempotency WHERE expires_at <= ?', now);
+    this.ctx.storage.transactionSync(() => {
+      for (const a of this.sql
+        .exec<AgentRow>('SELECT * FROM agents WHERE last_seen < ?', cutoff)
+        .toArray())
+        this.dropAgent(a, 'agent-expired', now);
+      this.sql.exec(
+        'DELETE FROM events WHERE at < ? OR widget_id IN (SELECT id FROM widgets WHERE updated_at < ?)',
+        cutoff,
+        cutoff,
+      );
+      this.sql.exec('DELETE FROM widgets WHERE updated_at < ?', cutoff);
+      this.sql.exec('DELETE FROM audit WHERE at < ?', cutoff);
+      this.sql.exec(
+        'DELETE FROM enroll_code_macs WHERE used_at IS NOT NULL OR expires_at <= ?',
+        now,
+      );
+      this.sql.exec('DELETE FROM idempotency WHERE expires_at <= ?', now);
+    });
   }
 
   async alarm(): Promise<void> {

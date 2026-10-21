@@ -667,13 +667,20 @@ impl Dash {
         let Some(i) = self.agents.iter().position(|a| a.id == agent_id) else {
             return false;
         };
+        self.drop_agent(i, "agent-deleted", now);
+        true
+    }
+
+    /// Remove the agent at `i` and everything it posted (widgets, events, idempotency records), tombstoning its id
+    /// and token so the token answers 410 stop (QRT-307, twin of the Worker's `dropAgent`).
+    fn drop_agent(&mut self, i: usize, event: &str, now: u64) {
         let a = self.agents.remove(i);
-        self.widgets.remove(agent_id);
-        self.tombstones.insert((Scope::Agent, agent_id.to_owned()));
+        self.widgets.remove(&a.id);
+        self.idempotency.retain(|(id, _), _| *id != a.id);
+        self.tombstones.insert((Scope::Agent, a.id.clone()));
         self.tombstones
             .insert((Scope::Agent, format!("token:{}", a.token_hash)));
-        self.log("agent-deleted", Some(agent_id), now);
-        true
+        self.log(event, Some(&a.id), now);
     }
 
     /// Delete the whole dashboard: everything answers 410 scope dashboard; no new codes.
@@ -681,13 +688,23 @@ impl Dash {
         self.deleted = true;
         self.codes.clear();
         self.widgets.clear();
+        // Agent names, descriptions and heartbeats are user content too (QRT-307).
+        self.agents.clear();
+        self.idempotency.clear();
         self.tombstones.insert((Scope::Dashboard, String::new()));
         self.log("dashboard-deleted", None, now);
     }
 
-    /// Drop history older than [`RETENTION_DAYS`], expired codes and idempotency records, and old rate windows.
+    /// Drop agents, widgets and history older than [`RETENTION_DAYS`], expired codes and idempotency records, and old rate windows.
     pub fn prune(&mut self, now: u64) {
         let cutoff = now.saturating_sub(RETENTION_DAYS * DAY_MS);
+        // QRT-307: agents (any status) quiet past retention go with all their content, then idle widgets.
+        while let Some(i) = self.agents.iter().position(|a| a.last_seen < cutoff) {
+            self.drop_agent(i, "agent-expired", now);
+        }
+        for ws in self.widgets.values_mut() {
+            ws.retain(|_, w| w.updated_at >= cutoff);
+        }
         for ws in self.widgets.values_mut() {
             for w in ws.values_mut() {
                 while w.events.front().is_some_and(|(t, _)| *t < cutoff) {
