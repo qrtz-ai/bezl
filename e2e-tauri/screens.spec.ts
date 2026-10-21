@@ -20,6 +20,12 @@ async function shot(page: Page, name: string) {
 /** Serious/critical axe violations: none (chromium only; axe over CDP). */
 async function clean(page: Page, name: string) {
   if (test.info().project.name !== 'chromium') return;
+  // Let state settle and CSS transitions finish first: a button that enables after mount fades
+  // from opacity 0.55, and axe measuring mid-fade reports a false contrast failure.
+  await page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+  });
   expect(await axe(page, name)).toEqual([]);
 }
 
