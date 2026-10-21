@@ -434,6 +434,9 @@ struct State {
     /// clock twice). One entry per meeting at most, dropped with the pipeline (N14).
     backoff_served: HashMap<String, String>,
     pipeline_running: HashSet<String>,
+    /// QRT-325: a run was asked for (a manual retry) while that meeting's pipeline loop was already running; the
+    /// loop goes round once more before it lets go, so a retry that lands as it finishes isn't lost.
+    pipeline_rerun: HashSet<String>,
     start_in_flight: bool,
     helper_health: HelperHealth,
     helper_detail: Option<String>,
@@ -494,6 +497,7 @@ impl State {
             delete_gen: 0,
             backoff_served: HashMap::new(),
             pipeline_running: HashSet::new(),
+            pipeline_rerun: HashSet::new(),
             start_in_flight: false,
             helper_health: HelperHealth::Ok,
             helper_detail: None,
@@ -856,11 +860,27 @@ impl Shared {
     /// `false` when the save failed (callers use it as the step-start durability barrier).
     /// `Gone`: the store refused because the meeting was deleted meanwhile; stop driving it (N16).
     async fn persist_pipeline(self: &Arc<Self>, p: PipelineState) -> Persisted {
-        let current = {
-            let mut st = self.lock();
-            st.pipelines.insert(p.meeting_id.clone(), p.clone());
-            st.machine.state().meeting_id.as_deref() == Some(p.meeting_id.as_str())
-        };
+        self.lock().pipelines.insert(p.meeting_id.clone(), p.clone());
+        self.save_staged_pipeline(p).await
+    }
+
+    /// QRT-325: read-modify-write of the in-memory pipeline under one lock, so a manual retry from another
+    /// thread (set-template, resummarize) can't land between the read and the write and be overwritten by a
+    /// stale copy. `None` (nothing stored) when the pipeline is gone or `f` declines.
+    fn stage_pipeline(
+        &self,
+        id: &str,
+        f: impl FnOnce(&PipelineState) -> Option<PipelineState>,
+    ) -> Option<PipelineState> {
+        let mut st = self.lock();
+        let next = f(st.pipelines.get(id)?)?;
+        st.pipelines.insert(id.to_string(), next.clone());
+        Some(next)
+    }
+
+    /// The save half of [`Self::persist_pipeline`], for a state already staged in memory.
+    async fn save_staged_pipeline(self: &Arc<Self>, p: PipelineState) -> Persisted {
+        let current = self.lock().machine.state().meeting_id.as_deref() == Some(p.meeting_id.as_str());
         self.emit(CoreEvent::Pipeline(to_view(&p)));
         if current {
             self.emit_soon(0.0);
@@ -2425,11 +2445,21 @@ impl Shared {
         id: String,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         Box::pin(async move {
-            if !self.lock().pipeline_running.insert(id.clone()) {
-                return;
+            {
+                let mut st = self.lock();
+                if !st.pipeline_running.insert(id.clone()) {
+                    st.pipeline_rerun.insert(id);
+                    return;
+                }
             }
-            self.clone().run_pipeline_loop(&id).await;
-            self.lock().pipeline_running.remove(&id);
+            loop {
+                self.clone().run_pipeline_loop(&id).await;
+                let mut st = self.lock();
+                if !st.pipeline_rerun.remove(&id) {
+                    st.pipeline_running.remove(&id);
+                    return;
+                }
+            }
         })
     }
 
@@ -2462,8 +2492,17 @@ impl Shared {
                     return;
                 }
             }
-            let p = pipeline_step(&p, step, StepPatch::Start { now: self.now() });
-            let started = self.persist_pipeline(p.clone()).await;
+            // QRT-325: start from the latest state, and only if nothing (a manual retry) changed it since `p`
+            // was read; `p` is a stale copy by now and saving it would undo that retry.
+            let cur = cur.clone();
+            let now = self.now();
+            let Some(p) = self.stage_pipeline(id, |latest| {
+                (next_runnable_step(latest) == Some(step) && *latest.steps.get(step) == cur)
+                    .then(|| pipeline_step(latest, step, StepPatch::Start { now }))
+            }) else {
+                continue;
+            };
+            let started = self.save_staged_pipeline(p.clone()).await;
             if started == Persisted::Gone {
                 return self.forget_pipeline(id);
             }
@@ -2482,10 +2521,8 @@ impl Shared {
             if latest.steps.get(step).status != StepStatus::Running {
                 continue;
             }
-            let mut p = match r {
-                Ok(skipped) => pipeline_step(
-                    &latest,
-                    step,
+            let (patch, fallback) = match r {
+                Ok(skipped) => (
                     if skipped {
                         StepPatch::Skip { now: self.now() }
                     } else {
@@ -2494,6 +2531,7 @@ impl Shared {
                             fallback: false,
                         }
                     },
+                    false,
                 ),
                 Err(e) => {
                     let err = to_lifecycle_error(&e);
@@ -2501,19 +2539,18 @@ impl Shared {
                     let attempts = latest.steps.get(step).attempts;
                     let delay_ms = retry_delay(&policy, attempts, (self.d.random)(), self.scale());
                     let message = err.message.clone();
-                    let mut p = pipeline_step(
-                        &latest,
-                        step,
-                        StepPatch::Failure {
-                            now: self.now(),
-                            error: err,
-                            delay_ms,
-                            terminal: false,
-                            fallback: false,
-                        },
-                    );
+                    let patch = StepPatch::Failure {
+                        now: self.now(),
+                        error: err,
+                        delay_ms,
+                        terminal: false,
+                        fallback: false,
+                    };
+                    let failed = pipeline_step(&latest, step, patch.clone()).steps.get(step).status
+                        == StepStatus::Failed;
                     tracing::warn!(id, step = step.as_str(), attempt = attempts, err = %message, "pipeline step failed");
-                    if step == StepId::Summary && p.steps.summary.status == StepStatus::Failed {
+                    let mut fallback = false;
+                    if step == StepId::Summary && failed {
                         // Out of attempts: the meeting still gets the on-device summary; the step stays failed.
                         match self
                             .d
@@ -2521,18 +2558,32 @@ impl Shared {
                             .summary(id.to_string(), SummaryRequest::Fallback { error: message })
                             .await
                         {
-                            Ok(_) => p.steps.summary.fallback = Some(true),
+                            Ok(_) => fallback = true,
                             Err(fe) => tracing::error!(err = %fe.message, "fallback summary failed"),
                         }
                     }
-                    if step == StepId::Finalize && p.steps.finalize.status == StepStatus::Failed {
+                    if step == StepId::Finalize && failed {
                         let _ = self.d.store.mark_failed(id.to_string()).await;
                     }
-                    p
+                    (patch, fallback)
                 }
             };
-            p.meeting_id = id.to_string();
-            if self.persist_pipeline(p.clone()).await == Persisted::Gone {
+            // QRT-325: apply the result to the latest state in one go (never a copy read before an await or
+            // before another thread's manual retry), and only while this attempt still owns the step.
+            let Some(p) = self.stage_pipeline(id, |latest| {
+                if latest.steps.get(step).status != StepStatus::Running {
+                    return None;
+                }
+                let mut p = pipeline_step(latest, step, patch);
+                if fallback {
+                    p.steps.summary.fallback = Some(true);
+                }
+                p.meeting_id = id.to_string();
+                Some(p)
+            }) else {
+                continue;
+            };
+            if self.save_staged_pipeline(p.clone()).await == Persisted::Gone {
                 return self.forget_pipeline(id);
             }
             self.emit(CoreEvent::Changed { id: id.to_string() });

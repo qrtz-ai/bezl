@@ -28,6 +28,8 @@ struct Steps {
     db: InlineDb,
     seen: Mutex<Vec<Option<String>>>,
     release: tokio::sync::Semaphore,
+    /// The first attempt has read its template (the step's `Running` status is set before that happens).
+    entered: tokio::sync::Notify,
 }
 
 #[async_trait]
@@ -50,6 +52,7 @@ impl StepExecutor for Steps {
             s.len() == 1
         };
         if first {
+            self.entered.notify_one();
             self.release.acquire().await.unwrap().forget();
         }
         let s = MeetingSummary {
@@ -89,6 +92,7 @@ async fn recording() -> (Rig, String) {
         db: InlineDb(db.0.clone()),
         seen: Mutex::new(vec![]),
         release: tokio::sync::Semaphore::new(0),
+        entered: tokio::sync::Notify::new(),
     });
     let rec = tmp.path().join("rec");
     std::fs::create_dir_all(&rec).unwrap();
@@ -163,6 +167,11 @@ async fn until_summary(rt: &NoteRuntime, status: StepStatus) {
 async fn n120_a_template_change_during_a_running_summary_returns_the_new_templates_summary() {
     let r = rig().await;
     until_summary(&r.rt, StepStatus::Running).await;
+    // QRT-325: `Running` is visible before the attempt reads the template; changing it before that read is a
+    // different case (the first attempt would already see the new template).
+    tokio::time::timeout(Duration::from_secs(5), r.steps.entered.notified())
+        .await
+        .expect("the first attempt read its template");
     let rt = r.rt.clone();
     let set = tokio::spawn(async move { rt.set_template("id1", "standup").await });
     tokio::time::sleep(Duration::from_millis(150)).await;
