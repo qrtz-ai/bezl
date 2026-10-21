@@ -158,6 +158,9 @@ jobs:
         run: |
           swift --version
           bun run test:helper
+      # QRT-299: a release helper (no QRTZ_DIAG) refuses --bench / --echo-bench / --echo-warmup and carries none of them.
+      - name: release helper refuses the diagnostic flags (QRT-299)
+        run: native/qrtz-helper/scripts/release-flags-check.sh
       - name: rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2

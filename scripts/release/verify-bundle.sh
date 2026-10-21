@@ -178,5 +178,13 @@ for bin in "$macos/qrtz-app" "$macos/qrtz-echo" "$macos/qrtz"; do
   else ok "${bin##*/}: no dev-local override strings"; fi
 done
 
+# QRT-299: the diagnostic CLIs (--bench, --echo-bench, --echo-warmup) are compiled only with -DQRTZ_DIAG, which only
+# the CI echo warm-up build sets. No shipped helper (qrtz-echo, or any qrtz-helper copy) may contain them.
+while IFS= read -r -d '' bin; do
+  if LC_ALL=C grep -aqF -e '--bench' -e '--echo-bench' -e '--echo-warmup' "$bin"; then
+    fail "${bin#"$app"/} contains a diagnostic CLI flag (--bench/--echo-bench/--echo-warmup; built with QRTZ_DIAG?) (QRT-299)"
+  else ok "${bin#"$app"/}: no diagnostic CLI flags"; fi
+done < <(find "$app/Contents" -type f \( -name 'qrtz-echo' -o -name 'qrtz-helper*' \) -print0)
+
 if ((fails)); then echo "verify-bundle: $app is NOT shippable ($fails check(s) failed)" >&2; exit 1; fi
 echo "verify-bundle: $app passed"

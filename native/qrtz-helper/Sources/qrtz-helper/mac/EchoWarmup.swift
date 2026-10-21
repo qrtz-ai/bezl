@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) && QRTZ_DIAG  // QRT-299: diagnostic CLI, never in a release or bundled build
 import AVFoundation
 import Foundation
 import QrtzEchoMac  // QrtzEcho comes re-exported through QrtzHelperCore (the offline_graph allowlist)

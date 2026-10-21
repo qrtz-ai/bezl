@@ -14,8 +14,11 @@ phrase="${QRTZ_WARMUP_PHRASE:-The quick brown fox jumps over the lazy dog.}"
 
 python3 "$here/scripts/fetch-echo-model.py" "$models"
 say -o "$work/clip.wav" --data-format=LEF32@16000 "$phrase"
-(cd "$here" && swift build -c release --product qrtz-helper)
-bin="$(cd "$here" && swift build -c release --show-bin-path)/qrtz-helper"
+# QRT-299: the only build that sets QRTZ_DIAG (the --echo-warmup CLI), in its own scratch dir so it never mixes with
+# a plain release build. release.yml, build-packages and the bundle build must not set it.
+diag=(-c release -Xswiftc -DQRTZ_DIAG --scratch-path "$here/.build-diag")
+(cd "$here" && swift build "${diag[@]}" --product qrtz-helper)
+bin="$(cd "$here" && swift build "${diag[@]}" --show-bin-path)/qrtz-helper"
 
 status=0
 for at in 0 1000 ready; do

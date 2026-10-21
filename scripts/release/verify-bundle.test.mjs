@@ -62,6 +62,41 @@ describe('verify-bundle.sh', () => {
     }
   });
 
+  it('fails when the shipped helper carries a diagnostic CLI flag (QRT-299)', () => {
+    for (const flag of ['--bench', '--echo-bench', '--echo-warmup']) {
+      const app = path.join(
+        mkdtempSync(path.join(os.tmpdir(), 'vb-')),
+        'qrtz.app',
+      );
+      mkdirSync(path.join(app, 'Contents/MacOS'), { recursive: true });
+      writeFileSync(
+        path.join(app, 'Contents/MacOS/qrtz-echo'),
+        Buffer.concat([
+          Buffer.from([0xcf, 0xfa, 0xed, 0xfe]),
+          Buffer.from(`\0${flag}\0`),
+        ]),
+        { mode: 0o755 },
+      );
+      const r = spawnSync('bash', [script, app], { encoding: 'utf8' });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain(
+        'Contents/MacOS/qrtz-echo contains a diagnostic CLI flag',
+      );
+    }
+    const clean = path.join(
+      mkdtempSync(path.join(os.tmpdir(), 'vb-')),
+      'qrtz.app',
+    );
+    mkdirSync(path.join(clean, 'Contents/MacOS'), { recursive: true });
+    writeFileSync(path.join(clean, 'Contents/MacOS/qrtz-echo'), '\0--stdio\0', {
+      mode: 0o755,
+    });
+    const r = spawnSync('bash', [script, clean], { encoding: 'utf8' });
+    expect(r.stdout).toContain(
+      'Contents/MacOS/qrtz-echo: no diagnostic CLI flags',
+    );
+  });
+
   it('fails on a renamed copy of the helper by its compiled-in marker (ADR 0231, M5)', () => {
     const marker = read('crates/qrtz-dash-net/src/lib.rs').match(
       /BUNDLE_MARKER: &str = "([^"]+)"/,
