@@ -22,3 +22,30 @@ export const devLocal = (env: Env, req: Request) =>
 
 /** Inside a Durable Object (no request): the var alone, used only to choose the code prefix. */
 export const devCodes = (env: Env) => env.DASH_DEV_LOCAL === '1';
+
+/** The readme's rule 1 as published (docs/dash/agent-readme.md). A test checks it is in README_MD verbatim. */
+export const README_RULE_1 =
+  '1. HTTPS only, one origin: `https://dash.qrtz.ai`. Never send tokens anywhere else.';
+
+const DEV_ORIGIN = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/;
+
+/**
+ * QRT-298: the origin this local server serves from, or null. Only in local test mode, and only from the
+ * DASH_DEV_ORIGIN var that scripts/lib.sh writes into the gitignored .dev.vars: never from the Host header or any
+ * other part of the request. Exactly http://127.0.0.1:<1-65535>.
+ */
+export const devOrigin = (env: Env, req: Request): string | null => {
+  if (!devLocal(env, req)) return null;
+  const o = env.DASH_DEV_ORIGIN ?? '';
+  const m = DEV_ORIGIN.exec(o);
+  return m && Number(m[1]) <= 65535 ? o : null;
+};
+
+/** The readme to serve: production's as is; in local test mode, rule 1 names the local origin instead. */
+export const readmeFor = (md: string, origin: string | null) =>
+  origin === null
+    ? md
+    : md.replace(
+        README_RULE_1,
+        `1. One origin: \`${origin}\` (a local test server). Never send tokens anywhere else.`,
+      );

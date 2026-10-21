@@ -1265,6 +1265,10 @@ impl Handler for AppService {
                 let url = r["url"].as_str().unwrap_or("");
                 Ok(json!({ "opened": self.shell.open_https(url) }))
             }
+            Some("dash") if channel == "dash:copy-prompt" => {
+                let shell = self.shell.clone();
+                self.dash.copy_prompt(move |t| shell.write_clipboard(t)).await
+            }
             Some("dash") => {
                 let mut payload = payload;
                 let r = self.dash.call_async(channel, &payload).await;

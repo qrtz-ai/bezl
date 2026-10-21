@@ -11,8 +11,10 @@ for a in "$@"; do case "$a" in --wipe) wipe=1 ;; *) die "unknown flag $a" ;; esa
 need_node22; worker_deps
 vars="$worker/.dev.vars" state="$worker/.wrangler/state"
 if [[ $wipe == 1 ]]; then rm -rf "$state" "$vars"; say "wiped local dash state and .dev.vars"; fi
-if [[ ! -f "$vars" ]]; then write_vars "$vars"; rm -rf "$state"; say "wrote fresh local secrets to services/dash-worker/.dev.vars (not printed)"; fi
+if [[ ! -f "$vars" ]]; then write_vars "$vars" 8799; rm -rf "$state"; say "wrote fresh local secrets to services/dash-worker/.dev.vars (not printed)"; fi
 add_enroll_key "$vars"
 grep -q '^DASH_DEV_LOCAL=1$' "$vars" || die ".dev.vars has no DASH_DEV_LOCAL=1 (rerun with --wipe)"
+# QRT-298: older .dev.vars files predate DASH_DEV_ORIGIN; add it (no secret in it).
+grep -q '^DASH_DEV_ORIGIN=' "$vars" || echo "DASH_DEV_ORIGIN=http://127.0.0.1:8799" >>"$vars"
 say "dash server: http://127.0.0.1:8799  (Ctrl-C to stop; test codes: POST /v1/owner/test-codes gives TST-)"
 run_wrangler 8799 "$state"

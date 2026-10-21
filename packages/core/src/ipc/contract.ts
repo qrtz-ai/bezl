@@ -930,6 +930,17 @@ export const ipcContract = {
       expiresAt: z.number(),
     }),
   }),
+  /**
+   * QRT-298: "Copy prompt". Only when called, qrtz-app has the connected dash server issue a fresh ENR- code, builds
+   * `Read <origin>/v1/readme and enroll in my qrtz Dash with code ENR-…` and writes it to the clipboard itself. The
+   * code never comes back here. Not connected: refused with `not_connected`, nothing issued.
+   */
+  'dash:copy-prompt': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.void(),
+    response: z.object({ copied: z.literal(true) }),
+  }),
   /** ADR 0228: invalidate every outstanding code (agent tokens keep working). */
   'dash:rotate-codes': defineChannel({
     version: 1,

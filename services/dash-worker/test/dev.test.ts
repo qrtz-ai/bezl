@@ -1,7 +1,14 @@
 // Local test mode (src/dev.ts). The test pool runs without DASH_DEV_LOCAL, i.e. exactly like production.
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { devLocal, TEST_CODE_PREFIX } from '../src/dev';
+import {
+  devLocal,
+  devOrigin,
+  README_RULE_1,
+  readmeFor,
+  TEST_CODE_PREFIX,
+} from '../src/dev';
+import { README_MD } from '../src/readme.gen';
 import type { Env } from '../src/env';
 
 const e = (v?: string) => ({ ...(env as unknown as Env), DASH_DEV_LOCAL: v });
@@ -127,5 +134,69 @@ describe('test-code endpoint and locked sources (item 3)', () => {
     const enr = await post('ENR-ZZZZ-ZZZZ');
     expect(tst.status).toBe(429);
     expect(enr.status).toBe(429);
+  });
+});
+
+describe('QRT-298: readme rule 1 names the origin', () => {
+  const dev = (o?: string) => ({ ...e('1'), DASH_DEV_ORIGIN: o });
+  const local = rq('http://127.0.0.1:8799/v1/readme', '127.0.0.1');
+
+  it('production: rule 1 is https://dash.qrtz.ai, unchanged', async () => {
+    expect(README_MD).toContain(README_RULE_1);
+    const r = await exports.default.fetch('https://dash.qrtz.ai/v1/readme');
+    const t = await r.text();
+    expect(t).toBe(README_MD);
+    expect(t).toContain(README_RULE_1);
+    expect(t).not.toMatch(/127\.0\.0\.1/);
+  });
+
+  it('dev-local: rule 1 names the configured local origin', () => {
+    const o = devOrigin(dev('http://127.0.0.1:8799'), local);
+    expect(o).toBe('http://127.0.0.1:8799');
+    const t = readmeFor(README_MD, o);
+    expect(t).not.toContain(README_RULE_1);
+    expect(t).toContain(
+      '1. One origin: `http://127.0.0.1:8799` (a local test server). Never send tokens anywhere else.',
+    );
+  });
+
+  it('only from the var, only in local test mode, only loopback http', () => {
+    // not local test mode (production): the var is ignored
+    expect(
+      devOrigin(
+        { ...e(undefined), DASH_DEV_ORIGIN: 'http://127.0.0.1:8799' },
+        local,
+      ),
+    ).toBeNull();
+    expect(
+      devOrigin(
+        dev('http://127.0.0.1:8799'),
+        rq('https://dash.qrtz.ai/v1/readme', '127.0.0.1'),
+      ),
+    ).toBeNull();
+    // no var: the Host header never stands in for it
+    expect(
+      devOrigin(
+        dev(undefined),
+        rq('http://127.0.0.1:8799/v1/readme', '127.0.0.1', {
+          host: 'evil.example',
+        }),
+      ),
+    ).toBeNull();
+    for (const o of [
+      'https://dash.qrtz.ai',
+      'http://localhost:8799',
+      'http://127.0.0.1',
+      'http://127.0.0.1:0',
+      'http://127.0.0.1:65536',
+      'http://127.0.0.1:8799/',
+      'http://evil.example',
+    ])
+      expect(devOrigin(dev(o), local), o).toBeNull();
+  });
+
+  it('the production config cannot set DASH_DEV_ORIGIN', () => {
+    expect(env.TEST_WRANGLER_TOML).not.toMatch(/DASH_DEV_ORIGIN/);
+    expect((env as unknown as Env).DASH_DEV_ORIGIN).toBeUndefined();
   });
 });

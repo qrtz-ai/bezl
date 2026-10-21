@@ -6,7 +6,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 need_node22; worker_deps
 PORT="${DASH_E2E_PORT:-8798}"; B="http://127.0.0.1:$PORT"
 tmp="$(mktemp -d)"; chmod 700 "$tmp"
-write_vars "$tmp/e2e.vars"
+write_vars "$tmp/e2e.vars" "$PORT"
 SETUP="$(sed -n 's/^DASH_SETUP_TOKEN=//p' "$tmp/e2e.vars")"
 ( run_wrangler "$PORT" "$tmp/state" --env-file "$tmp/e2e.vars" --inspector-port 0 ) >"$tmp/dev.log" 2>&1 &
 PID=$!
@@ -18,6 +18,13 @@ j() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.lo
 req() { curl -sS -m 10 -o "$tmp/out" -w '%{http_code}' -X "$1" "$B$2" -H 'content-type: application/json' "${@:3}"; }
 check() { [ "$#" -eq 3 ] || { echo "FAIL check() got $# args, want 3 (status, expected, label): $*"; exit 1; }; if [ "$1" = "$2" ]; then echo "ok   $3 ($1)"; else echo "FAIL $3: got $1 want $2: $(cat "$tmp/out")"; exit 1; fi; }
 check "$(req GET /v1/readme)" 200 "GET /v1/readme over http on 127.0.0.1"
+# QRT-298: in local mode rule 1 names this server's origin (from e2e.vars), not https://dash.qrtz.ai.
+RULE1="$(grep -m1 'Never send tokens anywhere else' "$tmp/out" || true)"
+case "$RULE1" in
+  *"\`$B\`"*) echo "ok   readme rule 1 names $B" ;;
+  *) echo "FAIL readme rule 1: $RULE1"; exit 1 ;;
+esac
+if grep -q 'https://dash.qrtz.ai`. Never send' "$tmp/out"; then echo "FAIL readme still has the production rule 1"; exit 1; else echo "ok   no production rule 1 in local mode"; fi
 check "$(req POST /v1/owner/setup -H 'authorization: Bearer nope')" 401 "setup with a wrong token"
 check "$(req POST /v1/owner/setup -H "authorization: Bearer $SETUP")" 201 "setup"
 OWNER="$(j owner_key <"$tmp/out")"
