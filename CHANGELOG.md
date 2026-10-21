@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.5 (2026-10-21)
+
+- Updates now come from GitHub releases.
+- Downloads are checked against GitHub's own hosts.
+- Clearer error messages.
+- One-click Copy prompt for Dash.
+
 ## 0.2.4 (2026-10-19)
 
 - nano: read-only Apple Calendar on the Mac (ADR 0217): opt-in 'connect calendar', an upcoming block, notes named after the overlapping event, a start-of-meeting prompt; offline, no auto-record by default.
