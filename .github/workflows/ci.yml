@@ -9,7 +9,8 @@ name: ci
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    # The release tags release.yml (QRT-297) builds from; a tag push runs the macOS jobs too.
+    tags: ['app-v*', 'nano-v*', 'ctrl-v*', 'snap-v*']
   # Public repo: outside PRs get CI too. pull_request (never pull_request_target): no secrets, read-only token.
   pull_request:
   workflow_dispatch:

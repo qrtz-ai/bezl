@@ -6,7 +6,7 @@ Both workflows live in `.github/workflows/`. They run on GitHub-hosted runners; 
 
 On a push to main, a pull request or a plain manual run (`gh workflow run ci.yml --ref <branch>`), only the Linux jobs
 run: `js`, `e2e`, `rust` (and `workflow-changes` on a push). The macOS jobs (`macos`, `echo-warmup`, `keychain`,
-`release-unsigned`) run only for releases: a `v*` tag push, `release.yml` calling this workflow, or a manual run with
+`release-unsigned`) run only for releases: a release tag push (`app-v*`, `nano-v*`, `ctrl-v*`, `snap-v*`, the tags release.yml builds from), `release.yml` calling this workflow, or a manual run with
 `-f macos=true` (`gh workflow run ci.yml --ref <branch> -f macos=true`).
 
 There is one concurrency group per ref (`ci-<ref>`): a newer run on a branch, tag or PR cancels the older one, and main's
