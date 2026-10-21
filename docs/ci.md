@@ -26,7 +26,7 @@ stub sidecar in `src-tauri/binaries/`; the real helper is built only for release
 
 ## `release.yml`: releases on GitHub (QRT-297)
 
-Tags `v<x.y.z>` (qrtz.app) and `nano-v*`, `ctrl-v*`, `snap-v*` (packages), "run workflow", and a daily schedule (the
+Tags `app-v<x.y.z>` (qrtz.app, made by `version.mjs tag`) and `nano-v*`, `ctrl-v*`, `snap-v*` (packages), "run workflow", and a daily schedule (the
 index timestamp re-sign). `build` compiles with no secrets; `sign` waits for Jared's approval in the `release`
 environment and runs only for a tag whose commit is on main; `timestamp` holds only the timestamp key in
 `release-timestamp`. Everything is hosted on GitHub Releases (the app reads the fixed `index` release). Details:
