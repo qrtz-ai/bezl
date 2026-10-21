@@ -21,6 +21,8 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
 [[ -s "$tmp/feed.json.sig" ]] || { echo "sign-feed: no signature written" >&2; exit 1; }
 grep -v '^#' "$repo/crates/qrtz-app/src/app_update_key.pub" | tr -d '[:space:]' | base64 --decode >"$tmp/k.pub"
 base64 --decode <"$tmp/feed.json.sig" >"$tmp/k.sig"
-minisign -V -p "$tmp/k.pub" -x "$tmp/k.sig" -m "$tmp/feed.json" >/dev/null
+if [[ -n "${GITHUB_ACTIONS:-}" ]]; then minisign="${MINISIGN:?MINISIGN must be the pinned minisign path}"
+else minisign="${MINISIGN:-$(command -v minisign)}" || { echo "sign-feed: minisign not found" >&2; exit 1; }; fi
+"$minisign" -V -p "$tmp/k.pub" -x "$tmp/k.sig" -m "$tmp/feed.json" >/dev/null
 node "$repo/scripts/app/feed.mjs" --wrap "$tmp/feed.json" --wrap-sig "$tmp/feed.json.sig" >"$out"
 echo "sign-feed: $out signed ($(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).expires)' "$tmp/feed.json"))"
