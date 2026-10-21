@@ -25,6 +25,7 @@ import {
   Edit3,
   Grid,
   Info,
+  Layout,
   Lock,
   MessageCircle,
   Mic,
@@ -77,6 +78,8 @@ export const ICONS = {
   edit: Edit2,
   grid: Grid,
   info: Info,
+  // snap's glyph: a window split into panes.
+  layout: Layout,
   ask: MessageCircle,
   mic: Mic,
   // nano's glyph: a pen writing a line.

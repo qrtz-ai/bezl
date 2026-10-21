@@ -39,7 +39,7 @@ function ShellDemo() {
               { id: 'echo', label: 'echo', icon: 'mic' },
               { id: 'nano', label: 'nano', icon: 'edit-3' },
               { id: 'ctrl', label: 'ctrl', icon: 'command' },
-              { id: 'snap', label: 'snap', icon: 'grid' },
+              { id: 'snap', label: 'snap', icon: 'layout' },
               { id: 'apps', label: 'apps', group: 'foot' },
               {
                 id: 'opts',

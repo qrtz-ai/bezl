@@ -41,7 +41,7 @@ const KNOWN: Record<ModuleId, Omit<ExtensionInfo, 'view'>> = {
   snap: {
     description:
       'window snapping. move and size windows to halves, thirds and corners from the keyboard.',
-    icon: 'grid',
+    icon: 'layout',
   },
 };
 

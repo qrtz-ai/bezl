@@ -4,7 +4,7 @@ import { SubAppManifest } from '@qrtz/core';
 export const manifest = SubAppManifest.parse({
   id: 'snap',
   name: 'snap',
-  icon: 'grid',
+  icon: 'layout',
   order: 40,
   capabilities: ['snap.read', 'module.settings'],
 });
