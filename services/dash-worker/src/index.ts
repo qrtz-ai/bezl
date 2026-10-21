@@ -24,6 +24,7 @@ import { unwire } from './dashboard';
 export { EnrollDirectory } from './directory';
 import { sourceOf } from './ip';
 import { devLocal, TEST_CODE_PREFIX } from './dev';
+import { requestLine } from './reqlog';
 
 const AGENT_TOKEN = /^at_([0-9a-f]{32})_[0-9a-f]{64}$/;
 const OWNER_KEY = /^ok_([0-9a-f]{32})_[0-9a-f]{64}$/;
@@ -257,12 +258,26 @@ async function route(req: Request, env: Env): Promise<Out | Response> {
 
 export default {
   async fetch(req, env): Promise<Response> {
+    const t0 = Date.now();
+    let res: Response;
     try {
       const r = await route(req, env);
-      return r instanceof Response ? r : toResponse(r);
+      res = r instanceof Response ? r : toResponse(r);
     } catch {
       // Never echo internals.
-      return toResponse(fail(500, 'server error'));
+      res = toResponse(fail(500, 'server error'));
     }
+    // The one log line per request (QRT-307): method, route template, status, ms. See src/reqlog.ts.
+    let path = '';
+    try {
+      path = new URL(req.url).pathname;
+    } catch {}
+    // oxlint-disable-next-line no-console -- the one sanctioned log line (QRT-307); fields fixed in src/reqlog.ts
+    console.log(
+      JSON.stringify(
+        requestLine(req.method, path, res.status, Date.now() - t0),
+      ),
+    );
+    return res;
   },
 } satisfies ExportedHandler<Env>;

@@ -6,6 +6,7 @@ import type { Dashboard } from '../src/dashboard';
 import type { EnrollDirectory } from '../src/directory';
 import { clearTombCache } from '../src/index';
 import { sourceOf } from '../src/ip';
+import { routeTemplate } from '../src/reqlog';
 
 const O = 'https://dash.qrtz.ai';
 type J = Record<string, any>;
@@ -1097,11 +1098,180 @@ describe('QRT-307: retention, unenroll, logging, content cap', () => {
     expect(r.json.results[0].status).toBe(422);
   });
 
-  it('the prod config logs no requests', () => {
+  it('the content cap edge matches the Rust twin: 8192 stored bytes pass, 8193 are 422 (batch and single put)', async () => {
+    // Same builder as crates/qrtz-dash/tests/api.rs `table_of`: bytes, not characters.
+    const tableOf = (n: number) => {
+      const rows = Array.from({ length: 16 }, () => ['€'.repeat(160)]);
+      rows.push(['€'.repeat(133) + (n > C.MAX_CONTENT_BYTES ? 'aaa' : 'aa')]);
+      const v = { columns: ['c'], rows };
+      expect(new TextEncoder().encode(JSON.stringify(v)).length).toBe(n);
+      return v;
+    };
+    const { owner } = await setup();
+    const a = await approved(owner);
+    await call('POST', '/v1/widgets', {
+      bearer: a.token,
+      body: { key: 't', type: 'table' },
+    });
+    const batch = (data: unknown) =>
+      call('POST', '/v1/batch', {
+        bearer: a.token,
+        body: { ops: [{ op: 'put', key: 't', data }] },
+      }).then((r) => r.json.results[0].status);
+    expect(await batch(tableOf(C.MAX_CONTENT_BYTES))).toBe(200);
+    expect(await batch(tableOf(C.MAX_CONTENT_BYTES + 1))).toBe(422);
+    expect(
+      (
+        await call('PUT', '/v1/widgets/t', {
+          bearer: a.token,
+          body: tableOf(C.MAX_CONTENT_BYTES),
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it('markers keep only scope, ref (id, token hmac or agent/key) and time; audit only event, agent id and time', async () => {
+    clearTombCache();
+    const { dashId, owner } = await setup();
+    const a = await approved(owner);
+    const b = await approved(owner, 'second helper');
+    for (const ag of [a, b])
+      await call('POST', '/v1/widgets', {
+        bearer: ag.token,
+        body: { key: 'w', type: 'status', title: 'secret title' },
+      });
+    await call('DELETE', `/v1/owner/widgets/${b.id}/w`, { bearer: owner });
+    await call('DELETE', `/v1/owner/widgets/${a.id}/w`, { bearer: owner });
+    await call('DELETE', `/v1/owner/agents/${a.id}`, { bearer: owner });
+    const stub = env.DASHBOARD.getByName(dashId);
+    const rows = await runInDurableObject(stub, (_i: Dashboard, state) => ({
+      tombCols: state.storage.sql
+        .exec("SELECT name FROM pragma_table_info('tombstones')")
+        .toArray()
+        .map((r) => r.name),
+      tombs: state.storage.sql
+        .exec<{ scope: string; ref: string }>(
+          'SELECT scope, ref FROM tombstones',
+        )
+        .toArray()
+        .map((r) => `${r.scope}|${r.ref}`)
+        .sort(),
+      auditCols: state.storage.sql
+        .exec("SELECT name FROM pragma_table_info('audit')")
+        .toArray()
+        .map((r) => r.name),
+    }));
+    expect(rows.tombCols).toEqual(['scope', 'ref', 'created_at']);
+    expect(rows.auditCols).toEqual(['id', 'event', 'agent_id', 'at']);
+    // The removed agent's widget marker went with it; the live agent's stays. No names, titles or devices.
+    expect(rows.tombs.filter((t) => t.startsWith('widget|'))).toEqual([
+      `widget|${b.id}/w`,
+    ]);
+    expect(rows.tombs).toContain(`agent|${a.id}`);
+    expect(rows.tombs.filter((t) => t.startsWith('agent|token:')).length).toBe(
+      1,
+    );
+    expect(JSON.stringify(rows)).not.toMatch(/grok|secret title/i);
+    // b's deleted widget still answers 410 after a fresh isolate reloads the markers.
+    expect(
+      (
+        await call('PUT', '/v1/widgets/w', {
+          bearer: b.token,
+          body: { status: 'done' },
+        })
+      ).status,
+    ).toBe(410);
+    await call('DELETE', '/v1/owner/dashboard', { bearer: owner });
+    const left = await runInDurableObject(stub, (_i: Dashboard, state) =>
+      state.storage.sql
+        .exec<{ scope: string }>(
+          "SELECT scope FROM tombstones WHERE scope = 'widget'",
+        )
+        .toArray(),
+    );
+    expect(left).toEqual([]);
+  });
+
+  it('the prod config logs only the Worker line: no invocation logs, no traces, every request sampled', () => {
     const t = env.TEST_WRANGLER_TOML;
     expect(t).toMatch(
-      /\[observability\]\nenabled = false\nhead_sampling_rate = 0\n/,
+      /\[observability\]\nenabled = true\nhead_sampling_rate = 1\nredact_query_string = true\n\n\[observability\.logs\]\nenabled = true\nhead_sampling_rate = 1\ninvocation_logs = false\n\n\[observability\.traces\]\nenabled = false\n/,
     );
+    expect(t.match(/^\[observability/gm)).toHaveLength(3);
     expect(t).not.toMatch(/^\[env\./m);
+  });
+
+  it('route templates never carry path text', () => {
+    for (const [p, t] of [
+      ['/v1/widgets/abc', '/v1/widgets/:key'],
+      ['/v1/widgets/abc/events', '/v1/widgets/:key/events'],
+      ['/v1/owner/agents/ag_1', '/v1/owner/agents/:id'],
+      ['/v1/owner/agents/ag_1/review', '/v1/owner/agents/:id/review'],
+      ['/v1/owner/widgets/ag_1/k', '/v1/owner/widgets/:agent/:key'],
+      ['/v1/batch', '/v1/batch'],
+      ['/v1/widgets//events', 'unmatched'],
+      ['/v1/secret/stuff', 'unmatched'],
+      ['/at_0123', 'unmatched'],
+      ['', 'unmatched'],
+    ])
+      expect(routeTemplate(p!), p).toBe(t);
+  });
+
+  it('logs one line per request: method, route template, status, ms, and nothing from the request', async () => {
+    const lines: string[] = [];
+    const secrets: string[] = [];
+    const orig = console.log;
+    console.log = (...x: unknown[]) => void lines.push(x.map(String).join(' '));
+    try {
+      const { owner } = await setup();
+      const a = await approved(owner);
+      secrets.push(a.id, a.token, owner);
+      lines.length = 0;
+      await call('POST', '/v1/widgets', {
+        bearer: a.token,
+        body: { key: 'my-private-key', type: 'status', title: 'body text' },
+      });
+      await exports.default.fetch(
+        new Request('https://dash.qrtz.ai/v1/widgets/my-private-key?q=leak', {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${a.token}`,
+            'user-agent': 'ua-leak',
+            'cf-connecting-ip': '192.0.2.99',
+          },
+          body: JSON.stringify({ status: 'done', text: 'body text' }),
+        }),
+      );
+      await call('DELETE', `/v1/owner/agents/${a.id}`, { bearer: owner });
+      await call('GET', '/nope/../x');
+    } finally {
+      console.log = orig;
+    }
+    const parsed = lines.map((l) => JSON.parse(l));
+    for (const p of parsed) {
+      expect(Object.keys(p).sort()).toEqual([
+        'method',
+        'ms',
+        'route',
+        'status',
+      ]);
+      expect(typeof p.ms).toBe('number');
+    }
+    expect(parsed.map((p) => `${p.method} ${p.route} ${p.status}`)).toEqual([
+      'POST /v1/widgets 201',
+      'PUT /v1/widgets/:key 200',
+      'DELETE /v1/owner/agents/:id 200',
+      'GET unmatched 404',
+    ]);
+    const all = lines.join('\n');
+    for (const leak of [
+      'my-private-key',
+      'leak',
+      'body text',
+      ...secrets,
+      '192.0.2.99',
+      'dash.qrtz.ai',
+    ])
+      expect(all).not.toContain(leak);
   });
 });

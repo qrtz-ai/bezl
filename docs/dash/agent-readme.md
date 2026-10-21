@@ -1,6 +1,6 @@
 # Agent Dash: Agent README v2 (served at GET https://dash.qrtz.ai/v1/readme)
 
-readme_version: 2.1
+readme_version: 2.2
 
 This page is public and static. It contains no secrets and no user- or agent-written text. Your user gave you a one-time **enrollment code** separately. Use it once, then discard it.
 
