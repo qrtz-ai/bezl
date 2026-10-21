@@ -74,9 +74,10 @@ without speech when none is set and stops before building when only some are (it
 
 ## Source attached to every release (QRT-275)
 
-`scripts/app/publish-local.sh` runs `scripts/release/source-archives.sh <v> <work dir> HEAD` before the upload, and
-`scripts/app/upload.sh` refuses a release without its output. It writes and uploads, immutable, to
-`modules.qrtz.ai/v1/app/<v>/`: `qrtz_<v>_source.tar.gz` (git archive of the release commit, which becomes
+`release.yml`'s `sign` job (and `scripts/app/publish-local.sh` on the Mac) runs
+`scripts/release/source-archives.sh <v> <work dir> HEAD` before the upload, and `scripts/release/gh-store.sh upload-app`
+refuses a release without its output. It is attached to the `app-v<v>` GitHub release and uploaded, immutable, to the
+`index` release as `v1.app.<v>.*` (QRT-297): `qrtz_<v>_source.tar.gz` (git archive of the release commit, which becomes
 `app-v<v>`), `qrtz_<v>_fluidaudio_source.tar.gz` (FluidAudio fetched by the exact revision `Package.resolved` pins,
 with `Package.swift` required to say `exact:`), `qrtz_<v>_build-scripts.tar.gz` (`scripts/`, the manifests and
 lockfiles, `tauri.conf.json`, this file) and `qrtz_<v>_source.sha256`. It reads no key. The app's settings → system →
@@ -89,7 +90,7 @@ hosted on GitHub Releases. Cloudflare R2 is no longer used. The setup steps (env
 `gh secret set --env release …` commands, notifications) are in
 [docs/modules/production-setup.md](modules/production-setup.md#releases-on-github-qrt-297).
 
-- **Tags.** `v<x.y.z>` releases qrtz.app (tauri.conf.json must say `x.y.z`); `nano-v<x.y.z>`, `ctrl-v<x.y.z>`,
+- **Tags.** `app-v<x.y.z>` (what `node scripts/app/version.mjs tag` makes) releases qrtz.app (tauri.conf.json must say `x.y.z`); `nano-v<x.y.z>`, `ctrl-v<x.y.z>`,
   `snap-v<x.y.z>` release one package (its `modules/<m>/qrtz.json` must say `x.y.z`). Only a tag whose commit is on
   main is signed or published. "Run workflow" with `tag=<tag>` re-runs one; `tag=timestamp` and `tag=feed-refresh`
   re-sign the index timestamp and qrtz.app's update feed.

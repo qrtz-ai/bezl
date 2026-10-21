@@ -15,8 +15,8 @@ shown in settings → system → "open-source licenses".
 ## Source code
 
 qrtz is AGPL-3.0-only (`Contents/Resources/licenses/AGPL-3.0.txt`, with the additional permission in
-`licenses/LICENSE-EXCEPTION.md`). Every release attaches its complete source next to the download, at
-`https://modules.qrtz.ai/v1/app/<version>/`:
+`licenses/LICENSE-EXCEPTION.md`). Every release attaches its complete source next to the download, on the
+`app-v<version>` release at `https://github.com/qrtz-ai/qrtz/releases/tag/app-v<version>`:
 
 - `qrtz_<version>_source.tar.gz`: qrtz at the release commit (tag `app-v<version>` on
   https://github.com/qrtz-ai/qrtz);
@@ -32,7 +32,7 @@ https://github.com/FluidInference/FluidAudio/tree/v0.17.7.
 
 Today each file is fetched from Hugging Face at the pinned commit below, checked against its pinned sha256, and
 installed read-only. The files are used as published, with no further change by qrtz. Once the package hosts
-(`modules.qrtz.ai` and its mirror) serve these models, qrtz **redistributes** them. Each package must then carry the
+(the `index` GitHub release) serve these models, qrtz **redistributes** them. Each package must then carry the
 model's license text and the notices below (NVIDIA Open Model License §Redistribution, OpenMDW-1.1 §1, Apache-2.0 §4,
 CC-BY-4.0 §3).
 
