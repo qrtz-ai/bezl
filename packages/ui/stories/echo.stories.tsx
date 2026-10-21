@@ -65,13 +65,15 @@ export const HelperFailed: S = {
 };
 
 /** QRT-291: the helper's fixed public reasons (qrtz-app installed::public_refusal), each read in full, no paths. */
-export const HELPER_REASONS = [
+const HELPER_REASONS = [
   "signature mismatch: the helper isn't signed with qrtz's Developer ID identity",
   "signing requirement mismatch: the expected requirement isn't qrtz's Developer ID one",
   'launch refused: a launch check failed (see the log)',
   "dev stub: the real helper isn't built yet (bun run build:helper)",
   "missing binary: the helper isn't where qrtz expects it",
-].map((r) => `the capture helper isn't running, so the mic can't open (echo: ${r})`);
+].map(
+  (r) => `the capture helper isn't running, so the mic can't open (echo: ${r})`,
+);
 
 /** QRT-291: every fixed reason, the longest included, still reads in full. */
 export const HelperFailedLong: S = {

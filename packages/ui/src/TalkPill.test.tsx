@@ -1,10 +1,20 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TalkPill } from './Talk';
-import { HELPER_REASONS } from '../stories/echo.stories';
 
 const REASON =
   "the capture helper isn't running, so the mic can't open (echo: signature mismatch: the helper isn't signed with qrtz's Developer ID identity)";
+
+// Mirrors qrtz-app installed::public_refusal and the reasons story.
+const HELPER_REASONS = [
+  "signature mismatch: the helper isn't signed with qrtz's Developer ID identity",
+  "signing requirement mismatch: the expected requirement isn't qrtz's Developer ID one",
+  'launch refused: a launch check failed (see the log)',
+  "dev stub: the real helper isn't built yet (bun run build:helper)",
+  "missing binary: the helper isn't where qrtz expects it",
+].map(
+  (r) => `the capture helper isn't running, so the mic can't open (echo: ${r})`,
+);
 
 describe('TalkPill error (QRT-291)', () => {
   it('shows the whole reason and wraps instead of truncating', () => {
@@ -36,7 +46,9 @@ describe('TalkPill error (QRT-291)', () => {
       expect(text).not.toMatch(/\/(applications|tmp|users)\b|\\/i);
     }
     const text = HELPER_REASONS.join('\n');
-    expect(text).toContain("dev stub: the real helper isn't built yet (bun run build:helper)");
+    expect(text).toContain(
+      "dev stub: the real helper isn't built yet (bun run build:helper)",
+    );
     expect(text).toContain('missing binary');
   });
 });
