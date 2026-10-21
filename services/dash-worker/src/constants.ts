@@ -1,9 +1,9 @@
 /**
- * The limits of Agent Dash (ADR 0228, spec docs/dash/agent-readme.md v2.1). Twins of crates/qrtz-dash/src/lib.rs;
+ * The limits of Agent Dash (ADR 0228, spec docs/dash/agent-readme.md v2.2). Twins of crates/qrtz-dash/src/lib.rs;
  * test/rust-twins.test.ts reads that file and fails if any number here drifts.
  */
 export const DASH_ORIGIN = 'https://dash.qrtz.ai';
-export const README_VERSION = '2.1';
+export const README_VERSION = '2.2';
 export const RETENTION_DAYS = 30;
 export const BATCH_MAX_OPS = 20;
 export const ENROLL_TTL_MS = 15 * 60 * 1000;
@@ -36,5 +36,5 @@ export const ENROLL_GLOBAL_FAILS_PER_MIN = 600;
 export const LIVE_THROTTLE_MS = 250;
 /** Server only: the retention alarm's period. */
 export const PRUNE_EVERY_MS = 60 * 60 * 1000;
-/** Server only (QRT-307): the stored size of one widget state or event (JSON, after scrubbing). */
+/** QRT-307: the stored size of one widget state or event (JSON, after scrubbing). Twin of the Rust constant. */
 export const MAX_CONTENT_BYTES = 8 * 1024;

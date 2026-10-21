@@ -156,6 +156,19 @@ export class Dashboard extends DurableObject<Env> {
     );
     this.tombs.add(`${scope}|${ref}`);
   }
+  /** Drop the widget markers of one agent (or of every agent when `agentId` is null). */
+  private dropWidgetTombs(agentId: string | null) {
+    if (agentId === null)
+      this.sql.exec("DELETE FROM tombstones WHERE scope = 'widget'");
+    else
+      this.sql.exec(
+        "DELETE FROM tombstones WHERE scope = 'widget' AND substr(ref, 1, ?) = ?",
+        agentId.length + 1,
+        `${agentId}/`,
+      );
+    const pre = agentId === null ? 'widget|' : `widget|${agentId}/`;
+    for (const t of this.tombs) if (t.startsWith(pre)) this.tombs.delete(t);
+  }
   private log(event: string, agentId: string | null, now: number) {
     this.sql.exec(
       'INSERT INTO audit (event, agent_id, at) VALUES (?, ?, ?)',
@@ -736,6 +749,8 @@ export class Dashboard extends DurableObject<Env> {
     this.sql.exec('DELETE FROM widgets WHERE agent_id = ?', a.id);
     this.sql.exec('DELETE FROM idempotency WHERE agent_id = ?', a.id);
     this.sql.exec('DELETE FROM agents WHERE id = ?', a.id);
+    // Its widget markers (`agent/key`) are moot once the token is tombstoned; keep no widget keys (QRT-307).
+    this.dropWidgetTombs(a.id);
     this.tomb('agent', a.id, now);
     this.tomb('agent', `token:${a.token_hash}`, now);
     this.log(event, a.id, now);
@@ -750,6 +765,8 @@ export class Dashboard extends DurableObject<Env> {
       this.sql.exec('DELETE FROM idempotency');
       // Agent names, descriptions and heartbeats are user content too (QRT-307).
       this.sql.exec('DELETE FROM agents');
+      // The dashboard marker answers 410 for everything; no per-widget keys need to stay (QRT-307).
+      this.dropWidgetTombs(null);
       this.tomb('dashboard', '', now);
       this.log('dashboard-deleted', null, now);
     });

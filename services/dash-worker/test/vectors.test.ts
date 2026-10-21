@@ -143,6 +143,7 @@ describe('constants are the Rust twins (crates/qrtz-dash/src/lib.rs)', () => {
       'STALE_AFTER_MS',
       'MAX_BODY_BYTES',
       'MAX_BATCH_BODY_BYTES',
+      'MAX_CONTENT_BYTES',
       'WRITES_PER_MIN_AGENT',
       'WRITES_PER_MIN_DASHBOARD',
       'MAX_AGENTS',
