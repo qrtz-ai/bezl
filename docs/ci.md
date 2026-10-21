@@ -28,6 +28,19 @@ macOS minutes count 10x on a private repo, so the macOS job only does what Linux
 stub sidecar in `src-tauri/binaries/`; the real helper is built only for releases. Caches: cargo
 (`Swatinem/rust-cache`), bun's install cache, SwiftPM `.build`, and the Playwright browsers.
 
+## High-churn paths (Bozniak's personal review)
+
+Changes to these paths need Bozniak's review of the exact diff and a macOS run on the exact head before they land
+(QRT-310 rule); batch them where possible and note it on the ticket before pushing:
+
+- `.github/workflows/*`
+- `scripts/release/*`, `scripts/check-*`, `mac-gate.sh`
+- entitlements (`*.entitlements`, `apps/desktop/src-tauri/entitlements.mac.plist`)
+- Dash enrollment (`services/dash-worker` enroll paths)
+- `native/`
+- `apps/desktop/src-tauri/speech.json`: the speech module pins a release bakes in (QRT-306). Exactly `{"speech":"none"}`
+  or all five `QRTZ_SPEECH_*` fields; `scripts/release/check-speech.mjs` fails the release build otherwise.
+
 ## `app-release.yml`: qrtz.app releases (ADR 0181)
 
 Replaces `release.yml` (unsigned `v*` tag builds). It runs on a push to main whose
