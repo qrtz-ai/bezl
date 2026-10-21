@@ -9,7 +9,7 @@ name: ci
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ['app-v*', 'nano-v*', 'ctrl-v*', 'snap-v*', 'v*']
   # Public repo: outside PRs get CI too. pull_request (never pull_request_target): no secrets, read-only token.
   pull_request:
   workflow_dispatch:
