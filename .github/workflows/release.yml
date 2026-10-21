@@ -12,8 +12,17 @@ concurrency:
   group: release
   cancel-in-progress: false
 jobs:
+  ci:
+    name: full CI (Linux + macOS) on the tagged commit
+    uses: ./.github/workflows/ci.yml
+    with:
+      macos: true
+    permissions:
+      contents: read
+
   build:
     name: unsigned build + attestation (no secrets)
+    needs: ci
     runs-on: macos-15
     permissions:
       contents: read
@@ -31,6 +40,8 @@ jobs:
       - name: rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install && rustc --version
       - run: bun install --frozen-lockfile
+      - name: speech pins (speech.json is {"speech":"none"} or exactly five valid pins)
+        run: node scripts/release/check-speech.mjs apps/desktop/src-tauri/speech.json --github-env "$GITHUB_ENV"
       - id: v
         run: echo "version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
       - name: unsigned bundle (same build as ci.yml release-unsigned; nothing signed or notarized)
@@ -58,7 +69,7 @@ jobs:
     runs-on: macos-15
     environment: release
     permissions:
-      contents: write   # create the GitHub release
+      contents: write # create the GitHub release
       id-token: write
       attestations: write
     steps:
