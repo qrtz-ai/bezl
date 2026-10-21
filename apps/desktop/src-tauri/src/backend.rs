@@ -103,6 +103,12 @@ impl ShellHooks for TauriShell {
     fn open_https(&self, url: &str) -> bool {
         crate::paths::open_https(url)
     }
+    /// QRT-298: the "Copy prompt" text (it holds an enrollment code, so neither it nor the error is logged).
+    fn write_clipboard(&self, text: &str) -> bool {
+        self.0
+            .get()
+            .is_some_and(|app| app.clipboard().write_text(text).is_ok())
+    }
     /// "restart qrtz" (a permission grant a running process only sees after a relaunch). Inside qrtz.app the new
     /// copy is opened through Launch Services (`open`, after this one quits) so it is its own responsible process
     /// again; elsewhere (dev) Tauri's restart.

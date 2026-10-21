@@ -12,12 +12,14 @@ need_node22() {
 worker_deps() { [[ -d "$worker/node_modules/wrangler" ]] || (cd "$worker" && bun install); }
 # A fresh local-only secrets file (mode 600). Values are never printed. DASH_DEV_LOCAL=1 turns on the worker's local
 # test mode (src/dev.ts): http from 127.0.0.1 and TST- codes. This file is the only place that variable exists.
-write_vars() {
-  local f="$1"
+# DASH_DEV_ORIGIN (QRT-298): the origin this local server serves from, named in the readme's rule 1 (local mode only).
+write_vars() { # file port
+  local f="$1" port="$2"
   ( umask 077
     { echo "DASH_PEPPER=$(openssl rand -hex 32)"
       echo "DASH_SETUP_TOKEN=$(openssl rand -hex 24)"
-      echo "DASH_DEV_LOCAL=1"; } >"$f" )
+      echo "DASH_DEV_LOCAL=1"
+      echo "DASH_DEV_ORIGIN=http://127.0.0.1:$port"; } >"$f" )
   [[ "$(sed -n 's/^DASH_PEPPER=//p' "$f" | tr -d '\n' | wc -c | tr -d ' ')" == 64 ]] || die "bad pepper written"
 }
 # wrangler dev, local simulation only, listening on 127.0.0.1 only.
