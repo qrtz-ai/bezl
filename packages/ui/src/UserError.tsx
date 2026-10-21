@@ -25,8 +25,13 @@ const TECHNICAL =
 /** An OS error number, as Rust prints it: `permission denied (os error 13)`. */
 const OS_ERROR = /\bos error \d+\b/i;
 
-/** A path token: starts a word with `/`, `~/`, `\\` or a drive letter, and continues with a path character. */
-const PATH = /(?:^|[\s:'"(=])(?:~?\/|\\\\|[a-zA-Z]:\\)[\w.~$@%+-]/;
+/**
+ * A path token: starts a word (or follows `:`, `,`, a quote or `(`) with `./`, `../`, `~/`, `~user/`, `/`, `\\` or a
+ * drive letter, and continues with a path character. Bare relative names (`notes/db.sqlite`) and "and/or" stay
+ * readable. `file:/` URLs are always technical.
+ */
+const PATH =
+  /(?:^|[\s:,'"‘“(=])(?:\.{1,2}\/|~[\w-]*\/|\/|\\\\|[a-zA-Z]:\\)[\w.~$@%+-]|\bfile:\//i;
 
 /** True when a message reads as plain language a person can act on. */
 export function isReadable(msg: string): boolean {
