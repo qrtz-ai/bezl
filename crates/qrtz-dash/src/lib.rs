@@ -1,4 +1,4 @@
-//! Agent Dash (ADR 0228, spec docs/dash/agent-readme.md v2.1): a read-only dashboard that the user's agents write to.
+//! Agent Dash (ADR 0228, spec docs/dash/agent-readme.md v2.2): a read-only dashboard that the user's agents write to.
 //!
 //! This crate is the whole server logic with no transport: [`Dash::handle`] takes an agent's HTTP request (method,
 //! path, headers, body bytes) and returns the status and JSON body the spec names; the user's side (issue a code,
@@ -16,7 +16,7 @@ pub use store::{Dash, Request, Response, Scope};
 /// The one origin agents talk to (placeholder until the server ships; no DNS or deploy yet).
 pub const DASH_ORIGIN: &str = "https://dash.qrtz.ai";
 /// `readme_version` in every response.
-pub const README_VERSION: &str = "2.1";
+pub const README_VERSION: &str = "2.2";
 /// History older than this is dropped (per dashboard default).
 pub const RETENTION_DAYS: u64 = 30;
 /// Most ops in one `POST /v1/batch`.
@@ -27,6 +27,8 @@ pub const ENROLL_TTL_MS: u64 = 15 * 60 * 1000;
 pub const STALE_AFTER_MS: u64 = 10 * 60 * 1000;
 pub const MAX_BODY_BYTES: usize = 8 * 1024;
 pub const MAX_BATCH_BODY_BYTES: usize = 64 * 1024;
+/// QRT-307: one widget state or event as stored JSON (after scrubbing), batch ops included. Twin of the Worker's.
+pub const MAX_CONTENT_BYTES: usize = 8 * 1024;
 pub const WRITES_PER_MIN_AGENT: usize = 60;
 pub const WRITES_PER_MIN_DASHBOARD: usize = 300;
 /// Wrong enrollment codes per minute, dashboard-wide, before 429.
