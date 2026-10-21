@@ -98,6 +98,13 @@ describe('paths and os errors are technical (QRT-311 C1)', () => {
     'permission denied (os error 13)',
     'Permission denied (OS error 1)',
     'not found (/tmp/a)',
+    'no such file or directory: ./notes.db',
+    "couldn't open ../x/y",
+    'bad path,/Users/x',
+    'cannot read ‘/Users/x’',
+    'cannot read “/Users/x”',
+    'failed to load file:///Users/x',
+    'denied: ~jared/notes',
   ])('%s goes under details', (raw) => {
     expect(isReadable(raw)).toBe(false);
     const e = userError(new Error(raw), 'save the note');
@@ -109,6 +116,7 @@ describe('paths and os errors are technical (QRT-311 C1)', () => {
     'the folder is read-only',
     'turn it on or off in opts',
     'pick a name with letters and/or numbers',
+    'notes/db.sqlite is locked by another app',
   ])('%s stays readable', (raw) => {
     expect(isReadable(raw)).toBe(true);
   });
