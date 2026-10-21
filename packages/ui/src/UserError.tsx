@@ -15,13 +15,28 @@ export interface UserError {
   detail: string | null;
 }
 
-/** Codes, statuses, identifiers and stack-like text: fine for details, not for the main line. */
+/**
+ * Codes, statuses, identifiers, stack-like text, file paths (`/Users/…`, `~/…`, `\\server\…`, `C:\…`) and OS error
+ * numbers (`os error 13`): fine for details, not for the main line.
+ */
 const TECHNICAL =
   /\b[hH][tT][tT][pP][sS]?\b|\b[A-Z][A-Z0-9_]{3,}\b|\b\d{3,}\b|\b(errno|exception|stack|null|undefined|NaN)\b|[{}<>[\]=]|::|\w\.\w+\(/;
 
+/** An OS error number, as Rust prints it: `permission denied (os error 13)`. */
+const OS_ERROR = /\bos error \d+\b/i;
+
+/** A path token: starts a word with `/`, `~/`, `\\` or a drive letter, and continues with a path character. */
+const PATH = /(?:^|[\s:'"(=])(?:~?\/|\\\\|[a-zA-Z]:\\)[\w.~$@%+-]/;
+
 /** True when a message reads as plain language a person can act on. */
 export function isReadable(msg: string): boolean {
-  return !!msg && msg.length <= 140 && !TECHNICAL.test(msg);
+  return (
+    !!msg &&
+    msg.length <= 140 &&
+    !TECHNICAL.test(msg) &&
+    !OS_ERROR.test(msg) &&
+    !PATH.test(msg)
+  );
 }
 
 export function userError(

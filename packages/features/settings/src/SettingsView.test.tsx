@@ -233,4 +233,52 @@ describe('open-source licenses (audit P0-4)', () => {
     root.unmount();
     el.remove();
   });
+
+  it('a combined load error names what failed; the raw reasons sit only under details (QRT-311)', async () => {
+    const raws: Record<string, string> = {
+      'app:get-info': 'no such file or directory: /Users/x/qrtz/info.json',
+      'helper:status': 'connection refused (os error 61)',
+    };
+    const client = {
+      subApp: 'settings',
+      invoke: async (channel: string) => {
+        if (raws[channel]) throw new Error(raws[channel]);
+        if (channel === 'config:get') return defaultConfig();
+        return (ipcSamples as Record<string, { response: unknown }>)[channel]
+          ?.response;
+      },
+      on: () => () => {},
+    } as unknown as QrtzClient;
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () =>
+      root.render(
+        <ThemeProvider mode="light">
+          <QrtzClientProvider client={client}>
+            <SettingsView />
+          </QrtzClientProvider>
+        </ThemeProvider>,
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const box = el.querySelector('[data-testid="settings-error"]')!;
+    expect(box).not.toBeNull();
+    const shown = box.cloneNode(true) as Element;
+    shown.querySelectorAll('details').forEach((d) => d.remove());
+    expect(shown.textContent).toContain("couldn't load app info, helper");
+    expect(shown.textContent).toContain('retry in a moment');
+    for (const raw of Object.values(raws))
+      expect(shown.textContent).not.toContain(raw);
+    expect(shown.textContent).not.toMatch(/\/Users|os error/);
+    const details = el.querySelector(
+      '[data-testid="settings-error-details"]',
+    )!.textContent;
+    expect(details).toContain(`app info: ${raws['app:get-info']}`);
+    expect(details).toContain(`helper: ${raws['helper:status']}`);
+    root.unmount();
+    el.remove();
+  });
 });
