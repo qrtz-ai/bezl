@@ -37,7 +37,7 @@ const VARIANT: Record<
   danger: {
     shadcn: 'destructive',
     className:
-      'tw:border-(--q-color-danger-solid) tw:bg-(--q-color-danger-solid) tw:text-(--q-color-danger-solid-text) tw:dark:bg-(--q-color-danger-solid)',
+      'tw:border-(--q-color-danger-solid) tw:bg-(--q-color-danger-solid) tw:text-(--q-color-danger-solid-text) tw:dark:bg-(--q-color-danger-solid) tw:hover:bg-[color-mix(in_srgb,var(--q-color-danger-solid)_88%,black)] tw:dark:hover:bg-[color-mix(in_srgb,var(--q-color-danger-solid)_88%,black)]',
   },
 };
 const SIZE: Record<ButtonSize, string> = {
