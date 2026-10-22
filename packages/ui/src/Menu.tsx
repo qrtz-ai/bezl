@@ -3,6 +3,7 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
@@ -10,7 +11,7 @@ import { useTheme } from './theme';
 import { Icon, type IconName } from './Icon';
 import { IconButton } from './Layout';
 import { Text } from './Text';
-import { transition, tokens } from './tokens';
+import { transition, tokens, type Tokens } from './tokens';
 
 export interface MenuItem {
   id: string;
@@ -130,57 +131,85 @@ export function Menu({
           aria-label={label.toLowerCase()}
           data-testid={testId ? `${testId}-menu` : undefined}
           style={{
+            ...menuPanelStyle(t),
             position: 'absolute',
             top: `calc(100% + ${tokens.space[1]})`,
             right: 0,
-            zIndex: t.z.overlay,
-            minWidth: tokens.size.menuMin,
-            display: 'grid',
-            gap: tokens.space[0.5],
-            padding: t.space[1],
-            background: t.color.surface,
-            border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
-            borderRadius: t.radius.md,
-            boxShadow: tokens.shadow.overlay,
           }}
         >
           {items.map((it) => (
-            <button
+            <MenuEntry
               key={it.id}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              disabled={it.disabled}
+              item={it}
               data-testid={testId ? `${testId}-${it.id}` : undefined}
-              data-danger={it.danger ? '' : undefined}
-              onClick={(e) => {
-                e.stopPropagation();
-                close(true);
-                it.onSelect();
-              }}
-              style={{
-                all: 'unset',
-                boxSizing: 'border-box',
-                cursor: it.disabled ? 'not-allowed' : 'pointer',
-                opacity: it.disabled ? tokens.opacity.disabled : 1,
-                display: 'flex',
-                alignItems: 'center',
-                gap: t.space[2],
-                height: tokens.size.row.sm,
-                padding: `0 ${t.space[2]}`,
-                borderRadius: t.radius.sm,
-                color: it.danger ? t.color.danger : t.color.text,
-                transition: transition('background', 'hover', t),
-              }}
-            >
-              {it.icon ? <Icon name={it.icon} size="sm" /> : null}
-              <Text variant="bodySm" tone={it.danger ? 'danger' : 'default'}>
-                {it.label.toLowerCase()}
-              </Text>
-            </button>
+              onPick={() => close(true)}
+            />
           ))}
         </div>
       ) : null}
     </span>
+  );
+}
+
+/** The floating panel every qrtz menu draws in (Menu, ActionMenu): surface, strong hairline, overlay shadow. */
+export function menuPanelStyle(t: Tokens): CSSProperties {
+  return {
+    zIndex: t.z.overlay,
+    minWidth: t.size.menuMin,
+    display: 'grid',
+    gap: t.space[0.5],
+    padding: t.space[1],
+    background: t.color.surface,
+    border: `${t.border.hairline} solid ${t.color.borderStrong}`,
+    borderRadius: t.radius.md,
+    boxShadow: t.shadow.overlay,
+  };
+}
+
+/** One menu item (role=menuitem), shared by Menu and ActionMenu: icon, lowercase label, danger tone. */
+export function MenuEntry({
+  item: it,
+  onPick,
+  'data-testid': testId,
+}: {
+  item: MenuItem;
+  /** Called before the item's onSelect (the menu closes and returns focus). */
+  onPick: () => void;
+  'data-testid'?: string | undefined;
+}) {
+  const t = useTheme();
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      tabIndex={-1}
+      disabled={it.disabled}
+      data-testid={testId}
+      data-danger={it.danger ? '' : undefined}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick();
+        it.onSelect();
+      }}
+      style={{
+        all: 'unset',
+        boxSizing: 'border-box',
+        cursor: it.disabled ? 'not-allowed' : 'pointer',
+        opacity: it.disabled ? tokens.opacity.disabled : 1,
+        display: 'flex',
+        alignItems: 'center',
+        gap: t.space[2],
+        height: tokens.size.row.sm,
+        padding: `0 ${t.space[2]}`,
+        borderRadius: t.radius.sm,
+        color: it.danger ? t.color.danger : t.color.text,
+        transition: transition('background', 'hover', t),
+      }}
+    >
+      {it.icon ? <Icon name={it.icon} size="sm" /> : null}
+      <Text variant="bodySm" tone={it.danger ? 'danger' : 'default'}>
+        {it.label.toLowerCase()}
+      </Text>
+    </button>
   );
 }

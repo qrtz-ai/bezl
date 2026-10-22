@@ -45,7 +45,7 @@ import {
   Toolbar,
 } from '../Layout';
 import {
-  ActionMenu,
+  MoreMenu,
   Banner,
   CommandPalette,
   Composer,
@@ -318,7 +318,7 @@ function Showcase({
               tone="record"
               onClick={() => {}}
             />
-            <ActionMenu
+            <MoreMenu
               label="more actions"
               items={[
                 { label: 'export .md', onSelect: () => {} },

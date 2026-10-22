@@ -493,7 +493,7 @@ export const AudioPlayer = forwardRef<
 });
 
 /** "…" overflow menu for secondary actions. */
-export function ActionMenu({
+export function MoreMenu({
   items,
   label = 'More',
   'data-testid': testId,

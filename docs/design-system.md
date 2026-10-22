@@ -53,7 +53,7 @@ Layout uses `Stack` (token gaps and padding only, semantic `as` for form/ul/li/n
 App and note pieces: `AppFrame`, `SideNav`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
 `ListRow`/`MeetingRow`, `SettingsSection`/`SettingRow`, `TranscriptRow`/`TranscriptList`,
 `NotesEditor`, `SummaryBlock`, `ChatQuestion`/`ChatAnswer`/`Composer`, `RecordingBar`, `RecordDot`,
-`LevelMeter`, `StreamingTranscript`/`PipelineSteps`/`CaptureStatus`, `Banner`, `AudioPlayer`, `ActionMenu`, `ConfirmDialog`,
+`LevelMeter`, `StreamingTranscript`/`PipelineSteps`/`CaptureStatus`, `Banner`, `AudioPlayer`, `MoreMenu`, `ConfirmDialog`,
 `CommandPalette`, `PermissionList`, `MiniHudFrame`/`NoDrag`/`StatusLines`. Each has a gallery
 entry. The gallery itself is `@qrtz/ui/gallery`, mounted by the dev-only gallery sub app.
 

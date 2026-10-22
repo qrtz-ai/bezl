@@ -29,6 +29,9 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1100, height: 720 },
+        // Times on the pages (echo history, nano dates) render the same on the box and on CI.
+        timezoneId: 'UTC',
+        locale: 'en-US',
       },
     },
   ],

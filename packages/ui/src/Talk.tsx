@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { ActionMenu } from './ActionMenu';
 import { useTheme } from './theme';
 import { transition, typeStyle, tokens } from './tokens';
 import { Text } from './Text';
 import { Icon } from './Icon';
-import { IconButton } from './Layout';
 import { Waveform } from './Waveform';
 
 export type TalkPillPhase =
@@ -99,7 +99,10 @@ export function TalkPill({
   );
 }
 
-/** One dictation in the talk history: the text, a quiet meta line, copy/delete. */
+/**
+ * One dictation in the talk history: the text at full width and a quiet meta line. A click (or Enter/Space)
+ * copies it; right-click (or Shift+F10 / the Menu key) opens an ActionMenu with copy and delete.
+ */
 export function TalkHistoryRow({
   text,
   meta,
@@ -115,40 +118,60 @@ export function TalkHistoryRow({
   onDelete: () => void;
 }) {
   const t = useTheme();
+  const hint = useId();
   return (
     <li
-      data-testid="talk-entry"
       style={{
         listStyle: 'none',
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) auto',
-        gap: t.space[3],
-        padding: `${t.space[3]} 0`,
         borderBottom: `${tokens.border.hairline} solid ${t.color.border}`,
-        transition: transition('background', 'hover', t),
       }}
     >
-      <div style={{ display: 'grid', gap: t.space[1], minWidth: 0 }}>
-        <Text data-testid="talk-entry-text">{text}</Text>
-        <Text variant="caption" muted data-testid="talk-entry-meta">
-          {meta}
-          {flag ? ` · ${flag}` : ''}
-        </Text>
-      </div>
-      <div style={{ display: 'flex', gap: t.space[1], alignItems: 'start' }}>
-        <IconButton
-          icon="copy"
-          label="copy"
+      <ActionMenu
+        label="entry actions"
+        data-testid="talk-entry"
+        actions={[
+          { id: 'copy', label: 'copy', icon: 'copy', onSelect: onCopy },
+          {
+            id: 'delete',
+            label: 'delete',
+            icon: 'trash',
+            danger: true,
+            onSelect: onDelete,
+          },
+        ]}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          aria-haspopup="menu"
+          aria-describedby={hint}
+          data-testid="talk-entry"
           onClick={onCopy}
-          data-testid="talk-entry-copy"
-        />
-        <IconButton
-          icon="trash"
-          label="delete"
-          onClick={onDelete}
-          data-testid="talk-entry-delete"
-        />
-      </div>
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onCopy();
+            }
+          }}
+          style={{
+            display: 'grid',
+            gap: t.space[1],
+            minWidth: 0,
+            padding: `${t.space[3]} 0`,
+            cursor: 'pointer',
+            transition: transition('background', 'hover', t),
+          }}
+        >
+          <Text data-testid="talk-entry-text">{text}</Text>
+          <Text variant="caption" muted data-testid="talk-entry-meta">
+            {meta}
+            {flag ? ` · ${flag}` : ''}
+          </Text>
+          <span id={hint} hidden>
+            click to copy, right-click for more
+          </span>
+        </div>
+      </ActionMenu>
     </li>
   );
 }

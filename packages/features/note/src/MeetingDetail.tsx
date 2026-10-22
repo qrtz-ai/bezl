@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  ActionMenu,
+  MoreMenu,
   AudioPlayer,
   Button,
   Callout,
@@ -260,7 +260,7 @@ export function MeetingDetail({
       <Stack gap={1}>
         <Toolbar
           end={
-            <ActionMenu
+            <MoreMenu
               label="meeting actions"
               data-testid="meeting-menu"
               items={[

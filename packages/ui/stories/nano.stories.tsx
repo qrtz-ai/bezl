@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import {
-  ActionMenu,
+  MoreMenu,
   AudioPlayer,
   Banner,
   Button,
@@ -249,7 +249,7 @@ function InteractDemo() {
         </div>
       </Row>
       <Row label="action menu, confirm, palette">
-        <ActionMenu
+        <MoreMenu
           label="more actions"
           items={[
             { label: 'export .md', onSelect: noop },

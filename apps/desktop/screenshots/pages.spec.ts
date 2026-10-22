@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 type Entry = { id: string; title: string; type: string };
@@ -73,3 +74,49 @@ for (const s of checks) {
     expect(spills).toEqual([]);
   });
 }
+
+// Echo's history entries: right-click opens the ActionMenu (copy, delete). Screenshot with it open, and an axe pass
+// (closed and open) with no serious or critical violations.
+const axeSource = readFileSync(
+  createRequire(import.meta.url).resolve('axe-core/axe.min.js'),
+  'utf8',
+);
+type AxeWindow = {
+  axe: {
+    run: (
+      c: unknown,
+      o: unknown,
+    ) => Promise<{
+      violations: { id: string; impact: string; nodes: unknown[] }[];
+    }>;
+  };
+};
+test('pages--echo: entry action menu', async ({ page }, info) => {
+  await open(page, 'pages--echo');
+  await page.addScriptTag({ content: axeSource });
+  const axe = () =>
+    page.evaluate(async () => {
+      const r = await (window as unknown as AxeWindow).axe.run(document, {
+        rules: { region: { enabled: false } },
+      });
+      return r.violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => `${v.id} (${v.nodes.length})`);
+    });
+  expect(await axe()).toEqual([]);
+  const entry = page.getByTestId('talk-entry').first();
+  await entry.click({ button: 'right', position: { x: 60, y: 12 } });
+  await page.getByTestId('talk-entry-menu').waitFor();
+  await expect(page.getByTestId('talk-entry-copy')).toBeFocused();
+  await page.screenshot({
+    path: info.outputPath('pages--echo-action-menu.png'),
+  });
+  await expect(page).toHaveScreenshot('pages--echo-action-menu.png', {
+    maxDiffPixels: 1500,
+    threshold: 0.2,
+  });
+  expect(await axe()).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('talk-entry-menu')).toHaveCount(0);
+  await expect(entry).toBeFocused();
+});

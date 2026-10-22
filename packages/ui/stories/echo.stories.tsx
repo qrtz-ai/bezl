@@ -8,6 +8,7 @@ import {
   Text,
   SpeechSetupPanel,
   TalkHistoryRow,
+  ActionMenu,
   TalkPill,
   TermList,
   Waveform,
@@ -211,5 +212,29 @@ export const Models: S = {
         onDelete={noop}
       />
     </Width>
+  ),
+};
+
+export const EntryActions: S = {
+  name: 'action menu (right-click)',
+  render: () => (
+    <ActionMenu
+      label="entry actions"
+      data-testid="story-actions"
+      actions={[
+        { id: 'copy', label: 'copy', icon: 'copy', onSelect: noop },
+        {
+          id: 'delete',
+          label: 'delete',
+          icon: 'trash',
+          danger: true,
+          onSelect: noop,
+        },
+      ]}
+    >
+      <div role="button" tabIndex={0}>
+        <Text>right-click me, or focus and press shift+f10</Text>
+      </div>
+    </ActionMenu>
   ),
 };
