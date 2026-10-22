@@ -24,7 +24,11 @@ function fake(state: { trusted: boolean }) {
           axTrusted: state.trusted,
           registered: { leftHalf: 'alt+cmd+left' },
           refused: {},
+          inputMonitoring: false,
         };
+      if (channel === 'module:get-settings')
+        return { snap: { shortcuts: {}, summon: { enabled: true } } };
+      if (channel === 'module:set-settings') return {};
       if (channel === 'snap:request-access')
         return { opened: true, axTrusted: state.trusted };
       return undefined;
@@ -93,5 +97,22 @@ describe('snap view: accessibility from inside qrtz', () => {
     const before = f.calls.filter((c) => c === 'snap:status').length;
     await wait(1100);
     expect(f.calls.filter((c) => c === 'snap:status').length).toBe(before);
+  });
+});
+
+describe('snap view: shortcuts and summon are the main page', () => {
+  it('shows summon with its permission state and every shortcut editor, not in opts', async () => {
+    const f = fake({ trusted: true });
+    await render(f.client);
+    expect(q('snap-settings-summon')).not.toBeNull();
+    expect(q('snap-summon-no-im')?.textContent).toContain(
+      'summon needs input monitoring',
+    );
+    expect(q('snap-settings-shortcuts')).not.toBeNull();
+    expect(q('snap-shortcut-leftHalf')).not.toBeNull();
+    expect(q('snap-clear-leftHalf')).not.toBeNull();
+    expect(q('snap-default-leftHalf')).not.toBeNull();
+    expect(q('snap-restore-all')).not.toBeNull();
+    expect(q('snap-group-0')).not.toBeNull();
   });
 });

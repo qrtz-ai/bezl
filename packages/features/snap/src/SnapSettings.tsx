@@ -13,17 +13,16 @@ import {
   Text,
 } from '@qrtz/ui';
 import {
-  SNAP_ACTIONS,
   SNAP_DEFAULT_SHORTCUTS,
+  SNAP_GROUPS,
   SNAP_LABELS,
   bindingFromKey,
   shortcutSymbols,
   type SnapAction,
   type SnapStatus,
 } from '@qrtz/core';
-import { useModuleSettings } from '@qrtz/core/react';
 
-type SnapSettingsSection = {
+export type SnapSettingsSection = {
   shortcuts?: Record<string, string>;
   disabledApps?: string[];
   statusItem?: boolean;
@@ -40,27 +39,139 @@ export function effectiveBinding(
     : SNAP_DEFAULT_SHORTCUTS[a];
 }
 
+/** A section title for each of SNAP_GROUPS, in order. */
+const GROUP_TITLES = [
+  'position',
+  'halves',
+  'corners',
+  'displays',
+  'thirds',
+  'size',
+  'history',
+];
+
 /**
- * ADR 0159: snap's own settings page, inside snap's view: Spectacle's shortcut editor (record, clear, back to the
- * default), the status item, and the apps snap leaves alone. Stored in snap's settings file (config `snap`).
+ * Snap's main page (Jared): Spectacle's shortcut editor, grouped as before. Click a shortcut, press the new keys;
+ * clear it, or put back the default. Stored in snap's settings file (config `snap`).
+ */
+export function ShortcutSections({
+  shortcuts,
+  status,
+  onChange,
+}: {
+  shortcuts: Record<string, string> | undefined;
+  status: SnapStatus | null;
+  onChange: (shortcuts: Record<string, string>) => void;
+}) {
+  const [recording, setRecording] = useState<SnapAction | null>(null);
+  const setShortcut = (a: SnapAction, binding: string) =>
+    onChange({ ...shortcuts, [a]: binding });
+  const held = status?.registered ? Object.keys(status.registered).length : 0;
+  return (
+    <>
+      <SettingsSection
+        title="shortcuts"
+        description="click a shortcut, then press the new keys. it needs ⌘, ⌥ or ⌃."
+        data-testid="snap-settings-shortcuts"
+      >
+        <SettingRow
+          label="spectacle's shortcuts"
+          description={
+            held ? (
+              <>
+                snap holds <Kbd>{String(held)}</Kbd> shortcuts right now.
+              </>
+            ) : undefined
+          }
+        >
+          <Button
+            variant="secondary"
+            onClick={() => onChange({ ...SNAP_DEFAULT_SHORTCUTS })}
+            data-testid="snap-restore-all"
+          >
+            restore all
+          </Button>
+        </SettingRow>
+      </SettingsSection>
+      {SNAP_GROUPS.map((group, i) => (
+        <SettingsSection
+          key={group.join()}
+          title={GROUP_TITLES[i] ?? ''}
+          data-testid={`snap-group-${i}`}
+        >
+          {group.map((a) => {
+            const binding = effectiveBinding(shortcuts, a);
+            const why = status?.refused[a];
+            return (
+              <SettingRow key={a} label={SNAP_LABELS[a]}>
+                <Stack dir="row" gap={1} align="center">
+                  {why ? <Badge tone="warning">{why}</Badge> : null}
+                  <Input
+                    aria-label={`${SNAP_LABELS[a]} shortcut`}
+                    readOnly
+                    value={
+                      recording === a
+                        ? 'press keys…'
+                        : binding
+                          ? shortcutSymbols(binding)
+                          : 'none'
+                    }
+                    onFocus={() => setRecording(a)}
+                    onBlur={() => setRecording(null)}
+                    onKeyDown={(e) => {
+                      if (recording !== a) return;
+                      e.preventDefault();
+                      if (e.key === 'Escape') return setRecording(null);
+                      const b = bindingFromKey(e);
+                      if (!b) return;
+                      setRecording(null);
+                      setShortcut(a, b);
+                      e.currentTarget.blur();
+                    }}
+                    data-testid={`snap-shortcut-${a}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="close"
+                    aria-label={`clear ${SNAP_LABELS[a]}`}
+                    onClick={() => setShortcut(a, '')}
+                    data-testid={`snap-clear-${a}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="undo"
+                    aria-label={`restore ${SNAP_LABELS[a]}`}
+                    disabled={binding === SNAP_DEFAULT_SHORTCUTS[a]}
+                    onClick={() => setShortcut(a, SNAP_DEFAULT_SHORTCUTS[a])}
+                    data-testid={`snap-default-${a}`}
+                  />
+                </Stack>
+              </SettingRow>
+            );
+          })}
+        </SettingsSection>
+      ))}
+    </>
+  );
+}
+
+/**
+ * ADR 0159: snap's opts modal (the gear): only the menu bar item and the apps snap leaves alone. The shortcuts and
+ * summon live on snap's main page.
  */
 export default function SnapSettings({
-  status,
-  onSaved,
+  snap,
+  set,
+  error,
 }: {
-  status: SnapStatus | null;
-  onSaved: () => void;
+  snap: SnapSettingsSection;
+  set: (p: SnapSettingsSection) => void;
+  error: string | null;
 }) {
-  const { settings, patch, error } = useModuleSettings();
-  const [recording, setRecording] = useState<SnapAction | null>(null);
   const [app, setApp] = useState('');
-  const snap = (settings?.snap ?? {}) as SnapSettingsSection;
-  const set = (p: SnapSettingsSection) => void patch('snap', p).then(onSaved);
-  const setShortcut = (a: SnapAction, binding: string) =>
-    set({ shortcuts: { ...snap.shortcuts, [a]: binding } });
   const apps = snap.disabledApps ?? [];
-
-  if (!settings && !error) return null;
   return (
     <>
       {error ? (
@@ -70,78 +181,6 @@ export default function SnapSettings({
           data-testid="snap-settings-error"
         />
       ) : null}
-      <SummonSection
-        summon={snap.summon ?? {}}
-        status={status}
-        onChange={(p) => set({ summon: { ...snap.summon, ...p } })}
-      />
-      <SettingsSection
-        title="shortcuts"
-        description="click a shortcut, then press the new keys. it needs ⌘, ⌥ or ⌃."
-        data-testid="snap-settings-shortcuts"
-      >
-        {SNAP_ACTIONS.map((a) => {
-          const binding = effectiveBinding(snap.shortcuts, a);
-          const why = status?.refused[a];
-          return (
-            <SettingRow key={a} label={SNAP_LABELS[a]}>
-              <Stack dir="row" gap={1} align="center">
-                {why ? <Badge tone="warning">{why}</Badge> : null}
-                <Input
-                  aria-label={`${SNAP_LABELS[a]} shortcut`}
-                  readOnly
-                  value={
-                    recording === a
-                      ? 'press keys…'
-                      : binding
-                        ? shortcutSymbols(binding)
-                        : 'none'
-                  }
-                  onFocus={() => setRecording(a)}
-                  onBlur={() => setRecording(null)}
-                  onKeyDown={(e) => {
-                    if (recording !== a) return;
-                    e.preventDefault();
-                    if (e.key === 'Escape') return setRecording(null);
-                    const b = bindingFromKey(e);
-                    if (!b) return;
-                    setRecording(null);
-                    setShortcut(a, b);
-                    e.currentTarget.blur();
-                  }}
-                  data-testid={`snap-shortcut-${a}`}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon="close"
-                  aria-label={`clear ${SNAP_LABELS[a]}`}
-                  onClick={() => setShortcut(a, '')}
-                  data-testid={`snap-clear-${a}`}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon="undo"
-                  aria-label={`restore ${SNAP_LABELS[a]}`}
-                  disabled={binding === SNAP_DEFAULT_SHORTCUTS[a]}
-                  onClick={() => setShortcut(a, SNAP_DEFAULT_SHORTCUTS[a])}
-                  data-testid={`snap-default-${a}`}
-                />
-              </Stack>
-            </SettingRow>
-          );
-        })}
-        <Stack dir="row" justify="end">
-          <Button
-            variant="secondary"
-            onClick={() => set({ shortcuts: { ...SNAP_DEFAULT_SHORTCUTS } })}
-            data-testid="snap-restore-all"
-          >
-            restore spectacle's shortcuts
-          </Button>
-        </Stack>
-      </SettingsSection>
       <SettingsSection title="menu bar" data-testid="snap-settings-menu">
         <SettingRow label="show snap in the menu bar">
           <Switch
@@ -195,12 +234,6 @@ export default function SnapSettings({
           </Button>
         </Stack>
       </SettingsSection>
-      {status?.registered && Object.keys(status.registered).length ? (
-        <Text variant="caption" muted>
-          snap holds <Kbd>{String(Object.keys(status.registered).length)}</Kbd>{' '}
-          shortcuts right now.
-        </Text>
-      ) : null}
     </>
   );
 }
@@ -279,7 +312,8 @@ export function SummonSection({
                 data-testid="snap-summon-no-im"
               >
                 turn on qrtz in system settings → privacy & security → input
-                monitoring. the chord starts working as soon as it's on.
+                monitoring. if qrtz is already on there, quit qrtz and open it
+                again.
               </Callout>
             )
           ) : null}

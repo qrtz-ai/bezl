@@ -941,7 +941,23 @@ export function createMockBridge(): TauriBridge {
           ...overrides,
         }))
           if (b) registered[a] = b;
-      return { running: on, axTrusted: on && snapAx, registered, refused: {} };
+      const summon = (config.snap?.summon ?? {}) as { enabled?: boolean };
+      return {
+        running: on,
+        axTrusted: on && snapAx,
+        registered,
+        refused: {},
+        inputMonitoring: on,
+        summonActive: on && !!summon.enabled,
+        ...(summon.enabled
+          ? {
+              apps: [
+                { bundleId: 'com.openai.chat', name: 'ChatGPT' },
+                { bundleId: 'com.apple.Safari', name: 'Safari' },
+              ],
+            }
+          : {}),
+      };
     },
     // `?snapAx=0` starts snap untrusted; the button grants it (as switching qrtz on in system settings would).
     'snap:request-access': () => {

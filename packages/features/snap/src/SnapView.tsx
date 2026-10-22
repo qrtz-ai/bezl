@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Badge,
   Callout,
-  Kbd,
   ModuleSettingsButton,
   ModuleSettingsModal,
   Page,
   PermissionPrompt,
-  SettingRow,
-  SettingsSection,
   Text,
 } from '@qrtz/ui';
+import { type SnapStatus } from '@qrtz/core';
 import {
-  SNAP_GROUPS,
-  SNAP_LABELS,
-  shortcutSymbols,
-  type SnapStatus,
-} from '@qrtz/core';
-import { useQrtz, useQrtzEvent, useSubAppRoute } from '@qrtz/core/react';
+  useModuleSettings,
+  useQrtz,
+  useQrtzEvent,
+  useSubAppRoute,
+} from '@qrtz/core/react';
 import { SETTINGS_PATH } from '@qrtz/core';
-import SnapSettings from './SnapSettings';
+import SnapSettings, {
+  ShortcutSections,
+  SummonSection,
+  type SnapSettingsSection,
+} from './SnapSettings';
 
 /**
- * qrtz snap (ADR 0159): every Spectacle action with the shortcut qrtz-snap holds for it. The shortcut editor and the
- * options are snap's own opts modal (the gear), not the global settings.
+ * qrtz snap (ADR 0159): the summon agent and every Spectacle action with its editable shortcut are the main page.
+ * Snap's opts modal (the gear) keeps only the menu bar item and the apps snap leaves alone. One settings read serves
+ * both, so a change on either side shows on the other.
  */
 export default function SnapView() {
   const qrtz = useQrtz();
@@ -45,6 +46,9 @@ export default function SnapView() {
     [qrtz],
   );
   useEffect(load, [load, changed, settingsOpen]);
+  const { settings, patch, error: settingsError } = useModuleSettings();
+  const snap = (settings?.snap ?? {}) as SnapSettingsSection;
+  const set = (p: SnapSettingsSection) => void patch('snap', p).then(load);
   // The accessibility prompt is showing: read the grant every second (qrtz-app reads it live), so the prompt goes
   // away and the shortcuts work the moment the user switches qrtz on, no relaunch.
   const needsAx = !!status?.running && !status.axTrusted;
@@ -69,7 +73,9 @@ export default function SnapView() {
       onClose={closeSettings}
       data-testid="snap-settings"
     >
-      <SnapSettings status={status} onSaved={load} />
+      {settings || settingsError ? (
+        <SnapSettings snap={snap} set={set} error={settingsError} />
+      ) : null}
     </ModuleSettingsModal>
   );
   return (
@@ -108,41 +114,27 @@ export default function SnapView() {
           data-testid="snap-no-ax"
         />
       ) : null}
-      {SNAP_GROUPS.map((group, i) => (
-        <SettingsSection
-          key={group.join()}
-          title={
-            [
-              'position',
-              'halves',
-              'corners',
-              'displays',
-              'thirds',
-              'size',
-              'history',
-            ][i] ?? ''
-          }
-          data-testid={`snap-group-${i}`}
-        >
-          {group.map((a) => {
-            const keys = status?.registered[a];
-            const why = status?.refused[a];
-            return (
-              <SettingRow key={a} label={SNAP_LABELS[a]}>
-                {keys ? (
-                  <Kbd>{shortcutSymbols(keys)}</Kbd>
-                ) : why ? (
-                  <Badge tone="warning">{why}</Badge>
-                ) : (
-                  <Text variant="caption" muted>
-                    no shortcut
-                  </Text>
-                )}
-              </SettingRow>
-            );
-          })}
-        </SettingsSection>
-      ))}
+      {settingsError ? (
+        <Callout
+          tone="danger"
+          title={settingsError}
+          data-testid="snap-main-error"
+        />
+      ) : null}
+      {settings ? (
+        <>
+          <SummonSection
+            summon={snap.summon ?? {}}
+            status={status}
+            onChange={(p) => set({ summon: { ...snap.summon, ...p } })}
+          />
+          <ShortcutSections
+            shortcuts={snap.shortcuts}
+            status={status}
+            onChange={(shortcuts) => set({ shortcuts })}
+          />
+        </>
+      ) : null}
     </Page>
   );
 }
