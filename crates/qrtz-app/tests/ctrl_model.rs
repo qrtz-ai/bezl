@@ -323,9 +323,15 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     std::fs::remove_file(&answer).unwrap();
     assert!(m.consented() && m.consent().installed.is_some());
     std::fs::write(&answer, saved).unwrap();
-    // QRT-293: off a macOS `laya` build nothing decides (no rules fallback): no scorer, and why.
+    // QRT-293: off a macOS `laya` build nothing decides (no rules fallback): no scorer, and why. QRT-332: on one
+    // (every macOS app build) the installed model with no helper runtime fails to load instead.
     let why = qrtz_ctrl::laya::select_scorer(&c, None).err();
-    assert_eq!(why, Some(qrtz_ctrl::decide::ModelStatus::Unavailable));
+    let expect = if qrtz_ctrl::laya::RUNTIME_BUILD {
+        qrtz_ctrl::decide::ModelStatus::LoadFailed
+    } else {
+        qrtz_ctrl::decide::ModelStatus::Unavailable
+    };
+    assert_eq!(why, Some(expect));
     assert_eq!(m.state(false).status, "unavailable");
     // Withdrawing consent deletes the model; the path no longer reaches the scorer.
     m.set_consent(false, 2).unwrap();
@@ -475,8 +481,14 @@ mod router {
         assert_eq!(v["ok"], true, "{v}");
         assert_eq!(v["data"]["state"], "off", "{v}");
         assert_eq!(v["data"]["scorer"], "heuristic");
-        // QRT-293: this build can't run the model, so ctrl is blocked and says so.
-        assert_eq!(v["data"]["status"], "unavailable", "{v}");
+        // QRT-293: a build that can't run the model blocks ctrl and says so; QRT-332: a macOS `laya` build
+        // reports the model as not downloaded yet.
+        let blocked = if qrtz_ctrl::laya::RUNTIME_BUILD {
+            "not_downloaded"
+        } else {
+            "unavailable"
+        };
+        assert_eq!(v["data"]["status"], blocked, "{v}");
         assert_eq!(v["data"]["sizeBytes"], 483_924_446u64);
         let hits = || srv.faults.lock().unwrap().hits.clone();
         assert!(hits().is_empty(), "no request before the yes");
