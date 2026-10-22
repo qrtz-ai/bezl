@@ -19,6 +19,9 @@ public final class MacSnapSummon {
 
     public init() {}
 
+    /// The tap's callback holds this instance unretained: tear the tap down before the instance goes away.
+    deinit { stop() }
+
     public var inputMonitoring: Bool { CGPreflightListenEventAccess() }
 
     public var status: SnapSummonStatus {
@@ -33,6 +36,10 @@ public final class MacSnapSummon {
             return
         }
         if apps == nil { apps = Self.installedApps() }
+        filter.blocked = c.clashesWithEcho
+        filter.reset()
+        // Only a bundle id the picker offered (an installed app) is ever summoned; summon() checks again.
+        if !SnapSummon.allowed(c.bundleId, installed: apps ?? []) { config.bundleId = "" }
         if requestAccess, !CGPreflightListenEventAccess() { _ = CGRequestListenEventAccess() }
         if tap == nil, !install() { startRetry() }
     }
@@ -87,7 +94,9 @@ public final class MacSnapSummon {
 
     func summon() {
         let chosen = config.bundleId
-        guard config.enabled, !chosen.isEmpty else { NSSound.beep(); return }
+        guard config.enabled, !config.clashesWithEcho, SnapSummon.allowed(chosen, installed: apps ?? []) else {
+            NSSound.beep(); return
+        }
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         switch SnapSummon.step(frontmost: front, chosen: chosen, previous: previous) {
         case .summon(let prev):

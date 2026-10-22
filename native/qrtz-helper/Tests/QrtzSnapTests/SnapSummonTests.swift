@@ -119,4 +119,30 @@ final class SnapSummonTests: XCTestCase {
         s.configure(on)
         XCTAssertEqual(b.asks, [false, true, false])
     }
+
+    func testOnlyInstalledAppsAreAllowed() {
+        let apps = [SnapApp(bundleId: "com.openai.chat", name: "ChatGPT")]
+        XCTAssertTrue(SnapSummon.allowed("com.openai.chat", installed: apps))
+        XCTAssertFalse(SnapSummon.allowed("com.evil.payload", installed: apps))
+        XCTAssertFalse(SnapSummon.allowed("", installed: apps))
+        XCTAssertFalse(SnapSummon.allowed("com.openai.chat", installed: []))
+    }
+
+    /// Echo's talk key is right ⌘: right ⌘ first (dictation starts in Echo), then left ⌘. The chord must not
+    /// summon, in either order, and a reset keeps it blocked.
+    func testClashBlocksTheChordInEitherOrder() {
+        var f = F(blocked: true)
+        XCTAssertFalse(flags(&f, 54, r))
+        XCTAssertFalse(flags(&f, 55, both))
+        XCTAssertFalse(flags(&f, 54, l))
+        XCTAssertFalse(flags(&f, 55, 0))
+        XCTAssertFalse(flags(&f, 55, l)); XCTAssertFalse(flags(&f, 54, both)); XCTAssertFalse(flags(&f, 55, r))
+        _ = flags(&f, 54, 0)
+        f.reset()
+        XCTAssertTrue(f.blocked)
+        // Unblocked, the same right-then-left order fires.
+        var g = F()
+        _ = flags(&g, 54, r); _ = flags(&g, 55, both)
+        XCTAssertTrue(flags(&g, 54, l))
+    }
 }
