@@ -67,7 +67,7 @@
         "teamId": "MR26CCZ496"
       },
       "dependencies": [],
-      "manifestSha256": "78a9062ef757507179780c2c1192ebb61736393c8febbe45a939e408b7223d58",
+      "manifestSha256": "fd5841d8ff8c135a752030eb02b3475a42bafe2d25e1c8e01e56160a4868c99a",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.1.2"
