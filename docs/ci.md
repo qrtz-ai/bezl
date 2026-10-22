@@ -45,6 +45,11 @@ other files keeps the earlier green run. Everything not listed here lands on gre
   updater, downloader, and IPC between processes
 - version bumps and the module manifest format (`module.json` schema, `Permission` enum)
 - `.github/workflows/*` also need Jared's review
+- module signature and index verification (root → timestamp → index chain): `crates/qrtz-modules/src/index.rs`,
+  `crates/qrtz-modules/src/trust.rs`
+- module hosting: `crates/qrtz-app/src/module_hosting.rs`, `crates/qrtz-app/src/module_hosts.json`
+- speech process spawning, confinement and download: `crates/qrtz-speech/src/spawn.rs`,
+  `crates/qrtz-speech/src/confine.rs`, `crates/qrtz-speech/src/download.rs`
 
 ## `app-release.yml`: qrtz.app releases (ADR 0181)
 
