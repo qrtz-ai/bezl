@@ -1,4 +1,8 @@
-import { Card as ShadcnCard } from './components/ui/card';
+import {
+  Card as ShadcnCard,
+  CardContent,
+  CardFooter,
+} from './components/ui/card';
 import { cn } from './lib/utils';
 import { tokens } from './tokens';
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
@@ -42,8 +46,8 @@ export function CardGrid({
 }
 
 /**
- * One cell of a CardGrid: fills its cell, a flex column whose `footer` sits at the bottom (margin-top: auto) so
- * buttons line up across a row whatever the text above them.
+ * One cell of a CardGrid: a stock shadcn Card that fills its cell, content above and the `footer` in a CardFooter
+ * at the bottom, so buttons line up across a row whatever the text above them.
  */
 export function GridCard({
   children,
@@ -56,7 +60,6 @@ export function GridCard({
   role?: string;
   'data-testid'?: string;
 }) {
-  const t = useTheme();
   return (
     <div
       role={role}
@@ -64,44 +67,30 @@ export function GridCard({
       data-grid-card=""
       style={{ display: 'flex', minWidth: 0, height: '100%' }}
     >
-      <Card
-        padding={4}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: t.space[3],
-        }}
-      >
-        {children}
+      <ShadcnCard className="tw:min-w-0 tw:flex-1">
+        <CardContent className="tw:flex-1">{children}</CardContent>
         {footer ? (
-          <div
+          <CardFooter
             data-card-footer=""
-            style={{
-              marginTop: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: t.space[2],
-            }}
+            className="tw:flex-col tw:items-stretch tw:gap-2"
           >
             {footer}
-          </div>
+          </CardFooter>
         ) : null}
-      </Card>
+      </ShadcnCard>
     </div>
   );
 }
 
-const PAD = { 3: 'tw:p-3', 4: 'tw:p-4', 6: 'tw:p-6' } as const;
-
-/** qrtz.ai card on shadcn Card: 1px border, rounded-lg, generous padding, no shadow, block flow (not shadcn's column). */
+/**
+ * qrtz.ai card: a stock shadcn Card (its padding, gap, radius, border and shadow) with the children in a
+ * CardContent. `selected` swaps the border and background colors; `padding` is kept for API compatibility.
+ */
 export function Card({
   children,
-  padding = 6,
+  padding: _padding,
   interactive,
   selected,
-  style,
   className,
   ...rest
 }: {
@@ -111,24 +100,16 @@ export function Card({
   selected?: boolean;
   style?: CSSProperties;
 } & HTMLAttributes<HTMLDivElement>) {
-  const t = useTheme();
   return (
     <ShadcnCard
       {...rest}
       className={cn(
-        'tw:block tw:gap-0 tw:border-border tw:rounded-lg tw:py-0 tw:text-[inherit] tw:shadow-none',
-        PAD[padding],
-        selected &&
-          'tw:border-(--q-color-border-strong) tw:bg-(--q-color-surface-hover)',
+        selected && 'tw:border-border-strong tw:bg-muted',
         interactive && 'tw:cursor-pointer',
         className,
       )}
-      style={{
-        transition: `background ${t.motion.fast} ${t.motion.easeOut}, border-color ${t.motion.fast} ${t.motion.easeOut}`,
-        ...style,
-      }}
     >
-      {children}
+      <CardContent>{children}</CardContent>
     </ShadcnCard>
   );
 }

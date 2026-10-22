@@ -1,9 +1,7 @@
 import { Button as ShadcnButton } from './components/ui/button';
 import { cn } from './lib/utils';
 import { lowerTitle } from './case';
-import { typeStyle } from './tokens';
 import type { ButtonHTMLAttributes, CSSProperties } from 'react';
-import { useTheme } from './theme';
 import { Spinner } from './Spinner';
 import { Icon, type IconName } from './Icon';
 
@@ -20,36 +18,17 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   block?: boolean;
 }
 
-const VARIANT: Record<
-  ButtonVariant,
-  {
-    shadcn: 'default' | 'secondary' | 'ghost' | 'destructive';
-    className: string;
-  }
-> = {
-  primary: { shadcn: 'default', className: 'tw:border-primary' },
-  secondary: { shadcn: 'secondary', className: 'tw:border-border' },
-  ghost: {
-    shadcn: 'ghost',
-    className: 'tw:border-border tw:bg-transparent tw:text-foreground',
-  },
-  // qrtz's solid danger (dangerSolid, 4.8:1 with its text) instead of shadcn's 60% destructive in dark.
-  danger: {
-    shadcn: 'destructive',
-    className:
-      'tw:border-(--q-color-danger-solid) tw:bg-(--q-color-danger-solid) tw:text-(--q-color-danger-solid-text) tw:dark:bg-(--q-color-danger-solid) tw:hover:bg-[color-mix(in_srgb,var(--q-color-danger-solid)_88%,black)] tw:dark:hover:bg-[color-mix(in_srgb,var(--q-color-danger-solid)_88%,black)]',
-  },
-};
-const SIZE: Record<ButtonSize, string> = {
-  sm: 'tw:h-7 tw:px-3 tw:has-[>svg]:px-3',
-  md: 'tw:h-[34px] tw:px-4 tw:has-[>svg]:px-4',
-  lg: 'tw:h-10 tw:px-5 tw:has-[>svg]:px-5',
-};
+const VARIANT = {
+  primary: 'default',
+  secondary: 'secondary',
+  ghost: 'ghost',
+  danger: 'destructive',
+} as const;
+const SIZE = { sm: 'sm', md: 'default', lg: 'lg' } as const;
 
 /**
- * The button, on shadcn's Button (cva variants: primary = default, secondary, ghost, danger = destructive) with
- * qrtz geometry: 28/34/40px, a 1px border on every variant, label type, Feather icons at 14px, and the global
- * focus ring (shadcn's ring is off so there is one ring). Disabled stays hoverable (its title still shows).
+ * The button: stock shadcn Button (variants primary = default, secondary, ghost, danger = destructive; sizes sm,
+ * md = default, lg) on the qrtz tokens. Only qrtz behavior is added: lowercase copy, Feather icons, loading.
  */
 export function Button({
   variant = 'secondary',
@@ -59,34 +38,33 @@ export function Button({
   block,
   disabled,
   style,
+  className,
   children,
   ...rest
 }: ButtonProps) {
-  const t = useTheme();
   const off = disabled || loading;
-  const v = VARIANT[variant];
   return (
     <ShadcnButton
       type="button"
       disabled={off}
       aria-busy={loading || undefined}
       {...rest}
-      variant={v.shadcn}
+      variant={VARIANT[variant]}
+      size={SIZE[size]}
       // Our variant name, which primaryButtons() and the tests read (shadcn's would be "default").
       data-variant={variant}
+      // Non-stock: long labels clip inside the container instead of spilling out (QRT-304).
       className={cn(
-        'tw:max-w-full tw:shrink tw:cursor-pointer tw:overflow-hidden tw:border tw:shadow-none tw:transition-[opacity,background] tw:focus-visible:ring-0 tw:disabled:pointer-events-auto tw:disabled:cursor-not-allowed tw:disabled:opacity-55 tw:[&_svg:not([class*=size-])]:size-3.5',
-        v.className,
-        SIZE[size],
-        block && 'tw:box-border tw:w-full',
+        'tw:max-w-full tw:overflow-hidden',
+        // Ghost text is the foreground color, not the muted text it may sit in (contrast).
+        variant === 'ghost' && 'tw:text-foreground',
+        // Danger fills with dangerSolid (4.8:1 with white); --destructive stays the brighter danger text color.
+        variant === 'danger' &&
+          'tw:bg-(--q-color-danger-solid) tw:dark:bg-(--q-color-danger-solid) tw:hover:bg-(--q-color-danger-solid)',
+        block && 'tw:w-full',
+        className,
       )}
-      style={
-        {
-          ...typeStyle('label', t),
-          WebkitAppRegion: 'no-drag',
-          ...style,
-        } as CSSProperties
-      }
+      style={{ WebkitAppRegion: 'no-drag', ...style } as CSSProperties}
     >
       {loading ? (
         <Spinner size={14} />

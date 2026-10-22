@@ -14,7 +14,12 @@ import { Text } from './Text';
 import { SCRIM_CLASS, useModalLayer } from './Modal';
 import { Switch as ShadcnSwitch } from './components/ui/switch';
 import { cn } from './lib/utils';
-import { Dialog as DialogRoot, DialogContent } from './components/ui/dialog';
+import {
+  Dialog as DialogRoot,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from './components/ui/dialog';
 
 /**
  * A small modal dialog (a consent, a confirm) on shadcn's Dialog: backdrop, Esc / backdrop-click to close, focus
@@ -67,13 +72,12 @@ export function Dialog({
           onCloseAutoFocus={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="tw:block tw:max-w-[calc(100vw-32px)] tw:gap-0 tw:overflow-hidden tw:border-border-strong tw:bg-popover tw:p-0"
           style={{ width }}
         >
           {title ? (
-            <div className="tw:border-b tw:border-border tw:px-5 tw:py-4">
-              <Text variant="h3">{lowerTitle(title)}</Text>
-            </div>
+            <DialogHeader>
+              <DialogTitle>{lowerTitle(title)}</DialogTitle>
+            </DialogHeader>
           ) : null}
           {children}
         </DialogContent>
@@ -263,12 +267,8 @@ export function Switch({
       aria-label={label}
       disabled={disabled}
       data-testid={testId}
-      className={cn(
-        'tw:h-[18px] tw:w-8 tw:p-0 tw:cursor-pointer tw:rounded-lg tw:border-0 tw:shadow-none tw:disabled:cursor-not-allowed tw:data-[state=unchecked]:bg-border-strong tw:dark:data-[state=unchecked]:bg-border-strong',
-        // With a label the wrapper dims both; the switch must not dim twice.
-        withLabel && 'tw:disabled:opacity-100',
-      )}
-      thumbClassName="tw:size-3.5! tw:rounded-md tw:data-[state=checked]:translate-x-4 tw:data-[state=unchecked]:translate-x-0.5 tw:data-[state=checked]:bg-primary-foreground tw:data-[state=unchecked]:bg-foreground"
+      // With a label the wrapper dims both; the switch must not dim twice.
+      className={cn(withLabel && 'tw:disabled:opacity-100')}
     />
   );
   if (!withLabel) return control;

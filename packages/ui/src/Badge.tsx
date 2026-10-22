@@ -1,8 +1,6 @@
-import { typeStyle } from './tokens';
-import type { ReactNode } from 'react';
-import { useTheme } from './theme';
-import { Badge as ShadcnBadge } from './components/ui/badge';
 import { cn } from './lib/utils';
+import type { ReactNode } from 'react';
+import { Badge as ShadcnBadge } from './components/ui/badge';
 
 export type BadgeTone =
   | 'neutral'
@@ -11,18 +9,15 @@ export type BadgeTone =
   | 'warning'
   | 'danger';
 
-const TONE: Record<BadgeTone, string> = {
-  neutral: 'tw:[--badge:var(--q-color-text-muted)]',
-  primary: 'tw:[--badge:var(--q-color-primary)]',
-  success: 'tw:[--badge:var(--q-color-success)]',
-  warning: 'tw:[--badge:var(--q-color-warning)]',
-  danger: 'tw:[--badge:var(--q-color-danger)]',
-};
+const TONE = {
+  neutral: { variant: 'secondary', className: undefined },
+  primary: { variant: 'default', className: undefined },
+  success: { variant: 'outline', className: 'tw:text-(--q-color-success)' },
+  warning: { variant: 'outline', className: 'tw:text-(--q-color-warning)' },
+  danger: { variant: 'destructive', className: undefined },
+} as const;
 
-/**
- * qrtz.ai badge on shadcn's outline Badge: tinted bg (10%), tinted border (20%), label type, sm radius. It wraps and
- * shrinks like the old span (shadcn's nowrap, shrink-0 and centering are off).
- */
+/** qrtz.ai badge: stock shadcn Badge; tones pick its variant (success and warning are outline in the tone color). */
 export function Badge({
   children,
   tone = 'primary',
@@ -34,17 +29,13 @@ export function Badge({
   role?: 'status' | 'alert';
   'data-testid'?: string;
 }) {
-  const t = useTheme();
   return (
     <ShadcnBadge
-      variant="outline"
+      variant={TONE[tone].variant}
       data-testid={testId}
       role={role}
-      className={cn(
-        TONE[tone],
-        'tw:w-auto tw:shrink tw:justify-start tw:overflow-visible tw:rounded-sm tw:whitespace-normal tw:border-[color-mix(in_srgb,var(--badge)_20%,transparent)] tw:bg-[color-mix(in_srgb,var(--badge)_10%,transparent)] tw:text-(--badge) tw:transition-none',
-      )}
-      style={typeStyle('label', t)}
+      // The one non-stock class: a long badge clips inside its container (QRT-304).
+      className={cn('tw:max-w-full', TONE[tone].className)}
     >
       {children}
     </ShadcnBadge>

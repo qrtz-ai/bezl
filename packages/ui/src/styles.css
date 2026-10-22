@@ -61,8 +61,6 @@
   --color-border-strong: var(--q-color-border-strong);
   --color-overlay: var(--q-color-overlay);
   --color-danger: var(--q-color-danger);
-  /* Spacing: tokens.space is a 4px grid (space[1] = 4px), so tw:p-2 = 8px = space[2]. */
-  --spacing: var(--q-space-1);
   --radius-xs: var(--q-radius-xs);
   --radius-sm: var(--q-radius-sm);
   --radius-md: var(--q-radius-md);
@@ -82,10 +80,6 @@
   --font-weight-normal: var(--q-font-weight);
   --font-weight-medium: var(--q-font-weight);
   --font-weight-semibold: var(--q-font-weight);
-  --shadow-xs: none;
-  --shadow-sm: none;
-  --shadow-md: var(--q-shadow-overlay);
-  --shadow-lg: var(--q-shadow-overlay);
   --z-index-50: var(--q-z-dialog);
   --animate-in: q-fade-in var(--q-motion-fast) var(--q-motion-ease-out);
 }

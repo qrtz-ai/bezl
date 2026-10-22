@@ -7,12 +7,12 @@ import {
   type RefObject,
 } from 'react';
 import {
+  DialogHeader,
   Dialog as DialogRoot,
   DialogContent,
   DialogTitle,
 } from './components/ui/dialog';
 import { cn } from './lib/utils';
-import { Text } from './Text';
 import { IconButton } from './Layout';
 import { lowerTitle } from './case';
 
@@ -138,7 +138,7 @@ export function Modal({
         data-testid={testId ? `${testId}-scrim` : undefined}
         data-modal-scrim=""
         onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-        className={cn(SCRIM_CLASS, 'tw:px-4 tw:pb-4 tw:pt-[10vh]')}
+        className={cn(SCRIM_CLASS, 'tw:items-center')}
       >
         <DialogContent
           inline
@@ -152,17 +152,14 @@ export function Modal({
           onCloseAutoFocus={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="tw:flex tw:max-h-[80vh] tw:max-w-full tw:flex-col tw:gap-0 tw:overflow-hidden tw:border-border tw:bg-popover tw:p-0"
+          // Long content scrolls inside the dialog instead of running off the screen.
+          className="tw:max-h-[80vh] tw:overflow-y-auto"
           style={{ width }}
         >
-          <div className="tw:flex tw:min-w-0 tw:flex-none tw:items-center tw:gap-2 tw:pt-5 tw:pr-4 tw:pb-2 tw:pl-5">
-            <DialogTitle asChild>
-              <span className="tw:min-w-0 tw:flex-1">
-                <Text variant="h3" truncate>
-                  {lowerTitle(title)}
-                </Text>
-              </span>
-            </DialogTitle>
+          <DialogHeader>
+            <DialogTitle>{lowerTitle(title)}</DialogTitle>
+          </DialogHeader>
+          <span className="tw:absolute tw:top-4 tw:right-4">
             <IconButton
               icon="close"
               variant="ghost"
@@ -170,10 +167,8 @@ export function Modal({
               onClick={onClose}
               data-testid={testId ? `${testId}-close` : undefined}
             />
-          </div>
-          <div className="tw:min-h-0 tw:min-w-0 tw:overflow-x-hidden tw:overflow-y-auto tw:px-5 tw:pt-3 tw:pb-5">
-            {children}
-          </div>
+          </span>
+          {children}
         </DialogContent>
       </div>
     </DialogRoot>

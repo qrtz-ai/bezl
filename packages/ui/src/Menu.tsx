@@ -7,7 +7,6 @@ import {
 } from './components/ui/dropdown-menu';
 import { Icon, type IconName } from './Icon';
 import { IconButton } from './Layout';
-import { Text } from './Text';
 
 export interface MenuItem {
   id: string;
@@ -72,7 +71,6 @@ export function Menu({
           data-q-no-ring
           data-testid={testId ? `${testId}-menu` : undefined}
           onCloseAutoFocus={(e) => e.stopPropagation()}
-          className="tw:z-40 tw:grid tw:min-w-[180px] tw:gap-0.5 tw:border-border-strong tw:bg-popover"
         >
           {items.map((it) => (
             <DropdownMenuItem
@@ -83,12 +81,9 @@ export function Menu({
               data-danger={it.danger ? '' : undefined}
               onClick={(e) => e.stopPropagation()}
               onSelect={() => it.onSelect()}
-              className="tw:h-7 tw:cursor-pointer tw:py-0 tw:data-[disabled]:cursor-not-allowed tw:focus:bg-accent"
             >
               {it.icon ? <Icon name={it.icon} size="sm" /> : null}
-              <Text variant="bodySm" tone={it.danger ? 'danger' : 'default'}>
-                {it.label.toLowerCase()}
-              </Text>
+              {it.label.toLowerCase()}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

@@ -733,10 +733,7 @@ export function SettingsSection({
       {variant === 'plain' ? (
         children
       ) : (
-        <ShadcnCard
-          data-settings-card=""
-          className="tw:block tw:min-w-0 tw:gap-0 tw:border-border tw:overflow-hidden tw:rounded-lg tw:py-2 tw:text-[inherit] tw:shadow-none"
-        >
+        <ShadcnCard data-settings-card="">
           {cells.map((c, i) => (
             <div
               key={i}

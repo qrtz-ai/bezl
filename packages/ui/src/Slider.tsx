@@ -52,7 +52,6 @@ export function Slider({
         value={[value]}
         onValueChange={([v]) => onChange?.(v!)}
         onValueCommit={([v]) => onCommit?.(v!)}
-        className="tw:min-w-0 tw:flex-auto tw:cursor-pointer"
         thumbProps={{
           'aria-label': label.toLowerCase(),
           'data-testid': testId,

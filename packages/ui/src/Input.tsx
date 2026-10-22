@@ -1,5 +1,4 @@
 import { Input as ShadcnInput } from './components/ui/input';
-import { cn } from './lib/utils';
 import {
   Select as ShadcnSelect,
   SelectContent,
@@ -32,26 +31,12 @@ const useFieldStyle = () => {
   } as const;
 };
 
-/**
- * A text field on shadcn's Input with the qrtz field geometry (34px, body type, bg background) and the one global
- * focus ring (shadcn's ring is off). Text selection keeps the qrtz selection color.
- */
+/** A text field: stock shadcn Input on the qrtz tokens. */
 export const Input = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement>
->(function Input({ style, className, ...rest }, ref) {
-  const t = useTheme();
-  return (
-    <ShadcnInput
-      ref={ref}
-      {...rest}
-      className={cn(
-        'tw:h-[34px] tw:border-border tw:bg-background tw:px-3 tw:py-0 tw:text-foreground tw:shadow-none tw:focus-visible:ring-0 tw:dark:bg-background tw:selection:bg-(--q-color-selection) tw:selection:text-foreground',
-        className,
-      )}
-      style={{ ...typeStyle('body', t), ...style }}
-    />
-  );
+>(function Input(props, ref) {
+  return <ShadcnInput ref={ref} {...props} />;
 });
 
 /** Dropdown options are UI chrome: lowercase (brand rule), including brand and model names. */
@@ -96,34 +81,25 @@ export function SelectMenu<T extends string>({
   'aria-label'?: string;
   'data-testid'?: string;
 }) {
-  const t = useTheme();
   return (
     <ShadcnSelect
       value={value}
       onValueChange={(v) => onValueChange(v as T)}
       disabled={disabled}
     >
-      <SelectTrigger
-        aria-label={ariaLabel?.toLowerCase()}
-        data-testid={testId}
-        className="tw:h-[34px]! tw:w-full tw:cursor-pointer tw:bg-background tw:px-3 tw:py-0 tw:text-foreground tw:shadow-none tw:dark:bg-background tw:dark:hover:bg-background"
-        style={typeStyle('body', t)}
-      >
+      <SelectTrigger aria-label={ariaLabel?.toLowerCase()} data-testid={testId}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent
         position="popper"
         data-q-no-ring
         data-testid={testId ? `${testId}-menu` : undefined}
-        className="tw:min-w-(--radix-select-trigger-width) tw:border-border-strong"
       >
         {options.map((o) => (
           <SelectItem
             key={o.value}
             value={o.value}
             data-testid={testId ? `${testId}-${o.value}` : undefined}
-            className="tw:h-7 tw:cursor-pointer tw:py-0"
-            style={typeStyle('bodySm', t)}
           >
             {lowerTitle(o.label)}
           </SelectItem>
