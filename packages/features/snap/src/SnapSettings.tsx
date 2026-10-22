@@ -286,12 +286,12 @@ export function SummonSection({
           {status?.summonClash ? (
             <Callout
               tone="warning"
-              title="right ⌘ is also echo's dictation key"
+              title="summon is paused: right ⌘ is echo's dictation key"
               data-testid="snap-summon-clash"
             >
-              press left ⌘ first, then right ⌘: echo ignores right ⌘ while left
-              ⌘ is held. right ⌘ first still starts dictation. to avoid it, pick
-              another key in echo's settings.
+              summon stays off while echo uses right ⌘ to dictate, so a chord
+              can't also start dictation. pick another key in echo's settings to
+              use summon.
             </Callout>
           ) : null}
         </>

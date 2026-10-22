@@ -82,7 +82,7 @@ describe('summon agent settings', () => {
       { ...base, inputMonitoring: false, summonClash: true, apps: [] },
     );
     expect(q('snap-summon-no-im')).not.toBeNull();
-    expect(q('snap-summon-clash')).not.toBeNull();
+    expect(q('snap-summon-clash')?.textContent).toContain('summon is paused');
     // A chosen app that isn't in the list still shows by name.
     expect((q('snap-summon-app') as HTMLSelectElement).value).toBe('com.x');
   });
