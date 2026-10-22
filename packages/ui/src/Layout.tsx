@@ -733,6 +733,7 @@ export function SettingsSection({
             background: t.color.card,
             minWidth: 0,
             overflow: 'hidden',
+            paddingBlock: t.space[2],
           }}
         >
           {cells.map((c, i) => (
@@ -740,8 +741,7 @@ export function SettingsSection({
               key={i}
               data-settings-cell=""
               style={{
-                padding: `${t.space[3]} ${t.space[4]}`,
-                borderTop: i ? `1px solid ${t.color.border}` : undefined,
+                padding: `${t.space[2]} ${t.space[4]}`,
                 display: 'grid',
                 gap: t.space[2],
                 minWidth: 0,
@@ -772,7 +772,8 @@ export function SettingRow({
   descriptionRole,
   'data-testid': testId,
 }: {
-  label: string;
+  /** Omit when the section header already names the row: the description then reads as the row's text. */
+  label?: string;
   description?: ReactNode;
   children?: ReactNode;
   as?: 'label' | 'div';
@@ -805,10 +806,10 @@ export function SettingRow({
           gap: tokens.space[0.5],
         }}
       >
-        <Text>{lowerTitle(label)}</Text>
+        {label ? <Text>{lowerTitle(label)}</Text> : null}
         {description ? (
           <Text
-            variant="caption"
+            variant={label ? 'caption' : 'body'}
             muted
             data-testid={descriptionTestId}
             role={descriptionRole}

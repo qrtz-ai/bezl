@@ -83,7 +83,7 @@ describe('global settings (ADR 0146 M1.4)', () => {
       expect(q(id), id).toBeNull();
     expect(el.textContent).not.toContain('apps page');
     // The opts page: its own sidebar row, so a plain "opts" title and no close button.
-    expect(q('settings')?.querySelector('h1')?.textContent).toBe('opts');
+    expect(q('settings')?.querySelector('h1')?.textContent).toBe('qrtz');
     expect(q('settings-close')).toBeNull();
     root.unmount();
     el.remove();

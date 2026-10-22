@@ -40,7 +40,7 @@ test('boots the shared shell over the Tauri transport with no errors', async ({
   page,
 }) => {
   const errors = await open(page);
-  for (const tab of ['apps', 'opts', 'nano', 'echo'])
+  for (const tab of ['apps', 'qrtz', 'nano', 'echo'])
     await expect(
       page.getByRole('button', { name: tab, exact: true }),
     ).toBeVisible();

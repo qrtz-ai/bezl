@@ -166,7 +166,7 @@ export default function SettingsView() {
   );
   return (
     // The opts page: qrtz's own opts, pinned to the bottom of the sidebar under apps.
-    <Page title="opts" data-testid="settings">
+    <Page title="qrtz" data-testid="settings">
       {error ? (
         <ErrorCallout
           error={error}
@@ -263,7 +263,6 @@ export default function SettingsView() {
       <SettingsSection title="permissions" data-testid="permissions-card">
         <SettingRow
           as="div"
-          label="permissions"
           descriptionTestId="permissions-note"
           description={
             <>
@@ -289,7 +288,6 @@ export default function SettingsView() {
         <>
           <SettingRow
             as="div"
-            label="backup"
             description="export your meetings and recordings to one file, or import one."
           >
             <Button

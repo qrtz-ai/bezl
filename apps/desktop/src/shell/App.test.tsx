@@ -152,16 +152,16 @@ describe('shell routing (ADR 0091)', () => {
     act(() => root.unmount());
   });
 
-  it('the sidebar is the apps, then apps and opts (plain text, no icon) pinned to the bottom', async () => {
+  it('the sidebar is the apps, then apps (a plus) as the last row of the list, and qrtz opts pinned to the bottom', async () => {
     const { el, root, q } = await boot('/');
     const rows = [...el.querySelectorAll('nav [data-testid^="nav-"]')].map(
       (b) => b.getAttribute('data-testid'),
     );
     expect(rows).toEqual(['nav-note', 'nav-talk', 'nav-apps', 'nav-opts']);
-    for (const id of ['apps', 'opts']) {
-      expect(q(`nav-${id}`)!.textContent).toBe(id);
-      expect(q(`nav-${id}`)!.querySelector('svg')).toBeNull();
-    }
+    expect(q('nav-apps')!.textContent).toBe('apps');
+    expect(q('nav-apps')!.querySelector('svg')).not.toBeNull();
+    expect(q('nav-opts')!.textContent).toBe('qrtz');
+    expect(q('nav-opts')!.querySelector('svg')).toBeNull();
     expect(q('nav-qrtz')).toBeNull();
     expect(q('nav-marketplace')).toBeNull();
     expect(q('nav-settings')).toBeNull();
