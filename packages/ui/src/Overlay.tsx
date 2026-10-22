@@ -11,9 +11,13 @@ import {
 import { lowerTitle } from './case';
 import { useTheme } from './theme';
 import { Text } from './Text';
-import { useModalLayer } from './Modal';
+import { SCRIM_CLASS, useModalLayer } from './Modal';
+import { Dialog as DialogRoot, DialogContent } from './components/ui/dialog';
 
-/** Modal dialog: backdrop, Esc / backdrop-click to close, focus moves into the panel and stays there. */
+/**
+ * A small modal dialog (a consent, a confirm) on shadcn's Dialog: backdrop, Esc / backdrop-click to close, focus
+ * moves into the panel and stays there. Same layering as Modal: inline, our focus trap and Escape stack.
+ */
 export function Dialog({
   open,
   onClose,
@@ -31,59 +35,48 @@ export function Dialog({
   top?: string;
   label?: string;
 }) {
-  const t = useTheme();
   const ref = useRef<HTMLDivElement>(null);
-  useModalLayer(ref, open, onClose);
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const setRef = useCallback((n: HTMLDivElement | null) => {
+    ref.current = n;
+    setNode(n);
+  }, []);
+  useModalLayer(ref, open && !!node, onClose);
   if (!open) return null;
   return (
-    <div
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: t.z.dialog,
-        background: t.color.overlay,
-        backdropFilter: 'blur(2px)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        paddingTop: top,
-        animation: `q-fade-in ${t.motion.fast} ${t.motion.easeOut}`,
-      }}
-    >
+    <DialogRoot modal={false} open onOpenChange={() => {}}>
       <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-label={
-          label ?? (typeof title === 'string' ? title.toLowerCase() : undefined)
-        }
-        tabIndex={-1}
-        data-q-no-ring
-        style={{
-          width,
-          maxWidth: 'calc(100vw - 32px)',
-          background: t.color.surface,
-          border: `1px solid ${t.color.borderStrong}`,
-          borderRadius: t.radius.lg,
-          boxShadow: tokens.shadow.overlay,
-          outline: 'none',
-          overflow: 'hidden',
-        }}
+        onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+        className={SCRIM_CLASS}
+        style={{ paddingTop: top }}
       >
-        {title ? (
-          <div
-            style={{
-              padding: `${t.space[4]} ${t.space[5]}`,
-              borderBottom: `1px solid ${t.color.border}`,
-            }}
-          >
-            <Text variant="h3">{lowerTitle(title)}</Text>
-          </div>
-        ) : null}
-        {children}
+        <DialogContent
+          inline
+          ref={setRef}
+          aria-modal="true"
+          aria-label={
+            label ??
+            (typeof title === 'string' ? title.toLowerCase() : undefined)
+          }
+          aria-describedby={undefined}
+          tabIndex={-1}
+          data-q-no-ring
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="tw:block tw:max-w-[calc(100vw-32px)] tw:gap-0 tw:overflow-hidden tw:border-border-strong tw:bg-popover tw:p-0"
+          style={{ width }}
+        >
+          {title ? (
+            <div className="tw:border-b tw:border-border tw:px-5 tw:py-4">
+              <Text variant="h3">{lowerTitle(title)}</Text>
+            </div>
+          ) : null}
+          {children}
+        </DialogContent>
       </div>
-    </div>
+    </DialogRoot>
   );
 }
 
