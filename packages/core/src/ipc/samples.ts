@@ -112,6 +112,7 @@ export const unknownPermissions = {
   accessibility: 'unknown',
   'screen-recording': 'unknown',
   microphone: 'unknown',
+  'input-monitoring': 'unknown',
 } as const;
 const note = {
   id: 'n1',

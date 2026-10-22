@@ -180,6 +180,20 @@ async fn app_channels_and_capabilities() {
         );
         let perms = call(&r, "marketplace", "permissions:get", Value::Null).await;
         assert!(perms["ok"].as_bool().unwrap(), "{perms}");
+        // qrtz-app's own row: never missing (the idle answer here; on macOS the live read).
+        assert!(perms["data"]["input-monitoring"].is_string(), "{perms}");
+        let im = call(
+            &r,
+            "snap",
+            "snap:request-access",
+            json!({"permission": "input-monitoring"}),
+        )
+        .await;
+        assert_eq!(
+            im["data"],
+            json!({"opened": false, "axTrusted": false, "inputMonitoring": false}),
+            "{im}"
+        );
     }
     // ADR 0078: qrtz keeps no keys, so there are no secrets channels.
     for ch in ["secrets:set", "secrets:list"] {

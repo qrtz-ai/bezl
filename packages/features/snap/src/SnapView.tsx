@@ -52,6 +52,8 @@ export default function SnapView() {
   // The accessibility prompt is showing: read the grant every second (qrtz-app reads it live), so the prompt goes
   // away and the shortcuts work the moment the user switches qrtz on, no relaunch.
   const needsAx = !!status?.running && !status.axTrusted;
+  const needsIm =
+    !!status?.running && !!snap.summon?.enabled && !status.inputMonitoring;
   const [waiting, setWaiting] = useState(false);
   useEffect(() => {
     if (!needsAx) {
@@ -61,9 +63,26 @@ export default function SnapView() {
     const id = setInterval(load, 1000);
     return () => clearInterval(id);
   }, [needsAx, load]);
+  // Summon's input monitoring prompt: the same live read every second once asked.
+  const [waitingIm, setWaitingIm] = useState(false);
+  useEffect(() => {
+    if (!needsIm) {
+      setWaitingIm(false);
+      return;
+    }
+    if (!waitingIm) return;
+    const id = setInterval(load, 1000);
+    return () => clearInterval(id);
+  }, [needsIm, waitingIm, load]);
+  const askIm = () => {
+    setWaitingIm(true);
+    void qrtz
+      .invoke('snap:request-access', { permission: 'input-monitoring' })
+      .then(load, () => {});
+  };
   const askAx = () => {
     setWaiting(true);
-    void qrtz.invoke('snap:request-access').then(load, () => {});
+    void qrtz.invoke('snap:request-access', undefined).then(load, () => {});
   };
 
   const optsModal = (
@@ -127,6 +146,8 @@ export default function SnapView() {
             summon={snap.summon ?? {}}
             status={status}
             onChange={(p) => set({ summon: { ...snap.summon, ...p } })}
+            onGrantInputMonitoring={askIm}
+            waiting={waitingIm}
           />
           <ShortcutSections
             shortcuts={snap.shortcuts}

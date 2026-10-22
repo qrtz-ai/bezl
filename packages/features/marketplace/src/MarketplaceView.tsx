@@ -47,7 +47,7 @@ import {
   requestNavigate,
   type CatalogEntry,
   type Config,
-  type OsPermission,
+  type AppPermission,
   type PackageOp,
   type PackagePlan,
   type PackageRow,
@@ -275,7 +275,7 @@ export default function MarketplaceView() {
       return load();
     }, fail);
   const { perms, ask, open, restart, pending: asking } = usePermissions();
-  const allow = (p: OsPermission) => void ask(p).catch(fail);
+  const allow = (p: AppPermission) => void ask(p).catch(fail);
   const openPane = (p: SettingsPane) => void open(p).catch(fail);
   const relaunch = () => void restart().catch(fail);
   // ADR 0169: a module's models come with its install (the plan lists them, the one consent covers them, and

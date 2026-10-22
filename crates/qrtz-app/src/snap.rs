@@ -118,6 +118,8 @@ pub struct SnapHost {
     status: Mutex<Value>,
     /// The switch and the settings last applied, so an unrelated `config:set` changes nothing.
     applied: Mutex<Option<(bool, String)>>,
+    /// The last live Input Monitoring read (qrtz-app's own, the grant qrtz-snap runs under).
+    input_monitoring: Mutex<Option<bool>>,
 }
 
 impl SnapHost {
@@ -126,6 +128,7 @@ impl SnapHost {
             sup,
             status: Mutex::new(Self::idle()),
             applied: Mutex::new(None),
+            input_monitoring: Mutex::new(None),
         }
     }
 
@@ -168,6 +171,29 @@ impl SnapHost {
             }
         }
         true
+    }
+
+    /// The live Input Monitoring read: put over the status, and when it flips on while summon is waiting for it,
+    /// qrtz-snap is restarted so its chord tap is made under the new grant (a running process can keep the old
+    /// answer). Answers whether it restarted.
+    pub fn on_input_monitoring(&self, granted: bool, cfg: &Value, st: &mut Value) -> bool {
+        let was = self
+            .input_monitoring
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .replace(granted);
+        if st["running"].as_bool() != Some(true) {
+            return false;
+        }
+        let summon_on = cfg["snap"]["summon"]["enabled"].as_bool() == Some(true);
+        let waiting = summon_on && st["summonActive"].as_bool() != Some(true);
+        st["inputMonitoring"] = json!(granted);
+        if was == Some(false) && granted && waiting {
+            tracing::info!("input monitoring: switched on; restarting qrtz-snap so summon's tap starts");
+            self.sup.restart();
+            return true;
+        }
+        false
     }
 
     /// A status change of qrtz-snap. On (re)start it gets the current settings; stopped, its status resets.
@@ -221,6 +247,53 @@ impl SnapHost {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn the_input_monitoring_grant_restarts_snap_only_when_summon_waits_for_it() {
+        let tries = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let opts = qrtz_helper_bridge::SupervisorOptions {
+            name: "qrtz-snap".into(),
+            max_restarts: 0,
+            heartbeat_timeout: std::time::Duration::ZERO,
+            ..Default::default()
+        };
+        let h = SnapHost::new(Supervisor::spawn(
+            opts,
+            std::sync::Arc::new(Broken(tries.clone())),
+        ));
+        let on = json!({"snap": {"summon": {"enabled": true}}});
+        let off = json!({"snap": {"summon": {"enabled": false}}});
+        let waiting = || json!({"running": true, "inputMonitoring": false, "summonActive": false});
+        let mut st = waiting();
+        assert!(!h.on_input_monitoring(false, &on, &mut st), "still off");
+        assert_eq!(st["inputMonitoring"], json!(false));
+        let mut st = waiting();
+        assert!(h.on_input_monitoring(true, &on, &mut st), "flipped on: restart");
+        assert_eq!(
+            st["inputMonitoring"],
+            json!(true),
+            "the live read wins over qrtz-snap's report"
+        );
+        let mut st = waiting();
+        assert!(!h.on_input_monitoring(true, &on, &mut st), "once per flip");
+        h.on_input_monitoring(false, &off, &mut waiting());
+        assert!(
+            !h.on_input_monitoring(true, &off, &mut waiting()),
+            "summon off: nothing waits"
+        );
+        h.on_input_monitoring(false, &on, &mut waiting());
+        let mut active = json!({"running": true, "inputMonitoring": true, "summonActive": true});
+        assert!(
+            !h.on_input_monitoring(true, &on, &mut active),
+            "the tap is already up"
+        );
+        let mut stopped = json!({"running": false});
+        assert!(!h.on_input_monitoring(true, &on, &mut stopped));
+        assert!(
+            stopped.get("inputMonitoring").is_none(),
+            "a stopped snap's status is left alone"
+        );
+    }
+
     use super::*;
 
     #[test]

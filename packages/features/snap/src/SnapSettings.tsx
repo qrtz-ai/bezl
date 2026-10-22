@@ -11,6 +11,7 @@ import {
   Stack,
   Switch,
   Text,
+  PermissionPrompt,
 } from '@qrtz/ui';
 import {
   SNAP_DEFAULT_SHORTCUTS,
@@ -241,12 +242,14 @@ export default function SnapSettings({
 /**
  * Summon agent: hold left ⌘ and right ⌘ together (nothing else) to bring the chosen app forward; do it again to go
  * back to the app you were in. qrtz-snap watches the chord with a listen-only tap, which needs Input Monitoring:
- * macOS asks the moment this turns on, never before.
+ * qrtz-app asks for it (the same grant button as the permissions page), and restarts qrtz-snap when it flips on.
  */
 export function SummonSection({
   summon,
   status,
   onChange,
+  onGrantInputMonitoring,
+  waiting,
 }: {
   summon: { enabled?: boolean; bundleId?: string; name?: string };
   status: SnapStatus | null;
@@ -255,6 +258,10 @@ export function SummonSection({
     bundleId?: string;
     name?: string;
   }) => void;
+  /** Asks macOS for input monitoring (adds qrtz to the list and prompts), then opens its pane. */
+  onGrantInputMonitoring?: () => void;
+  /** Asked and not on yet: qrtz is watching for the switch. */
+  waiting?: boolean;
 }) {
   const on = summon.enabled ?? false;
   const apps = status?.apps ?? [];
@@ -305,17 +312,19 @@ export function SummonSection({
                   ? 'the chord is ready.'
                   : 'starting the chord…'}
               </Text>
-            ) : (
-              <Callout
-                tone="warning"
+            ) : status.axTrusted ? (
+              // Accessibility's prompt comes first (one grant button at a time).
+              <PermissionPrompt
                 title="summon needs input monitoring"
+                pane="input monitoring"
+                onOpen={onGrantInputMonitoring ?? (() => {})}
+                waiting={waiting}
                 data-testid="snap-summon-no-im"
               >
-                turn on qrtz in system settings → privacy & security → input
-                monitoring. if qrtz is already on there, quit qrtz and open it
-                again.
-              </Callout>
-            )
+                turn on qrtz under input monitoring. summon starts the moment
+                it's on.
+              </PermissionPrompt>
+            ) : null
           ) : null}
           {status?.summonClash ? (
             <Callout

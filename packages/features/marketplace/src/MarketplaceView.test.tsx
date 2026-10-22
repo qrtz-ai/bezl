@@ -786,6 +786,42 @@ describe('every permission is granted from inside qrtz (in each app modal)', () 
     expect(q('perm-echo-accessibility-hint')).toBeNull();
   });
 
+  it("snap's input monitoring is a row like the others: allow asks qrtz and it flips by itself", async () => {
+    let im = 'not-determined';
+    const perms = () => ({
+      microphone: 'granted',
+      accessibility: 'granted',
+      'screen-recording': 'granted',
+      'input-monitoring': im,
+    });
+    const f = fake({
+      'permissions:get': perms,
+      'permissions:request': perms,
+    });
+    await render(f.client);
+    await clickRow('snap');
+    const row = () => q('perm-snap-input-monitoring');
+    expect(row()?.textContent).toContain('input monitoring');
+    expect(row()?.textContent).toContain('summon agent');
+    await act(async () => row()!.querySelector('button')!.click());
+    await settle();
+    expect(f.calls.filter((c) => c.channel === 'permissions:request')).toEqual([
+      {
+        channel: 'permissions:request',
+        payload: { permission: 'input-monitoring' },
+      },
+    ]);
+    expect(q('perm-snap-input-monitoring-hint')?.textContent).toBe(
+      'switch on qrtz',
+    );
+    // summon's tap is restarted by qrtz-app on the grant: no "restart qrtz".
+    expect(q('perm-snap-input-monitoring-restart')).toBeNull();
+    im = 'granted';
+    await wait(1100);
+    expect(row()?.textContent).toContain('allowed');
+    expect(el.textContent).toBe(el.textContent?.toLowerCase());
+  });
+
   it('screen recording offers "restart qrtz" after asking', async () => {
     const perms = () => ({
       microphone: 'granted',

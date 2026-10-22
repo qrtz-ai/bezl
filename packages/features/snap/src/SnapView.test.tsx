@@ -12,11 +12,11 @@ import SnapView from './SnapView';
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** snap:status answers from `trusted`, as qrtz-app's live read does. */
-function fake(state: { trusted: boolean }) {
+function fake(state: { trusted: boolean; im?: boolean }) {
   const calls: string[] = [];
   const client = {
     subApp: 'snap',
-    invoke: async (channel: string) => {
+    invoke: async (channel: string, payload?: unknown) => {
       calls.push(channel);
       if (channel === 'snap:status')
         return {
@@ -24,13 +24,17 @@ function fake(state: { trusted: boolean }) {
           axTrusted: state.trusted,
           registered: { leftHalf: 'alt+cmd+left' },
           refused: {},
-          inputMonitoring: false,
+          inputMonitoring: !!state.im,
+          summonActive: !!state.im,
+          apps: [],
         };
       if (channel === 'module:get-settings')
         return { snap: { shortcuts: {}, summon: { enabled: true } } };
       if (channel === 'module:set-settings') return {};
-      if (channel === 'snap:request-access')
+      if (channel === 'snap:request-access') {
+        calls.push(`snap:request-access:${JSON.stringify(payload ?? null)}`);
         return { opened: true, axTrusted: state.trusted };
+      }
       return undefined;
     },
     on: () => () => {},
@@ -114,5 +118,35 @@ describe('snap view: shortcuts and summon are the main page', () => {
     expect(q('snap-default-leftHalf')).not.toBeNull();
     expect(q('snap-restore-all')).not.toBeNull();
     expect(q('snap-group-0')).not.toBeNull();
+  });
+});
+
+describe('snap view: summon asks for input monitoring from inside qrtz', () => {
+  it("asks qrtz-app for it on the press and drops the prompt once it's on", async () => {
+    const state = { trusted: true, im: false };
+    const f = fake(state);
+    await render(f.client);
+    expect(primaryButtons(document.body)).toBeLessThanOrEqual(1);
+    const prompt = q('snap-summon-no-im');
+    expect(prompt?.textContent).toContain('summon needs input monitoring');
+    const open = q('snap-summon-no-im-open') as HTMLButtonElement;
+    expect(open.textContent).toContain('open input monitoring settings');
+    await act(async () => open.click());
+    await wait(10);
+    expect(f.calls).toContain(
+      'snap:request-access:{"permission":"input-monitoring"}',
+    );
+    expect(q('snap-summon-no-im-waiting')).not.toBeNull();
+    state.im = true;
+    await wait(1100);
+    expect(q('snap-summon-no-im')).toBeNull();
+    expect(q('snap-summon-ready')).not.toBeNull();
+  });
+
+  it('waits for accessibility first: one grant button at a time', async () => {
+    const f = fake({ trusted: false, im: false });
+    await render(f.client);
+    expect(q('snap-no-ax')).not.toBeNull();
+    expect(q('snap-summon-no-im')).toBeNull();
   });
 });

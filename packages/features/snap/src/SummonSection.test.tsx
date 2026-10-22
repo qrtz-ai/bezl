@@ -30,6 +30,7 @@ function render(
   summon: { enabled?: boolean; bundleId?: string; name?: string },
   status: SnapStatus | null,
   onChange: (p: Record<string, unknown>) => void = () => {},
+  onGrantInputMonitoring?: () => void,
 ) {
   el = document.createElement('div');
   document.body.appendChild(el);
@@ -37,7 +38,12 @@ function render(
   act(() =>
     root!.render(
       <ThemeProvider mode="light">
-        <SummonSection summon={summon} status={status} onChange={onChange} />
+        <SummonSection
+          summon={summon}
+          status={status}
+          onChange={onChange}
+          onGrantInputMonitoring={onGrantInputMonitoring}
+        />
       </ThemeProvider>,
     ),
   );
@@ -85,5 +91,22 @@ describe('summon agent settings', () => {
     expect(q('snap-summon-clash')?.textContent).toContain('summon is paused');
     // A chosen app that isn't in the list still shows by name.
     expect((q('snap-summon-app') as HTMLSelectElement).value).toBe('com.x');
+  });
+
+  it("input monitoring's prompt is the same grant button as the permissions page", () => {
+    let asked = 0;
+    render(
+      { enabled: true },
+      { ...base, inputMonitoring: false, apps: [] },
+      () => {},
+      () => asked++,
+    );
+    const prompt = q('snap-summon-no-im')!;
+    expect(prompt.textContent).toContain('summon needs input monitoring');
+    const btn = prompt.querySelector('button')!;
+    expect(btn.textContent).toContain('input monitoring');
+    act(() => btn.click());
+    expect(asked).toBe(1);
+    expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
 });

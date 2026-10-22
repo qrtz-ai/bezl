@@ -6,6 +6,8 @@
 //! Accessibility: `AXIsProcessTrusted` / `AXIsProcessTrustedWithOptions({prompt: true})`.
 //! Screen recording: `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` (a grant reaches a running
 //! process only after a restart, so the UI offers "restart qrtz" for it).
+//! Input monitoring: `CGPreflightListenEventAccess` / `CGRequestListenEventAccess` (snap's summon chord tap needs
+//! it; qrtz-snap is restarted when the grant flips on, see `SnapHost::on_input_monitoring`).
 //! Microphone stays with the helper (AVFoundation); the others have no preflight and are opened in System Settings.
 use serde_json::Value;
 
@@ -29,13 +31,15 @@ pub fn needs_restart(pane: &str) -> bool {
     pane == "screen-recording"
 }
 
-/// The permissions this process can read itself (macOS only): accessibility and screen recording.
+/// The permissions this process can read itself (macOS only): accessibility, screen recording and input
+/// monitoring.
 pub fn native_status() -> Vec<(&'static str, bool)> {
     #[cfg(target_os = "macos")]
     {
         vec![
             ("accessibility", mac::ax_trusted()),
             ("screen-recording", mac::screen_preflight()),
+            ("input-monitoring", mac::listen_preflight()),
         ]
     }
     #[cfg(not(target_os = "macos"))]
@@ -61,6 +65,34 @@ pub fn overlay(v: &mut Value, live: &[(&str, bool)]) {
     }
 }
 
+/// The permissions qrtz-app reads itself (on macOS), so a status without one of them off macOS says so.
+pub const NATIVE: [&str; 3] = ["accessibility", "screen-recording", "input-monitoring"];
+
+/// Off macOS (or before the helper ever listed it) a permission qrtz-app reads itself is "unsupported", never
+/// missing: the UI's status record has a row for every permission.
+pub fn fill_missing(v: &mut Value) {
+    if !v.is_object() {
+        *v = Value::Object(Default::default());
+    }
+    for k in NATIVE {
+        if v[k].is_null() {
+            v[k] = Value::from("unsupported");
+        }
+    }
+}
+
+/// Input monitoring as qrtz-app sees it right now (the grant qrtz-snap's summon tap runs under).
+pub fn input_monitoring() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        mac::listen_preflight()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 /// Accessibility as qrtz-app sees it right now.
 pub fn ax_trusted() -> bool {
     #[cfg(target_os = "macos")]
@@ -82,6 +114,7 @@ pub fn request(pane: &str) -> bool {
         let granted = match pane {
             "accessibility" => mac::ax_prompt(),
             "screen-recording" => mac::screen_request(),
+            "input-monitoring" => mac::listen_request(),
             _ => false,
         };
         if granted {
@@ -149,6 +182,8 @@ mod mac {
     extern "C" {
         fn CGPreflightScreenCaptureAccess() -> bool;
         fn CGRequestScreenCaptureAccess() -> bool;
+        fn CGPreflightListenEventAccess() -> bool;
+        fn CGRequestListenEventAccess() -> bool;
     }
     #[link(name = "CoreFoundation", kind = "framework")]
     extern "C" {
@@ -206,6 +241,17 @@ mod mac {
         // SAFETY: CoreGraphics call with no arguments or preconditions.
         unsafe { CGRequestScreenCaptureAccess() }
     }
+
+    pub fn listen_preflight() -> bool {
+        // SAFETY: CoreGraphics call with no arguments or preconditions.
+        unsafe { CGPreflightListenEventAccess() }
+    }
+
+    /// macOS adds qrtz to the Input Monitoring list and shows its own prompt (once); answers the grant.
+    pub fn listen_request() -> bool {
+        // SAFETY: CoreGraphics call with no arguments or preconditions.
+        unsafe { CGRequestListenEventAccess() }
+    }
 }
 
 #[cfg(test)]
@@ -245,6 +291,38 @@ mod tests {
         assert!(needs_restart("screen-recording"));
         assert!(!needs_restart("accessibility"));
         assert!(!needs_restart("microphone"));
+        assert!(
+            !needs_restart("input-monitoring"),
+            "qrtz-snap is restarted on the grant instead"
+        );
+    }
+
+    #[test]
+    fn input_monitoring_is_read_live_like_the_others() {
+        let mut v =
+            json!({"accessibility": "granted", "screen-recording": "granted", "microphone": "granted"});
+        overlay(&mut v, &[("input-monitoring", false)]);
+        assert_eq!(v["input-monitoring"], "not-determined", "off: grant button");
+        overlay(&mut v, &[("input-monitoring", true)]);
+        assert_eq!(v["input-monitoring"], "granted", "switched on in system settings");
+        let mut d = json!({"input-monitoring": "denied"});
+        overlay(&mut d, &[("input-monitoring", false)]);
+        assert_eq!(d["input-monitoring"], "denied");
+        #[cfg(target_os = "macos")]
+        assert!(native_status().iter().any(|(k, _)| *k == "input-monitoring"));
+    }
+
+    #[test]
+    fn a_permission_not_read_here_is_unsupported_never_missing() {
+        let mut v = json!({"accessibility": "granted", "microphone": "denied"});
+        fill_missing(&mut v);
+        assert_eq!(v["accessibility"], "granted");
+        assert_eq!(v["microphone"], "denied");
+        assert_eq!(v["screen-recording"], "unsupported");
+        assert_eq!(v["input-monitoring"], "unsupported");
+        let mut n = Value::Null;
+        fill_missing(&mut n);
+        assert_eq!(n["input-monitoring"], "unsupported");
     }
 
     #[test]

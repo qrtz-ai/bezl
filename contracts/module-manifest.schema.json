@@ -123,6 +123,7 @@
           "microphone",
           "accessibility",
           "screen-recording",
+          "input-monitoring",
           "automation",
           "files-and-folders"
         ]

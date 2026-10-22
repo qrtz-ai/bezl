@@ -43,6 +43,7 @@ export const ModulePermission = z.enum([
   'microphone',
   'accessibility',
   'screen-recording',
+  'input-monitoring',
   'automation',
   'files-and-folders',
 ]);

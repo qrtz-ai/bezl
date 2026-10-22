@@ -626,6 +626,7 @@ impl AppService {
                     Ok(line) => match s2.on_line(&line, &me.config.get()) {
                         crate::snap::SnapLine::Status => {
                             let mut st = s2.status();
+                            s2.on_input_monitoring(crate::tcc::input_monitoring(), &me.config.get(), &mut st);
                             if crate::tcc::ax_trusted() {
                                 st["axTrusted"] = json!(true);
                             } else if st["running"].as_bool() == Some(true) {
@@ -946,7 +947,11 @@ impl AppService {
                 // responsible process), so in split nano's report is the app's; echo's says the same and isn't
                 // re-emitted.
                 if ty == "permissions.status" && src.serves_nano() {
-                    self.events.emit("permissions:changed", msg["status"].clone());
+                    // qrtz-app's own live reads on top, as `permissions:get` answers.
+                    let mut st = msg["status"].clone();
+                    crate::tcc::overlay(&mut st, &crate::tcc::native_status());
+                    crate::tcc::fill_missing(&mut st);
+                    self.events.emit("permissions:changed", st);
                 }
                 let (echo, nano) = (src.serves_echo(), src.serves_nano());
                 // Echo's process only reaches the tap with its own speech attach answers.
@@ -1205,6 +1210,7 @@ impl AppService {
             self.runtime.call(channel, p).await.unwrap_or_else(|_| base())
         };
         crate::tcc::overlay(&mut v, &native);
+        crate::tcc::fill_missing(&mut v);
         Ok(v)
     }
 
@@ -1284,7 +1290,12 @@ impl Handler for AppService {
             Some("snap") => {
                 if channel == "snap:request-access" {
                     // The banner's button: qrtz-app asks (macOS adds qrtz to the list and prompts) and opens the
-                    // Accessibility pane; snap's view polls snap:status until it's on.
+                    // pane; snap's view polls snap:status until it's on. Summon's banner asks for input monitoring.
+                    if payload["permission"].as_str() == Some("input-monitoring") {
+                        let opened = crate::tcc::request("input-monitoring");
+                        return Ok(json!({"opened": opened, "axTrusted": crate::tcc::ax_trusted(),
+                                         "inputMonitoring": crate::tcc::input_monitoring()}));
+                    }
                     let opened = crate::tcc::request("accessibility");
                     return Ok(json!({"opened": opened, "axTrusted": crate::tcc::ax_trusted()}));
                 }
@@ -1296,6 +1307,10 @@ impl Handler for AppService {
                 // process), so the live read here wins over a report from before the user switched qrtz on.
                 if st["running"].as_bool() == Some(true) && crate::tcc::ax_trusted() {
                     st["axTrusted"] = json!(true);
+                }
+                // Same for input monitoring; switched on while summon waits, qrtz-snap restarts to make its tap.
+                if let Some(s) = self.snap.get() {
+                    s.on_input_monitoring(crate::tcc::input_monitoring(), &cfg, &mut st);
                 }
                 Ok(st)
             }

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Capability } from '../capabilities';
 import { AppErrorJSON } from '../errors';
-import { OsPermission, SettingsPane } from '../capabilities';
+import { AppPermission, SettingsPane } from '../capabilities';
 import {
   MeetingDetail,
   MeetingListItem,
@@ -195,7 +195,7 @@ export const ipcContract = {
   'permissions:request': defineChannel({
     version: 1,
     capability: 'os.permissions',
-    request: z.object({ permission: OsPermission }),
+    request: z.object({ permission: AppPermission }),
     response: PermissionsStatus,
   }),
   /** A permission prompt's button: System Settings at that pane. `restart`: the grant needs qrtz relaunched. */
@@ -772,13 +772,20 @@ export const ipcContract = {
   }),
   /**
    * snap's accessibility prompt: qrtz-app asks macOS (which adds qrtz to the list and shows its prompt) and opens the
-   * Accessibility pane. The view then polls `snap:status`, which reads the grant live.
+   * Accessibility pane. The view then polls `snap:status`, which reads the grant live. `{permission:
+   * 'input-monitoring'}` is summon's prompt, the same way (and answers `inputMonitoring`).
    */
   'snap:request-access': defineChannel({
     version: 1,
     capability: 'snap.read',
-    request: z.void(),
-    response: z.object({ opened: z.boolean(), axTrusted: z.boolean() }),
+    request: z
+      .object({ permission: z.enum(['accessibility', 'input-monitoring']) })
+      .optional(),
+    response: z.object({
+      opened: z.boolean(),
+      axTrusted: z.boolean(),
+      inputMonitoring: z.boolean().optional(),
+    }),
   }),
   /**
    * ADR 0217: nano's Apple Calendar (read-only, on this Mac): on/off, the access state (read without asking), the

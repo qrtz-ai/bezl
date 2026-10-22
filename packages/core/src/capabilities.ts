@@ -63,6 +63,16 @@ export const OsPermission = z.enum([
 export type OsPermission = z.infer<typeof OsPermission>;
 
 /**
+ * The permissions the UI shows and asks for: the helper's three plus input monitoring, which qrtz-app reads and
+ * asks for itself (snap's summon chord tap needs it). Off macOS it reads "unsupported".
+ */
+export const AppPermission = z.enum([
+  ...OsPermission.options,
+  'input-monitoring',
+]);
+export type AppPermission = z.infer<typeof AppPermission>;
+
+/**
  * System Settings → Privacy & Security panes a permission prompt opens (`permissions:open-settings`): the ones qrtz
  * reads and asks for, plus those macOS only lets the user switch on there.
  */

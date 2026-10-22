@@ -104,6 +104,7 @@ pub enum Permission {
     Microphone,
     Accessibility,
     ScreenRecording,
+    InputMonitoring,
     Automation,
     FilesAndFolders,
 }

@@ -53,10 +53,11 @@ fn the_bundled_manifest_qrtz_json_and_lock_agree() {
 }
 
 #[test]
-fn snap_uses_accessibility_only_and_carries_no_entitlement() {
+fn snap_uses_accessibility_and_input_monitoring_and_carries_no_entitlement() {
     let m = ModuleManifest::parse(bundled::SNAP.as_bytes()).unwrap();
     let perms = serde_json::to_value(&m.permissions).unwrap();
-    assert_eq!(perms, serde_json::json!(["accessibility"]));
+    // Input monitoring: summon agent's ⌘+⌘ listen-only tap (asked only when summon turns on).
+    assert_eq!(perms, serde_json::json!(["accessibility", "input-monitoring"]));
     assert!(m.entitlements.is_empty());
     assert_eq!(m.settings.namespace, "snap");
     assert_eq!(m.settings.legacy_sections, vec!["snap".to_string()]);

@@ -303,7 +303,8 @@
           "enum": [
             "accessibility",
             "screen-recording",
-            "microphone"
+            "microphone",
+            "input-monitoring"
           ]
         },
         "additionalProperties": {
@@ -319,7 +320,8 @@
         "required": [
           "accessibility",
           "screen-recording",
-          "microphone"
+          "microphone",
+          "input-monitoring"
         ]
       }
     },
@@ -336,7 +338,8 @@
               "enum": [
                 "accessibility",
                 "screen-recording",
-                "microphone"
+                "microphone",
+                "input-monitoring"
               ]
             }
           },
@@ -352,7 +355,8 @@
           "enum": [
             "accessibility",
             "screen-recording",
-            "microphone"
+            "microphone",
+            "input-monitoring"
           ]
         },
         "additionalProperties": {
@@ -368,7 +372,8 @@
         "required": [
           "accessibility",
           "screen-recording",
-          "microphone"
+          "microphone",
+          "input-monitoring"
         ]
       }
     },
@@ -7476,6 +7481,7 @@
                       "microphone",
                       "accessibility",
                       "screen-recording",
+                      "input-monitoring",
                       "automation",
                       "files-and-folders"
                     ]
@@ -7747,6 +7753,7 @@
                       "microphone",
                       "accessibility",
                       "screen-recording",
+                      "input-monitoring",
                       "automation",
                       "files-and-folders"
                     ]
@@ -11192,7 +11199,22 @@
       "version": 1,
       "capability": "snap.read",
       "request": {
-        "void": true
+        "optional": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "permission": {
+              "type": "string",
+              "enum": [
+                "accessibility",
+                "input-monitoring"
+              ]
+            }
+          },
+          "required": [
+            "permission"
+          ]
+        }
       },
       "response": {
         "type": "object",
@@ -11201,6 +11223,9 @@
             "type": "boolean"
           },
           "axTrusted": {
+            "type": "boolean"
+          },
+          "inputMonitoring": {
             "type": "boolean"
           }
         },
@@ -13995,7 +14020,8 @@
           "enum": [
             "accessibility",
             "screen-recording",
-            "microphone"
+            "microphone",
+            "input-monitoring"
           ]
         },
         "additionalProperties": {
@@ -14011,7 +14037,8 @@
         "required": [
           "accessibility",
           "screen-recording",
-          "microphone"
+          "microphone",
+          "input-monitoring"
         ]
       }
     },

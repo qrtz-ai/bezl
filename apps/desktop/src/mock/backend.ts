@@ -234,12 +234,15 @@ export function createMockBridge(): TauriBridge {
   let speechTimer: ReturnType<typeof setInterval> | undefined;
   let speechFailed = false;
   let snapAx = params.get('snapAx') !== '0';
+  // `?snapIm=0`: summon has no input monitoring yet; its grant button (or the permissions page's) switches it on.
+  let snapIm = params.get('snapIm') !== '0';
   let perms: Json =
     params.get('mockPerms') === 'denied'
       ? {
           accessibility: 'not-determined',
           'screen-recording': 'not-determined',
           microphone: 'not-determined',
+          'input-monitoring': 'not-determined',
         }
       : { ...unknownPermissions };
   const setSpeech = (download: Json, patch: Json = {}) => {
@@ -553,6 +556,7 @@ export function createMockBridge(): TauriBridge {
     'permissions:get': () => perms as never,
     'permissions:request': ({ permission }) => {
       perms = { ...perms, [permission]: 'granted' };
+      if (permission === 'input-monitoring') snapIm = true;
       emit('permissions:changed', perms);
       return perms as never;
     },
@@ -947,8 +951,8 @@ export function createMockBridge(): TauriBridge {
         axTrusted: on && snapAx,
         registered,
         refused: {},
-        inputMonitoring: on,
-        summonActive: on && !!summon.enabled,
+        inputMonitoring: on && snapIm,
+        summonActive: on && snapIm && !!summon.enabled,
         ...(summon.enabled
           ? {
               apps: [
@@ -960,7 +964,11 @@ export function createMockBridge(): TauriBridge {
       };
     },
     // `?snapAx=0` starts snap untrusted; the button grants it (as switching qrtz on in system settings would).
-    'snap:request-access': () => {
+    'snap:request-access': (req) => {
+      if (req?.permission === 'input-monitoring') {
+        snapIm = true;
+        return { opened: true, axTrusted: snapAx, inputMonitoring: false };
+      }
       snapAx = true;
       return { opened: true, axTrusted: false };
     },

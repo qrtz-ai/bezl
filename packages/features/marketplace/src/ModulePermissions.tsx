@@ -4,7 +4,7 @@ import {
   MODULE_PERMISSIONS,
   type ModuleId,
   type ModulePermission,
-  type OsPermission,
+  type AppPermission,
   type PermissionsStatus,
   type SettingsPane,
 } from '@qrtz/core';
@@ -25,13 +25,17 @@ const WHY: Record<ModuleId, Partial<Record<ModulePermission, string>>> = {
   ctrl: {
     accessibility: 'reads the window and clicks and types for a command',
   },
-  snap: { accessibility: 'moves and sizes windows' },
+  snap: {
+    accessibility: 'moves and sizes windows',
+    'input-monitoring': 'hears the ⌘+⌘ chord for summon agent',
+  },
 };
 /** The permissions qrtz can read and ask for up front; the others have no preflight and macOS asks on first use. */
 const LIVE: readonly ModulePermission[] = [
   'microphone',
   'accessibility',
   'screen-recording',
+  'input-monitoring',
 ];
 const STATE: Record<string, string> = {
   granted: 'allowed',
@@ -44,13 +48,13 @@ const WATCH_MS = 120_000;
 
 /**
  * qrtz's live permission state (one identity for every module, ADR 0154). After "allow" it is re-read every second
- * until the grant shows up (qrtz-app reads accessibility and screen recording itself, live), so the row flips to
+ * until the grant shows up (qrtz-app reads accessibility, screen recording and input monitoring itself, live), so the row flips to
  * "allowed" while System Settings is still open; it is also re-read when the window regains focus.
  */
 export function usePermissions() {
   const qrtz = useQrtz();
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
-  const [asked, setAsked] = useState<{ p: OsPermission[]; at: number }>({
+  const [asked, setAsked] = useState<{ p: AppPermission[]; at: number }>({
     p: [],
     at: 0,
   });
@@ -78,7 +82,7 @@ export function usePermissions() {
     }, 1000);
     return () => clearInterval(id);
   }, [watching, asked.at, read]);
-  const ask = (p: OsPermission) => {
+  const ask = (p: AppPermission) => {
     setAsked((a) => ({ p: [...new Set([...a.p, p])], at: Date.now() }));
     return qrtz.invoke('permissions:request', { permission: p }).then(setPerms);
   };
@@ -102,12 +106,12 @@ export function ModulePermissions({
 }: {
   module: ModuleId;
   perms: PermissionsStatus | null;
-  onAsk: (p: OsPermission) => void;
+  onAsk: (p: AppPermission) => void;
   /** Opens a permission's System Settings pane (the ones macOS asks for on first use). */
   onOpen?: (p: SettingsPane) => void;
   onRestart?: () => void;
   /** Asked and not on yet: their rows say "switch on qrtz" while qrtz watches. */
-  pending?: readonly OsPermission[];
+  pending?: readonly AppPermission[];
 }) {
   return (
     <PermissionList
@@ -121,14 +125,14 @@ export function ModulePermissions({
             state: 'asked on first use',
             ...(onOpen ? { onOpen: () => onOpen(p) } : {}),
           };
-        const st = perms?.[p as OsPermission] ?? 'unknown';
+        const st = perms?.[p as AppPermission] ?? 'unknown';
         const askable = st === 'denied' || st === 'not-determined';
-        const waiting = askable && pending.includes(p as OsPermission);
+        const waiting = askable && pending.includes(p as AppPermission);
         return {
           id: `${module}-${p}`,
           label,
           state: STATE[st] ?? st,
-          ...(askable ? { onGrant: () => onAsk(p as OsPermission) } : {}),
+          ...(askable ? { onGrant: () => onAsk(p as AppPermission) } : {}),
           ...(waiting ? { hint: 'switch on qrtz' } : {}),
           // A screen recording grant reaches a running qrtz only after a relaunch.
           ...(waiting && p === 'screen-recording' && onRestart

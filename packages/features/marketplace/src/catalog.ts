@@ -64,6 +64,7 @@ export const PERMISSIONS: Record<
     label: 'screen & system audio recording',
     icon: 'screen-recording',
   },
+  'input-monitoring': { label: 'input monitoring', icon: 'command' },
   automation: { label: 'automation', icon: 'automation' },
   'files-and-folders': { label: 'files and folders', icon: 'folder' },
 };

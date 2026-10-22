@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { OsPermission } from '../capabilities';
+import { AppPermission } from '../capabilities';
 import { Meeting, MeetingPlatform, Segment } from './types';
 import { MeetingSummary } from './summary';
 import { MeetingNote } from './notes';
@@ -102,7 +102,7 @@ export const PermissionState = z.enum([
   'unsupported',
   'unknown',
 ]);
-export const PermissionsStatus = z.record(OsPermission, PermissionState);
+export const PermissionsStatus = z.record(AppPermission, PermissionState);
 export type PermissionsStatus = z.infer<typeof PermissionsStatus>;
 
 export const SearchHitSchema = z.object({

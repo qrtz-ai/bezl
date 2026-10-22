@@ -51,12 +51,14 @@
       "response": {
         "accessibility": "unknown",
         "screen-recording": "unknown",
-        "microphone": "unknown"
+        "microphone": "unknown",
+        "input-monitoring": "unknown"
       },
       "idle": {
         "accessibility": "unknown",
         "screen-recording": "unknown",
-        "microphone": "unknown"
+        "microphone": "unknown",
+        "input-monitoring": "unknown"
       }
     },
     "permissions:request": {
@@ -66,7 +68,8 @@
       "response": {
         "accessibility": "unknown",
         "screen-recording": "unknown",
-        "microphone": "granted"
+        "microphone": "granted",
+        "input-monitoring": "unknown"
       }
     },
     "permissions:open-settings": {
@@ -1988,7 +1991,8 @@
     "permissions:changed": {
       "accessibility": "unknown",
       "screen-recording": "unknown",
-      "microphone": "unknown"
+      "microphone": "unknown",
+      "input-monitoring": "unknown"
     },
     "speech:status": {
       "configured": true,

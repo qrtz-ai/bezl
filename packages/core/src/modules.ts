@@ -28,7 +28,7 @@ export const MODULE_PERMISSIONS: Readonly<
   echo: ['microphone', 'accessibility'],
   nano: ['microphone', 'screen-recording', 'accessibility'],
   ctrl: ['accessibility'],
-  snap: ['accessibility'],
+  snap: ['accessibility', 'input-monitoring'],
 };
 
 /** Config sections that stay global; every other section belongs to one module (`settings.legacySections`). */
@@ -117,6 +117,7 @@ export const ModuleManifest = z
         'microphone',
         'accessibility',
         'screen-recording',
+        'input-monitoring',
         'automation',
         'files-and-folders',
       ]),

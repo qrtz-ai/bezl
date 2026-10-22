@@ -17,7 +17,7 @@
   },
   "views": ["snap"],
   "capabilities": ["snap.read", "module.settings"],
-  "permissions": ["accessibility"],
+  "permissions": ["accessibility", "input-monitoring"],
   "entitlements": [],
   "settings": {
     "namespace": "snap",
