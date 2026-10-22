@@ -154,7 +154,7 @@ export const ConfigSchema = z.object({
   /**
    * qrtz snap (ADR 0159), stored in snap's own settings file. `shortcuts` holds only the user's changes to
    * Spectacle's defaults (action → "ctrl+alt+right"; "" clears one); `disabledApps` are bundle ids snap leaves alone;
-   * `statusItem` shows snap's menu bar item with every action.
+   * `statusItem` shows snap's menu bar item with every action; `summon` is "summon agent" (off by default).
    */
   snap: z
     .object({
@@ -164,6 +164,14 @@ export const ConfigSchema = z.object({
         .max(100)
         .default([]),
       statusItem: z.boolean().default(true),
+      /** Summon agent: hold left ⌘ + right ⌘ to bring this app forward (again: back to where you were). */
+      summon: z
+        .object({
+          enabled: z.boolean().default(false),
+          bundleId: z.string().trim().max(255).default(''),
+          name: z.string().max(255).default(''),
+        })
+        .prefault({}),
     })
     .prefault({}),
 });

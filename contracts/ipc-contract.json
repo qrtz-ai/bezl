@@ -11149,6 +11149,34 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "inputMonitoring": {
+            "type": "boolean"
+          },
+          "summonActive": {
+            "type": "boolean"
+          },
+          "apps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bundleId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bundleId",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "summonClash": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -12540,6 +12568,34 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "inputMonitoring": {
+            "type": "boolean"
+          },
+          "summonActive": {
+            "type": "boolean"
+          },
+          "apps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bundleId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bundleId",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "summonClash": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -14426,7 +14482,12 @@
       "snap": {
         "shortcuts": {},
         "disabledApps": [],
-        "statusItem": true
+        "statusItem": true,
+        "summon": {
+          "enabled": false,
+          "bundleId": "",
+          "name": ""
+        }
       }
     },
     "schema": {
@@ -14928,12 +14989,38 @@
             "statusItem": {
               "default": true,
               "type": "boolean"
+            },
+            "summon": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "bundleId": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "name": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 255
+                }
+              },
+              "required": [
+                "enabled",
+                "bundleId",
+                "name"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
             "shortcuts",
             "disabledApps",
-            "statusItem"
+            "statusItem",
+            "summon"
           ],
           "additionalProperties": false
         }

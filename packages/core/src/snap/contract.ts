@@ -152,5 +152,15 @@ export const SnapStatus = z.object({
   registered: z.record(z.string(), z.string()),
   /** Why an action has no shortcut: another app holds the keys, two actions share them, or it needs a modifier. */
   refused: z.record(z.string(), z.string()),
+  /** Summon agent: qrtz has Input Monitoring (the ⌘+⌘ chord's listen-only tap needs it). */
+  inputMonitoring: z.boolean().optional(),
+  /** Summon agent: the chord tap is listening. */
+  summonActive: z.boolean().optional(),
+  /** Summon agent's picker: installed apps (only while summon is on). */
+  apps: z
+    .array(z.object({ bundleId: z.string(), name: z.string() }))
+    .optional(),
+  /** Echo's push-to-talk key is right ⌘, half of summon's chord. */
+  summonClash: z.boolean().optional(),
 });
 export type SnapStatus = z.infer<typeof SnapStatus>;

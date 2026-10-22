@@ -250,4 +250,17 @@ final class HotkeyFilterTests: XCTestCase {
         XCTAssertNil(ups[3].object?["sleep"])
         XCTAssertEqual(lines.hotkeys.filter { $0.object?["action"]?.string == "down" }.compactMap { $0.object?["sleep"] }.count, 0)
     }
+
+    /// Snap's summon chord (left ⌘ + right ⌘): with right ⌘ as the talk key, right ⌘ pressed while left ⌘ is held
+    /// starts no dictation; right ⌘ alone still does.
+    func testRightCommandWithLeftCommandHeldIsNotPushToTalk() throws {
+        var f = try XCTUnwrap(F(key: "right-command", consumeFn: true))
+        let left: UInt64 = F.commandFlag | F.leftCommandDevice
+        _ = f.handle(type: F.flagsChanged, keyCode: 55, flags: left)
+        XCTAssertNil(f.handle(type: F.flagsChanged, keyCode: 54, flags: left | 0x10).action)
+        XCTAssertNil(f.handle(type: F.flagsChanged, keyCode: 54, flags: left).action)
+        _ = f.handle(type: F.flagsChanged, keyCode: 55, flags: 0)
+        XCTAssertEqual(f.handle(type: F.flagsChanged, keyCode: 54, flags: F.commandFlag | 0x10).action, .down)
+        XCTAssertEqual(f.handle(type: F.flagsChanged, keyCode: 54, flags: 0).action, .up)
+    }
 }
