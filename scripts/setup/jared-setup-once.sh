@@ -151,9 +151,24 @@ W=./node_modules/.bin/wrangler
 ok "wrangler whoami"
 if grep -nq 'DASH_DEV_LOCAL\|\[vars\]' wrangler.toml; then die "wrangler.toml has DASH_DEV_LOCAL or [vars] (DEPLOY.md §0)"; fi
 ok "no local-mode config"
-dash_json="$("$W" secret list --format json)" || die "wrangler secret list failed; nothing rotated"
-have_d="$(jq -r '.[].name' <<<"$dash_json")" || die "could not parse wrangler secret list"
+# First run (QRT-254): the qrtz-dash Worker has never been deployed, so `secret list` fails with exactly
+# `Worker "qrtz-dash" not found.` (wrangler's code-10007 message). Only that error means "no secrets yet"; any other
+# failure aborts. On a first run nothing is created before the deploy: `wrangler deploy --secrets-file /dev/stdin`
+# creates the Worker with its code and all three secrets in a single version and only then attaches dash.qrtz.ai, so
+# the endpoint never serves without secrets. (`secret put` on a missing Worker creates an empty stub Worker first, and
+# `versions upload` cannot create a Worker.) Secret values go over stdin only: never argv, env or a file.
+DASH_FIRST=0
+dash_errf="$(mktemp)"; trap 'rm -f "$dash_errf"' EXIT   # wrangler's stderr only; it never contains a secret value
+if dash_json="$("$W" secret list --format json 2>"$dash_errf")"; then
+  have_d="$(jq -r '.[].name' <<<"$dash_json")" || die "could not parse wrangler secret list"
+elif grep -qxF 'Worker "qrtz-dash" not found.' <(sed -e 's/^[^A-Za-z]*\[ERROR\] //' -e 's/^[^A-Za-z]*//' "$dash_errf"); then
+  DASH_FIRST=1; have_d=; ok "dash worker qrtz-dash not deployed yet (first run: secrets ship with the first deploy)"
+else
+  cat "$dash_errf" >&2; die "wrangler secret list failed; nothing rotated"
+fi
+rm -f "$dash_errf"
 dneed() { ! grep -qxF "$1" <<<"$have_d" || [[ $ROTATE_DASH == 1 ]]; }
+if [[ $DASH_FIRST == 0 ]]; then
 for s in DASH_PEPPER:32 DASH_ENROLL_KEY:32; do
   n="${s%%:*}"
   if dneed "$n"; then openssl rand -hex "${s#*:}" | tr -d '\n' | "$W" secret put "$n" >/dev/null; ok "dash secret $n"
@@ -168,9 +183,23 @@ else skip "dash secret DASH_SETUP_TOKEN"; fi
 names="$("$W" secret list --format json | jq -r '[.[].name] | sort | join(",")')" || die "wrangler secret list failed"
 [[ "$names" == DASH_ENROLL_KEY,DASH_PEPPER,DASH_SETUP_TOKEN ]] || die "dash secrets are not exactly the three (DEPLOY.md §1)"
 ok "dash secrets exactly three"
+fi # DASH_FIRST == 0
 bun run check:build >/dev/null; ok "check:build"
 preflight "nothing deployed"
 ok "clean tree at origin/main"
+if [[ $DASH_FIRST == 1 ]]; then
+  tok="$(openssl rand -hex 32)"
+  printf '\nDASH_SETUP_TOKEN (shown once, here only; write it down for owner setup):\n%s\n\n' "$tok" >/dev/tty
+  printf '{"DASH_PEPPER":"%s","DASH_ENROLL_KEY":"%s","DASH_SETUP_TOKEN":"%s"}' \
+    "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$tok" | "$W" deploy --secrets-file /dev/stdin >/dev/null; tok=
+  ok "deploy qrtz-dash with DASH_PEPPER, DASH_ENROLL_KEY, DASH_SETUP_TOKEN + dash.qrtz.ai custom domain (DNS)"
+  names="$("$W" secret list --format json | jq -r '[.[].name] | sort | join(",")')" \
+    || die "wrangler secret list failed after first deploy (rollback: $W delete qrtz-dash, then rerun)"
+  [[ "$names" == DASH_ENROLL_KEY,DASH_PEPPER,DASH_SETUP_TOKEN ]] \
+    || die "dash secrets are not exactly the three after first deploy (DEPLOY.md §1; take it down: $W delete qrtz-dash)"
+  ok "dash secrets exactly three"
+else
 "$W" deploy >/dev/null; ok "deploy qrtz-dash + dash.qrtz.ai custom domain (DNS)"
+fi
 bash scripts/smoke-prod.sh >/dev/null || die "smoke-prod failed (rollback: $W rollback)"
 ok "smoke-prod dash.qrtz.ai"

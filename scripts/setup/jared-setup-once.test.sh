@@ -104,5 +104,54 @@ run good --dash-only --release-only && rc=0 || rc=$?
 check "dash-only + release-only -> dies, nothing called" '[[ $rc != 0 ]] && [[ ! -s "$T/log" ]] && grep -qF "cannot be combined" "$T/out"'
 run good --force --dash-only && rc=0 || rc=$?
 check "dash-only + force -> dies, nothing called" '[[ $rc != 0 ]] && [[ ! -s "$T/log" ]] && grep -qF "cannot be combined" "$T/out"'
+# QRT-254 first run: section 5 end to end with a repo wrangler stub. DCASE picks the Cloudflare state. Needs a tty
+# (DASH_SETUP_TOKEN is shown on /dev/tty), so these cases run under util-linux `script`. Nothing touches Cloudflare.
+printf 'node_modules/\n' > "$T/repo/.gitignore"
+printf 'name = "qrtz-dash"\n' > "$T/repo/services/dash-worker/wrangler.toml"
+mkdir -p "$T/repo/services/dash-worker/scripts"
+printf '#!/bin/sh\necho "smoke-prod" >> "$STUB_LOG"\n' > "$T/repo/services/dash-worker/scripts/smoke-prod.sh"
+git -C "$T/repo" -c user.name=t -c user.email=t@t add -A
+git -C "$T/repo" -c user.name=t -c user.email=t@t commit -qm dash
+git -C "$T/repo" push -q origin main
+cat > "$T/repo/services/dash-worker/node_modules/.bin/wrangler" <<'S'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "wrangler $*" >> "$STUB_LOG"
+three='[{"name":"DASH_ENROLL_KEY","type":"secret_text"},{"name":"DASH_PEPPER","type":"secret_text"},{"name":"DASH_SETUP_TOKEN","type":"secret_text"}]'
+case "$1 ${2:-}" in
+  "whoami ") exit 0 ;;
+  "secret list")
+    if [[ -e "$STUB_DIR/deployed" ]]; then echo "$three"; exit 0; fi
+    case "$DCASE" in
+      first)     printf '\n\xe2\x9c\x98 [ERROR] Worker "qrtz-dash" not found.\n\nIf this is a new Worker, run `wrangler deploy` first to create it.\n' >&2; exit 1 ;;
+      other_worker) printf '\xe2\x9c\x98 [ERROR] Worker "qrtz-dash-old" not found.\n' >&2; exit 1 ;;
+      auth_err)  printf '\xe2\x9c\x98 [ERROR] Authentication error [code: 10000]\n' >&2; exit 1 ;;
+      net_err)   printf '\xe2\x9c\x98 [ERROR] fetch failed\n' >&2; exit 1 ;;
+      existing)  echo "$three"; exit 0 ;;
+    esac ;;
+  "secret put") cat > /dev/null; echo "put" >> "$STUB_DIR/puts"; exit 0 ;;
+  "deploy "*|"deploy --secrets-file")
+    if [[ "$*" == *"--secrets-file /dev/stdin"* ]]; then
+      cat /dev/stdin | jq -r 'keys | sort | join(",")' > "$STUB_DIR/deploykeys"
+    fi
+    touch "$STUB_DIR/deployed"; exit 0 ;;
+esac
+echo "stub: unexpected wrangler $*" >&2; exit 1
+S
+chmod +x "$T/repo/services/dash-worker/node_modules/.bin/wrangler"
+drun() { # dcase -> runs --dash-only under a pty
+  rm -rf "$T/sd"; mkdir -p "$T/sd"; : > "$T/log"
+  script -qec "cd '$T/repo' && env PATH='$T/bin:$PATH' HOME='$T/home' STUB_LOG='$T/log' STUB_DIR='$T/sd' CASE=good DCASE='$1' bash scripts/setup/jared-setup-once.sh --dash-only" /dev/null </dev/null >"$T/out" 2>&1
+}
+drun first && rc=0 || rc=$?
+check "first run (worker not found) -> one deploy carrying exactly the three secrets, no secret put, then verify + smoke" '[[ $rc == 0 ]] && [[ ! -e "$T/sd/puts" ]] && ! grep -q "^wrangler secret put" "$T/log" && [[ $(grep -c "^wrangler deploy" "$T/log") == 1 ]] && grep -qxF "wrangler deploy --secrets-file /dev/stdin" "$T/log" && [[ $(cat "$T/sd/deploykeys") == DASH_ENROLL_KEY,DASH_PEPPER,DASH_SETUP_TOKEN ]] && grep -q "dash secrets exactly three" "$T/out" && grep -qx "smoke-prod" "$T/log"'
+check "first run -> secret list, then deploy, then secret list re-check before smoke" '[[ "$(grep -E "^(wrangler (secret list|deploy)|smoke-prod)" "$T/log" | sed "s/ --.*//" | tr "\n" ";")" == "wrangler secret list;wrangler deploy;wrangler secret list;smoke-prod;" ]]'
+check "first run -> no secret value in wrangler argv" '! grep -qE "[0-9a-f]{32}" "$T/log"'
+drun existing && rc=0 || rc=$?
+check "existing worker -> unchanged path: no puts (all present), plain deploy, smoke" '[[ $rc == 0 ]] && [[ ! -e "$T/sd/puts" ]] && grep -qxF "wrangler deploy" "$T/log" && ! grep -q "secrets-file" "$T/log" && grep -q "skip  dash secret DASH_PEPPER" "$T/out" && grep -qx "smoke-prod" "$T/log"'
+for c in auth_err net_err other_worker; do
+  drun "$c" && rc=0 || rc=$?
+  check "$c on secret list -> abort, no put, no deploy" '[[ $rc != 0 ]] && [[ ! -e "$T/sd/puts" ]] && ! grep -qE "^wrangler (secret put|deploy)" "$T/log" && grep -qF "wrangler secret list failed; nothing rotated" "$T/out"'
+done
 echo "jared-setup-once.test: $pass passed, $fail failed"
 [[ $fail == 0 ]]
