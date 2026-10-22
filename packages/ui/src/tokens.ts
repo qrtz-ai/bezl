@@ -221,6 +221,7 @@ button,input,select,textarea,option,code,kbd,pre,samp{font:inherit;letter-spacin
 h1,h2,h3,h4,h5,h6,strong,b,th{font-weight:inherit;}
 :focus-visible{outline:var(--q-focus-width) var(--q-focus-style) var(--q-color-ring)!important;outline-offset:var(--q-focus-offset)!important;}
 [data-q-no-ring]:focus-visible{outline:none!important;}
+[data-q-item]{transition:background var(--q-motion-hover) var(--q-motion-ease-out)}[data-q-item][data-highlighted]{background:var(--q-color-accent)}[data-q-item]:focus-visible{outline:none!important}
 ::selection{background:var(--q-color-selection);}
 [data-scroll-root]{overflow-y:scroll!important;scrollbar-gutter:stable;}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--q-color-scrollbar);border-radius:9999px;border:2px solid transparent;background-clip:content-box}
