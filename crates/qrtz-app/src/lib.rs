@@ -63,3 +63,11 @@ pub mod wiring;
 pub use config::ConfigStore;
 pub use dirs::{private_dir, AppDirs};
 pub use service::{is_talk_message, AppDeps, AppInfo, AppService, Events, Shared, SharedConfig};
+
+// QRT-332: every macOS build of the app (release included) must be able to run Laya; 0.2.7 shipped without the
+// `laya` feature and ctrl always answered model.unavailable. Fails the build rather than shipping that again.
+#[cfg(target_os = "macos")]
+const _: () = assert!(
+    qrtz_ctrl::laya::RUNTIME_BUILD,
+    "qrtz-ctrl must be built with the `laya` feature on macOS (crates/qrtz-app/Cargo.toml)"
+);

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.8 (2026-10-21)
+
+- Fix: ctrl's decision model works in release builds (it reported "model isn't ready" even when installed).
+
 ## 0.2.7 (2026-10-21)
 
 - Updates now come from GitHub releases.

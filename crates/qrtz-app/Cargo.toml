@@ -78,6 +78,9 @@ libc = { workspace = true }
 security-framework = "3"
 # ADR 0185 (E1): the running echo's signing information (SecCodeCopySigningInformation's dictionary).
 core-foundation = "0.10"
+# QRT-332: macOS app builds run the Laya scorer (qrtz_ctrl::laya::RUNTIME_BUILD); without it ctrl reports
+# model.unavailable even with the model installed. Linux keeps the heuristic only.
+qrtz-ctrl = { workspace = true, features = ["laya"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
