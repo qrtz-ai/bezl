@@ -12,6 +12,8 @@ import { lowerTitle } from './case';
 import { useTheme } from './theme';
 import { Text } from './Text';
 import { SCRIM_CLASS, useModalLayer } from './Modal';
+import { Switch as ShadcnSwitch } from './components/ui/switch';
+import { cn } from './lib/utils';
 import { Dialog as DialogRoot, DialogContent } from './components/ui/dialog';
 
 /**
@@ -236,6 +238,7 @@ export function Tooltip({
   );
 }
 
+/** The switch (ctrl toggle and every on/off setting) on shadcn's Switch: role=switch, Space/Enter toggle. */
 export function Switch({
   checked,
   onChange,
@@ -252,50 +255,38 @@ export function Switch({
   disabled?: boolean;
   'data-testid'?: string;
 }) {
-  const t = useTheme();
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
+  const withLabel = !!(label && showLabel);
+  const control = (
+    <ShadcnSwitch
+      checked={checked}
+      onCheckedChange={onChange}
       aria-label={label}
       disabled={disabled}
       data-testid={testId}
-      onClick={() => onChange(!checked)}
-      style={{
-        all: 'unset',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: tokens.space[2],
-        opacity: disabled ? 0.5 : 1,
+      className={cn(
+        'tw:h-[18px] tw:w-8 tw:p-0 tw:cursor-pointer tw:rounded-lg tw:border-0 tw:shadow-none tw:disabled:cursor-not-allowed tw:data-[state=unchecked]:bg-border-strong tw:dark:data-[state=unchecked]:bg-border-strong',
+        // With a label the wrapper dims both; the switch must not dim twice.
+        withLabel && 'tw:disabled:opacity-100',
+      )}
+      thumbClassName="tw:size-3.5! tw:rounded-md tw:data-[state=checked]:translate-x-4 tw:data-[state=unchecked]:translate-x-0.5 tw:data-[state=checked]:bg-primary-foreground tw:data-[state=unchecked]:bg-foreground"
+    />
+  );
+  if (!withLabel) return control;
+  return (
+    <span
+      className={cn(
+        'tw:inline-flex tw:items-center tw:gap-2',
+        disabled ? 'tw:cursor-not-allowed tw:opacity-50' : 'tw:cursor-pointer',
+      )}
+      onClick={(e) => {
+        // The visible label toggles too, as it did when the label sat inside the switch button.
+        if (!disabled && !(e.target as Element).closest('[role="switch"]'))
+          onChange(!checked);
       }}
     >
-      <span
-        style={{
-          width: 32,
-          height: 18,
-          borderRadius: tokens.radius.lg,
-          background: checked ? t.color.primary : t.color.borderStrong,
-          position: 'relative',
-          transition: `background ${t.motion.fast}`,
-        }}
-      >
-        <span
-          style={{
-            position: 'absolute',
-            top: 2,
-            left: checked ? 16 : 2,
-            width: 14,
-            height: 14,
-            borderRadius: tokens.radius.md,
-            background: checked ? t.color.primaryText : t.color.text,
-            transition: `left ${t.motion.fast} ${t.motion.easeOut}`,
-          }}
-        />
-      </span>
-      {label && showLabel ? <Text variant="bodySm">{label}</Text> : null}
-    </button>
+      {control}
+      <Text variant="bodySm">{label}</Text>
+    </span>
   );
 }
 
