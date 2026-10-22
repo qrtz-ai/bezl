@@ -6,7 +6,7 @@ import {
   LongText,
   Page,
   Progress,
-  Select,
+  SelectMenu,
   SettingRow,
   SettingsSection,
   Stack,
@@ -192,20 +192,21 @@ export default function SettingsView() {
       </SettingsSection>
       <SettingsSection title="app">
         <SettingRow label="theme">
-          <Select
+          <SelectMenu
             value={String(cfg?.theme ?? 'dark')}
-            onChange={(e) =>
+            onValueChange={(theme) =>
               void qrtz
-                .invoke('config:set', { patch: { theme: e.target.value } })
+                .invoke('config:set', { patch: { theme } })
                 .then(setCfg)
                 .catch(fail('change the theme'))
             }
+            options={[
+              { value: 'dark', label: 'dark' },
+              { value: 'light', label: 'light' },
+              { value: 'system', label: 'system' },
+            ]}
             data-testid="theme"
-          >
-            <option value="dark">dark</option>
-            <option value="light">light</option>
-            <option value="system">system</option>
-          </Select>
+          />
         </SettingRow>
         {toggle(
           'menu bar icon',

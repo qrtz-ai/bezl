@@ -1,3 +1,10 @@
+import {
+  Select as ShadcnSelect,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './components/ui/select';
 import { Children, cloneElement, isValidElement, type ReactNode } from 'react';
 import { lowerTitle } from './case';
 import { Text } from './Text';
@@ -49,6 +56,64 @@ export function Select({
     <select {...rest} style={{ ...base, ...style }}>
       {lowerOptions(children)}
     </select>
+  );
+}
+
+/**
+ * A choice from a short fixed list on shadcn's Select: a trigger that shows the value and a popover listbox
+ * (ArrowUp/ArrowDown, type-ahead, Enter, Escape). Labels are lowercased (brand rule). Use the native `Select`
+ * for long or dynamic lists. The content is portalled (shadcn's default): an open Select aria-hides everything
+ * outside it, which inline would include its own focused trigger.
+ */
+export function SelectMenu<T extends string>({
+  value,
+  onValueChange,
+  options,
+  disabled,
+  'aria-label': ariaLabel,
+  'data-testid': testId,
+}: {
+  value: T;
+  onValueChange: (v: T) => void;
+  options: { value: T; label: string }[];
+  disabled?: boolean;
+  'aria-label'?: string;
+  'data-testid'?: string;
+}) {
+  const t = useTheme();
+  return (
+    <ShadcnSelect
+      value={value}
+      onValueChange={(v) => onValueChange(v as T)}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        aria-label={ariaLabel?.toLowerCase()}
+        data-testid={testId}
+        className="tw:h-[34px]! tw:w-full tw:cursor-pointer tw:bg-background tw:px-3 tw:py-0 tw:text-foreground tw:shadow-none tw:dark:bg-background tw:dark:hover:bg-background"
+        style={typeStyle('body', t)}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent
+        position="popper"
+        data-q-no-ring
+        data-testid={testId ? `${testId}-menu` : undefined}
+        className="tw:min-w-(--radix-select-trigger-width) tw:border-border-strong"
+      >
+        {options.map((o) => (
+          <SelectItem
+            key={o.value}
+            value={o.value}
+            data-testid={testId ? `${testId}-${o.value}` : undefined}
+            className="tw:h-7 tw:cursor-pointer tw:py-0"
+            style={typeStyle('bodySm', t)}
+          >
+            {lowerTitle(o.label)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </ShadcnSelect>
   );
 }
 
