@@ -43,6 +43,8 @@ other files keeps the earlier green run. Everything not listed here lands on gre
   or all five `QRTZ_SPEECH_*` fields; `scripts/release/check-speech.mjs` fails the release build otherwise.
 - macOS permissions (`tcc.rs` and permission plumbing), process spawning and confinement (`confine.rs`, module host),
   updater, downloader, and IPC between processes
+- module trust chain: signature and index verification (`crates/qrtz-modules/src/{index,install,manifest}.rs`),
+  `module_hosting.rs`, `module_hosts.json`; and `crates/qrtz-speech/src/{spawn,confine,download,update}.rs`
 - version bumps and the module manifest format (`module.json` schema, `Permission` enum)
 - `.github/workflows/*` also need Jared's review
 
