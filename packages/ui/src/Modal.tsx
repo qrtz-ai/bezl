@@ -1,11 +1,6 @@
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { tokens } from './tokens';
-import {
-  useEffect,
-  useId,
-  useRef,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
 import { IconButton } from './Layout';
@@ -87,9 +82,10 @@ export function useModalLayer(
 }
 
 /**
- * A large modal (an app's detail on the qrtz page): a dimmed scrim (click it to close), a title row with a close
- * button, and a body that scrolls vertically inside the window (never sideways). Esc closes; focus is trapped
- * inside while it is open.
+ * A large modal (an app's detail on the qrtz page), built on Radix Dialog (shadcn `Dialog`): a dimmed scrim (click
+ * it to close), a title row with a close button, and a body that scrolls vertically inside the window (never
+ * sideways). Esc closes the topmost layer only; focus is trapped inside while it is open and returns on close.
+ * Rendered inline (no Portal) so it stays inside the theme and inside an inert, hidden sub app.
  */
 export function Modal({
   open,
@@ -107,91 +103,110 @@ export function Modal({
   children: ReactNode;
   width?: number;
   closeLabel?: string;
-  /** Where focus goes on open; see `useModalLayer`. */
+  /** Where focus goes on open: `first` control (default) or the dialog itself; `[data-autofocus]` wins. */
   initialFocus?: 'first' | 'dialog';
   'data-testid'?: string;
 }) {
   const t = useTheme();
   const ref = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  useModalLayer(ref, open, onClose, initialFocus);
-  if (!open) return null;
+  const inert = () => !!ref.current?.closest('[inert]');
   return (
-    <div
-      data-testid={testId ? `${testId}-scrim` : undefined}
-      data-modal-scrim=""
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: t.z.dialog,
-        background: t.color.overlay,
-        backdropFilter: 'blur(2px)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        padding: `10vh ${tokens.space[4]} ${tokens.space[4]}`,
-        boxSizing: 'border-box',
-        animation: `q-fade-in ${t.motion.fast} ${t.motion.easeOut}`,
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
       }}
     >
-      <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        data-q-no-ring
-        data-testid={testId}
+      <DialogPrimitive.Overlay
+        data-testid={testId ? `${testId}-scrim` : undefined}
+        data-modal-scrim=""
         style={{
-          width,
-          maxWidth: '100%',
-          maxHeight: '80vh',
+          position: 'fixed',
+          inset: 0,
+          zIndex: t.z.dialog,
+          background: t.color.overlay,
+          backdropFilter: 'blur(2px)',
           display: 'flex',
-          flexDirection: 'column',
-          background: t.color.surface,
-          border: `1px solid ${t.color.border}`,
-          borderRadius: t.radius.lg,
-          boxShadow: tokens.shadow.overlay,
-          outline: 'none',
-          overflow: 'hidden',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          padding: `10vh ${tokens.space[4]} ${tokens.space[4]}`,
+          boxSizing: 'border-box',
+          animation: `q-fade-in ${t.motion.fast} ${t.motion.easeOut}`,
         }}
       >
-        <div
+        <DialogPrimitive.Content
+          ref={ref}
+          aria-describedby={undefined}
+          data-q-no-ring
+          data-testid={testId}
+          onOpenAutoFocus={(e) => {
+            const el = ref.current;
+            if (!el) return;
+            const marked = el.querySelector<HTMLElement>('[data-autofocus]');
+            if (marked) {
+              e.preventDefault();
+              marked.focus();
+            } else if (initialFocus === 'dialog') {
+              e.preventDefault();
+              el.focus();
+            }
+          }}
+          onEscapeKeyDown={(e) => {
+            if (inert()) e.preventDefault();
+          }}
           style={{
+            width,
+            maxWidth: '100%',
+            maxHeight: '80vh',
             display: 'flex',
-            alignItems: 'center',
-            gap: t.space[2],
-            flex: '0 0 auto',
-            padding: `${t.space[5]} ${t.space[4]} ${t.space[2]} ${t.space[5]}`,
-            minWidth: 0,
+            flexDirection: 'column',
+            background: t.color.surface,
+            border: `1px solid ${t.color.border}`,
+            borderRadius: t.radius.lg,
+            boxShadow: tokens.shadow.overlay,
+            outline: 'none',
+            overflow: 'hidden',
           }}
         >
-          <span id={titleId} style={{ minWidth: 0, flex: 1 }}>
-            <Text variant="h3" truncate>
-              {lowerTitle(title)}
-            </Text>
-          </span>
-          <IconButton
-            icon="close"
-            variant="ghost"
-            label={closeLabel}
-            onClick={onClose}
-            data-testid={testId ? `${testId}-close` : undefined}
-          />
-        </div>
-        <div
-          style={{
-            padding: `${t.space[3]} ${t.space[5]} ${t.space[5]}`,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            minHeight: 0,
-            minWidth: 0,
-          }}
-        >
-          {children}
-        </div>
-      </div>
-    </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: t.space[2],
+              flex: '0 0 auto',
+              padding: `${t.space[5]} ${t.space[4]} ${t.space[2]} ${t.space[5]}`,
+              minWidth: 0,
+            }}
+          >
+            <DialogPrimitive.Title asChild>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <Text variant="h3" truncate>
+                  {lowerTitle(title)}
+                </Text>
+              </span>
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close asChild>
+              <IconButton
+                icon="close"
+                variant="ghost"
+                label={closeLabel}
+                data-testid={testId ? `${testId}-close` : undefined}
+              />
+            </DialogPrimitive.Close>
+          </div>
+          <div
+            style={{
+              padding: `${t.space[3]} ${t.space[5]} ${t.space[5]}`,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              minHeight: 0,
+              minWidth: 0,
+            }}
+          >
+            {children}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Overlay>
+    </DialogPrimitive.Root>
   );
 }
