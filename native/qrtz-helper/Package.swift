@@ -37,6 +37,8 @@ let package = Package(
         .executable(name: "qrtz-ctrl", targets: ["qrtz-ctrl"]),
         // ADR 0159: qrtz snap, Spectacle's window snapping as an extension.
         .executable(name: "qrtz-snap", targets: ["qrtz-snap"]),
+        // Dev only, never bundled: the echo dictation bubble alone (hold fn), see README "Bubble lab".
+        .executable(name: "qrtz-bubble-lab", targets: ["qrtz-bubble-lab"]),
     ],
     dependencies: platformDeps,
     targets: [
@@ -80,6 +82,9 @@ let package = Package(
         .testTarget(name: "QrtzSnapTests", dependencies: ["QrtzSnap"], swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(
             name: "qrtz-snap", dependencies: ["QrtzSnap", "QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        // Dev only: echo's real pill + fn monitor with fake levels (no mic, model, insertion or host).
+        .executableTarget(name: "qrtz-bubble-lab", dependencies: ["QrtzShared", "QrtzEcho", "QrtzMacShared", "QrtzEchoMac"],
+                          swiftSettings: macSeams),
         .executableTarget(
             name: "qrtz-ctrl", dependencies: ["QrtzCtrl", "QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
