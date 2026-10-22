@@ -687,11 +687,14 @@ export function SettingsSection({
   title,
   description,
   children,
+  variant = 'card',
   'data-testid': testId,
 }: {
   title: string;
   description?: ReactNode;
   children: ReactNode;
+  /** "card" (opts): a bordered card, one cell per child. "plain": children stacked under the label, no card. */
+  variant?: 'card' | 'plain';
   'data-testid'?: string;
 }) {
   const t = useTheme();
@@ -705,13 +708,11 @@ export function SettingsSection({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: t.space[2],
+        gap: variant === 'plain' ? t.space[3] : t.space[2],
         minWidth: 0,
       }}
     >
-      <div
-        style={{ display: 'grid', gap: t.space[1], paddingInline: t.space[1] }}
-      >
+      <div style={{ display: 'grid', gap: t.space[1] }}>
         <Text variant="label" tone="muted">
           {lowerTitle(title)}
         </Text>
@@ -721,32 +722,36 @@ export function SettingsSection({
           </Text>
         ) : null}
       </div>
-      <div
-        data-settings-card=""
-        style={{
-          border: `1px solid ${t.color.border}`,
-          borderRadius: t.radius.lg,
-          background: t.color.card,
-          minWidth: 0,
-          overflow: 'hidden',
-        }}
-      >
-        {cells.map((c, i) => (
-          <div
-            key={i}
-            data-settings-cell=""
-            style={{
-              padding: `${t.space[3]} ${t.space[4]}`,
-              borderTop: i ? `1px solid ${t.color.border}` : undefined,
-              display: 'grid',
-              gap: t.space[2],
-              minWidth: 0,
-            }}
-          >
-            {c}
-          </div>
-        ))}
-      </div>
+      {variant === 'plain' ? (
+        children
+      ) : (
+        <div
+          data-settings-card=""
+          style={{
+            border: `1px solid ${t.color.border}`,
+            borderRadius: t.radius.lg,
+            background: t.color.card,
+            minWidth: 0,
+            overflow: 'hidden',
+          }}
+        >
+          {cells.map((c, i) => (
+            <div
+              key={i}
+              data-settings-cell=""
+              style={{
+                padding: `${t.space[3]} ${t.space[4]}`,
+                borderTop: i ? `1px solid ${t.color.border}` : undefined,
+                display: 'grid',
+                gap: t.space[2],
+                minWidth: 0,
+              }}
+            >
+              {c}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
