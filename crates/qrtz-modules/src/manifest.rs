@@ -106,6 +106,8 @@ pub enum Permission {
     ScreenRecording,
     Automation,
     FilesAndFolders,
+    /// QRT-337: summon's chord tap (CGEventTap listen-only). Parsed now so a later manifest can declare it.
+    InputMonitoring,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

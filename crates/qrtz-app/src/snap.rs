@@ -170,6 +170,22 @@ impl SnapHost {
         true
     }
 
+    /// QRT-337: summon is on and qrtz-snap reported it can't listen. Its tap only sees a new Input Monitoring grant
+    /// after a restart.
+    pub fn summon_waiting_for_grant(&self, cfg: &Value) -> bool {
+        let st = self.status();
+        st["running"] == json!(true)
+            && st["inputMonitoring"] != json!(true)
+            && cfg["snap"]["summon"]["enabled"].as_bool() == Some(true)
+    }
+
+    /// Restarts a running qrtz-snap (the Input Monitoring grant flipped on; QRT-337).
+    pub fn restart(&self) {
+        tracing::info!("input monitoring granted: restarting qrtz-snap");
+        self.sup.stop();
+        self.sup.start();
+    }
+
     /// A status change of qrtz-snap. On (re)start it gets the current settings; stopped, its status resets.
     pub fn on_state(&self, state: HelperState, cfg: &Value) -> bool {
         if state == HelperState::Running {

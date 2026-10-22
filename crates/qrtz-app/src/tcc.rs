@@ -6,6 +6,9 @@
 //! Accessibility: `AXIsProcessTrusted` / `AXIsProcessTrustedWithOptions({prompt: true})`.
 //! Screen recording: `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` (a grant reaches a running
 //! process only after a restart, so the UI offers "restart qrtz" for it).
+//! Input monitoring: `CGPreflightListenEventAccess` / `CGRequestListenEventAccess` (QRT-337: asked from here, not
+//! from qrtz-snap, so the prompt and the list entry are qrtz's; a running tap only sees the grant after qrtz-snap
+//! restarts, which the service does when the read flips).
 //! Microphone stays with the helper (AVFoundation); the others have no preflight and are opened in System Settings.
 use serde_json::Value;
 
@@ -26,16 +29,17 @@ pub fn settings_url(pane: &str) -> Option<&'static str> {
 
 /// A grant that a running qrtz only sees after it restarts.
 pub fn needs_restart(pane: &str) -> bool {
-    pane == "screen-recording"
+    matches!(pane, "screen-recording" | "input-monitoring")
 }
 
-/// The permissions this process can read itself (macOS only): accessibility and screen recording.
+/// The permissions this process can read itself (macOS only): accessibility, screen recording, input monitoring.
 pub fn native_status() -> Vec<(&'static str, bool)> {
     #[cfg(target_os = "macos")]
     {
         vec![
             ("accessibility", mac::ax_trusted()),
             ("screen-recording", mac::screen_preflight()),
+            ("input-monitoring", mac::listen_preflight()),
         ]
     }
     #[cfg(not(target_os = "macos"))]
@@ -82,6 +86,7 @@ pub fn request(pane: &str) -> bool {
         let granted = match pane {
             "accessibility" => mac::ax_prompt(),
             "screen-recording" => mac::screen_request(),
+            "input-monitoring" => mac::listen_request(),
             _ => false,
         };
         if granted {
@@ -108,6 +113,34 @@ pub fn ask_accessibility_once() -> bool {
     {
         tracing::info!("accessibility: asking macOS for qrtz (snap is on)");
         mac::ax_prompt();
+    }
+    true
+}
+
+/// Input monitoring as qrtz-app sees it right now (QRT-337).
+pub fn listen_granted() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        mac::listen_preflight()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// The system Input Monitoring prompt, at most once per launch (QRT-337): summon is on and qrtz can't listen for
+/// its chord. Asked by qrtz-app so macOS adds "qrtz" to the list. Answers whether it asked now.
+pub fn ask_input_monitoring_once() -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ASKED: AtomicBool = AtomicBool::new(false);
+    if ASKED.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        tracing::info!("input monitoring: asking macOS for qrtz (summon is on)");
+        mac::listen_request();
     }
     true
 }
@@ -149,6 +182,8 @@ mod mac {
     extern "C" {
         fn CGPreflightScreenCaptureAccess() -> bool;
         fn CGRequestScreenCaptureAccess() -> bool;
+        fn CGPreflightListenEventAccess() -> bool;
+        fn CGRequestListenEventAccess() -> bool;
     }
     #[link(name = "CoreFoundation", kind = "framework")]
     extern "C" {
@@ -206,6 +241,17 @@ mod mac {
         // SAFETY: CoreGraphics call with no arguments or preconditions.
         unsafe { CGRequestScreenCaptureAccess() }
     }
+
+    pub fn listen_preflight() -> bool {
+        // SAFETY: CoreGraphics call with no arguments or preconditions.
+        unsafe { CGPreflightListenEventAccess() }
+    }
+
+    /// Shows macOS's own Input Monitoring prompt (once) and adds qrtz to the list.
+    pub fn listen_request() -> bool {
+        // SAFETY: CoreGraphics call with no arguments or preconditions.
+        unsafe { CGRequestListenEventAccess() }
+    }
 }
 
 #[cfg(test)]
@@ -232,6 +278,17 @@ mod tests {
         }
         assert_eq!(settings_url("camera"), None);
         assert!(!open_settings("nope"));
+    }
+
+    #[test]
+    fn input_monitoring_needs_a_restart_and_is_asked_once() {
+        assert!(needs_restart("input-monitoring"));
+        assert!(needs_restart("screen-recording"));
+        assert!(!needs_restart("accessibility"));
+        assert!(ask_input_monitoring_once());
+        assert!(!ask_input_monitoring_once());
+        #[cfg(not(target_os = "macos"))]
+        assert!(!listen_granted());
     }
 
     #[test]

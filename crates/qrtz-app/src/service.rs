@@ -634,6 +634,18 @@ impl AppService {
                                 // the button to the pane too).
                                 crate::tcc::ask_accessibility_once();
                             }
+                            // QRT-337: summon is on and can't listen: qrtz-app asks for Input Monitoring itself
+                            // (so the prompt and the list entry are qrtz's), then restarts qrtz-snap once the
+                            // grant flips on, since a running tap never sees it.
+                            if s2.summon_waiting_for_grant(&me.config.get()) {
+                                if crate::tcc::listen_granted() {
+                                    st["inputMonitoring"] = json!(true);
+                                    s2.restart();
+                                } else {
+                                    crate::tcc::ask_input_monitoring_once();
+                                    me.watch_input_monitoring(s2.clone());
+                                }
+                            }
                             me.events.emit("snap:changed", st)
                         }
                         crate::snap::SnapLine::Patch(p) => {
@@ -664,6 +676,30 @@ impl AppService {
             }
         });
         self.apply_snap(&self.config.get());
+    }
+
+    /// QRT-337: polls qrtz's Input Monitoring grant every 2 s while summon waits for it, and restarts qrtz-snap when
+    /// it flips on. One watcher at a time; it ends when the grant comes or summon/snap stops waiting.
+    fn watch_input_monitoring(self: &Arc<Self>, s: Arc<crate::snap::SnapHost>) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static WATCHING: AtomicBool = AtomicBool::new(false);
+        if WATCHING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                if !s.summon_waiting_for_grant(&me.config.get()) {
+                    break;
+                }
+                if crate::tcc::listen_granted() {
+                    s.restart();
+                    break;
+                }
+            }
+            WATCHING.store(false, Ordering::SeqCst);
+        });
     }
 
     /// Start the helper and pump its lines/status into the ports and the event bus. Call once, inside tokio.
