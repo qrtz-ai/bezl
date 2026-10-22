@@ -82,6 +82,12 @@ describe("echo's dev opts (ADR 0221, temporary pill tuning)", () => {
     const commits: unknown[] = [];
     const el = document.createElement('div');
     document.body.appendChild(el);
+    // The sliders are shadcn/Radix Slider (role=slider thumbs, aria-valuenow); jsdom has no ResizeObserver.
+    globalThis.ResizeObserver ??= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
     const root = createRoot(el);
     await act(async () =>
       root.render(
@@ -98,9 +104,15 @@ describe("echo's dev opts (ADR 0221, temporary pill tuning)", () => {
     expect(q('talk-motion-expandBounce')).toBeNull();
     await act(async () => q('talk-dev-opts-toggle')!.click());
     // Stored values are clamped to the slider's range; missing ones take the default.
-    expect(q('talk-motion-expandBounce')!.value).toBe('0.35');
-    expect(q('talk-motion-collapseDuration')!.value).toBe('0.5');
-    expect(q('talk-motion-expandDuration')!.value).toBe('0.3');
+    expect(q('talk-motion-expandBounce')!.getAttribute('aria-valuenow')).toBe(
+      '0.35',
+    );
+    expect(
+      q('talk-motion-collapseDuration')!.getAttribute('aria-valuenow'),
+    ).toBe('0.5');
+    expect(q('talk-motion-expandDuration')!.getAttribute('aria-valuenow')).toBe(
+      '0.3',
+    );
     expect(el.textContent).not.toMatch(/settings/i);
     await act(async () => q('talk-motion-reset')!.click());
     expect(commits).toEqual([PILL_MOTION_DEFAULTS]);

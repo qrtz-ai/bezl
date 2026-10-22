@@ -1,3 +1,4 @@
+import { Slider as ShadcnSlider } from './components/ui/slider';
 import { useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { lowerTitle } from './case';
@@ -6,7 +7,7 @@ import { useTheme } from './theme';
 import { typeStyle } from './tokens';
 
 /**
- * A range slider with its value shown beside it. `onChange` follows the drag (live); `onCommit` fires once when the
+ * A range slider on shadcn's Slider with its value shown beside it. `onChange` follows the drag (live); `onCommit` fires once when the
  * drag or key press ends, for callers that persist (a config write per pixel would be wasteful).
  */
 export function Slider({
@@ -33,8 +34,6 @@ export function Slider({
 }) {
   const t = useTheme();
   const decimals = Math.max(0, Math.min(3, -Math.floor(Math.log10(step))));
-  const read = (e: { currentTarget: HTMLInputElement }) =>
-    Number(e.currentTarget.value);
   return (
     <span
       style={{
@@ -45,22 +44,18 @@ export function Slider({
         minWidth: 0,
       }}
     >
-      <input
-        type="range"
+      <ShadcnSlider
         aria-label={label.toLowerCase()}
-        data-testid={testId}
         min={min}
         max={max}
         step={step}
-        value={value}
-        onChange={(e) => onChange?.(read(e))}
-        onPointerUp={(e) => onCommit?.(read(e))}
-        onKeyUp={(e) => onCommit?.(read(e))}
-        style={{
-          flex: '1 1 auto',
-          minWidth: 0,
-          accentColor: t.color.primary,
-          cursor: 'pointer',
+        value={[value]}
+        onValueChange={([v]) => onChange?.(v!)}
+        onValueCommit={([v]) => onCommit?.(v!)}
+        className="tw:min-w-0 tw:flex-auto tw:cursor-pointer"
+        thumbProps={{
+          'aria-label': label.toLowerCase(),
+          'data-testid': testId,
         }}
       />
       <span
