@@ -25,13 +25,16 @@ public struct SummonChordFilter: Equatable, Sendable {
     public private(set) var armed = false
     /// A key or another modifier joined in: this chord fires nothing.
     public private(set) var spoiled = false
+    /// Echo's push-to-talk key is right ⌘ (summonClash): the chord never arms, so a right-⌘-first press that started
+    /// dictation can't also summon. Survives `reset()`.
+    public var blocked = false
 
-    public init() {}
+    public init(blocked: Bool = false) { self.blocked = blocked }
 
     /// True exactly when the chord ends cleanly (summon now).
     public mutating func handle(type: UInt32, keyCode code: Int64, flags: UInt64,
                                 sourceState: Int64 = SummonChordFilter.hidSystemState) -> Bool {
-        guard sourceState == Self.hidSystemState else { return false }
+        guard !blocked, sourceState == Self.hidSystemState else { return false }
         if type == Self.keyDown {
             if left || right { spoiled = true }
             return false
@@ -57,7 +60,7 @@ public struct SummonChordFilter: Equatable, Sendable {
     }
 
     /// The tap was disabled or the Mac slept: forget everything, fire nothing.
-    public mutating func reset() { self = SummonChordFilter() }
+    public mutating func reset() { self = SummonChordFilter(blocked: blocked) }
 }
 
 /// What a summon does, given who's in front.
@@ -72,6 +75,12 @@ public enum SnapSummon {
     public static func step(frontmost: String?, chosen: String, previous: String?) -> SummonStep {
         if let f = frontmost, f == chosen { return .dismiss(back: previous) }
         return .summon(previous: frontmost)
+    }
+
+    /// The webview can write config, so a bundle id is only ever activated or launched when it is one of the
+    /// installed apps the picker offered. Anything else: beep, do nothing.
+    public static func allowed(_ bundleId: String, installed: [SnapApp]) -> Bool {
+        !bundleId.isEmpty && installed.contains { $0.bundleId == bundleId }
     }
 }
 
