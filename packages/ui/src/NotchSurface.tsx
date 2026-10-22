@@ -275,8 +275,8 @@ export function NotchSurface({
                   : Math.round(content.value * 100)
               }
               style={{
-                flex: '0 0 64px',
-                height: 3,
+                flex: `0 0 ${tokens.space[16]}`,
+                height: tokens.size.meter.height,
                 borderRadius: tokens.radius.xs,
                 background: tokens.notch.track,
                 overflow: 'hidden',
@@ -285,7 +285,7 @@ export function NotchSurface({
               <span
                 style={{
                   display: 'block',
-                  height: 3,
+                  height: tokens.size.meter.height,
                   width: `${Math.round((content.value ?? 0.3) * 100)}%`,
                   background: tokens.notch.text,
                 }}
@@ -307,7 +307,7 @@ export function NotchSurface({
         height: panelH,
         pointerEvents: 'none',
         opacity: still ? (open ? 1 : 0) : 1,
-        transition: still ? 'opacity 120ms' : undefined,
+        transition: still ? `opacity ${tokens.motion.fast}` : undefined,
       }}
     >
       <svg
@@ -338,7 +338,7 @@ export function NotchSurface({
           gap: tokens.space[2],
           color: tokens.notch.text,
           fontFamily: t.font.family,
-          fontSize: '13.158px',
+          fontSize: tokens.type.body.size,
           opacity: contentOpacity,
         }}
       >

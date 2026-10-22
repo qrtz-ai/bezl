@@ -292,7 +292,7 @@ export function ModelRequirement(p: ModelRequirementProps) {
               gap: t.space[3],
               padding: t.space[3],
               borderRadius: t.radius.md,
-              border: `1px solid ${state === 'error' ? `color-mix(in srgb, ${t.color.danger} 35%, transparent)` : t.color.border}`,
+              border: `${tokens.border.hairline} solid ${state === 'error' ? `color-mix(in srgb, ${t.color.danger} 35%, transparent)` : t.color.border}`,
               minWidth: 0,
             }
           : layout === 'banner'
@@ -304,7 +304,12 @@ export function ModelRequirement(p: ModelRequirementProps) {
                 ...calloutBox(t, state === 'error' ? 'danger' : 'info'),
                 minWidth: 0,
               }
-            : { display: 'grid', gap: t.space[2], minHeight: 32, minWidth: 0 }
+            : {
+                display: 'grid',
+                gap: t.space[2],
+                minHeight: tokens.size.row.md,
+                minWidth: 0,
+              }
       }
     >
       {head}
@@ -346,8 +351,8 @@ export function ModelRequired({ children, ...p }: ModelRequiredProps) {
         aria-hidden
         data-testid={`${testId}-blocked`}
         style={{
-          filter: 'blur(6px)',
-          opacity: 0.6,
+          filter: tokens.blur.blocked,
+          opacity: tokens.opacity.muted,
           pointerEvents: 'none',
           userSelect: 'none',
           minWidth: 0,

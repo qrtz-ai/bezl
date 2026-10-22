@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTheme } from './theme';
+import { tokens } from './tokens';
 
 /**
  * Live mic waveform for the echo pill: a few layered sine waves under a tapered envelope whose amplitude follows the
@@ -24,9 +25,9 @@ export const WAVE_RELEASE_MS = 220;
 const SPEED: Record<WaveMode, number> = { live: 7, idle: 2.2 };
 /** The layers: cycles across the width, amplitude share, opacity, phase speed multiplier, phase offset. */
 export const WAVE_LAYERS = [
-  { cycles: 1.6, gain: 1, opacity: 1, rate: 1, offset: 0 },
-  { cycles: 2.3, gain: 0.66, opacity: 0.5, rate: -1.3, offset: 1.9 },
-  { cycles: 3.1, gain: 0.4, opacity: 0.28, rate: 1.7, offset: 4.1 },
+  { cycles: 1.6, gain: 1, opacity: 1, rate: 1, offset: 0 }, // tokens-allow: canvas layer data, not a style
+  { cycles: 2.3, gain: 0.66, opacity: 0.5, rate: -1.3, offset: 1.9 }, // tokens-allow: canvas layer data, not a style
+  { cycles: 3.1, gain: 0.4, opacity: 0.28, rate: 1.7, offset: 4.1 }, // tokens-allow: canvas layer data, not a style
 ] as const;
 
 const clamp01 = (x: number) =>
@@ -148,7 +149,9 @@ export function Waveform({
           fill="none"
           stroke={t.color.text}
           strokeOpacity={l.opacity}
-          strokeWidth={i === 0 ? 2 : 1.5}
+          strokeWidth={
+            i === 0 ? tokens.size.waveStroke.main : tokens.size.waveStroke.layer
+          }
           strokeLinecap="round"
           strokeLinejoin="round"
         />

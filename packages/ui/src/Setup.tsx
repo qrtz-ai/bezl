@@ -382,7 +382,7 @@ export function ModelsPanel({
             display: 'flex',
             alignItems: 'center',
             gap: t.space[3],
-            minHeight: 28,
+            minHeight: tokens.size.row.sm,
             minWidth: 0,
           }}
         >

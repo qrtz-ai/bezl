@@ -239,8 +239,8 @@ export function SideNav({
             style={{
               marginLeft: 'auto',
               flex: '0 0 auto',
-              width: 6,
-              height: 6,
+              width: tokens.size.dotSm,
+              height: tokens.size.dotSm,
               borderRadius: t.radius.full,
               background: t.color.primary,
             }}
@@ -263,8 +263,8 @@ export function SideNav({
         width,
         flex: '0 0 auto',
         boxSizing: 'border-box',
-        padding: `${embedded ? t.space[2] : '40px'} ${t.space[2]} ${t.space[2]}`,
-        borderRight: `1px solid ${t.color.border}`,
+        padding: `${embedded ? t.space[2] : `${tokens.layout.pagePadTop}px`} ${t.space[2]} ${t.space[2]}`,
+        borderRight: `${tokens.border.hairline} solid ${t.color.border}`,
         minHeight: 0,
         overflow: 'auto',
       }}
@@ -296,10 +296,10 @@ export function SideNav({
  */
 export const PAGE = {
   maxWidth: tokens.layout.pageMax,
-  padTop: 40,
-  gutter: 32,
-  padBottom: 48,
-  headerHeight: 40,
+  padTop: tokens.layout.pagePadTop,
+  gutter: tokens.layout.pageGutter,
+  padBottom: tokens.layout.pagePadBottom,
+  headerHeight: tokens.layout.pageHeader,
   gap: tokens.space[6],
 } as const;
 
@@ -408,7 +408,7 @@ export function SplitView({
       data-testid={testId}
       style={{
         display: 'grid',
-        gridTemplateColumns: `240px minmax(0, 1fr)`,
+        gridTemplateColumns: `${tokens.layout.splitSidebar}px minmax(0, 1fr)`,
         gap: PAGE.gutter,
         minWidth: 0,
         alignItems: 'start',
@@ -448,7 +448,7 @@ export function Toolbar({
         display: 'flex',
         alignItems: 'center',
         gap: t.space[2],
-        minHeight: 28,
+        minHeight: tokens.size.row.sm,
       }}
     >
       {children}
@@ -523,14 +523,14 @@ export function IconButton({
         position: 'relative',
         boxSizing: 'border-box',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        width: 26,
-        height: 26,
+        opacity: disabled ? tokens.opacity.disabled : 1,
+        width: tokens.size.iconButton,
+        height: tokens.size.iconButton,
         flexShrink: 0,
         display: 'grid',
         placeItems: 'center',
         borderRadius: t.radius.md,
-        border: `1px solid ${variant === 'ghost' ? 'transparent' : tone === 'danger' ? t.color.danger : t.color.border}`,
+        border: `${tokens.border.hairline} solid ${variant === 'ghost' ? 'transparent' : tone === 'danger' ? t.color.danger : t.color.border}`,
         background: pressed ? t.color.accent : 'transparent',
         color:
           variant === 'ghost'
@@ -551,13 +551,13 @@ export function IconButton({
           data-testid={testId ? `${testId}-badge` : undefined}
           style={{
             position: 'absolute',
-            top: -3,
-            right: -3,
-            width: 8,
-            height: 8,
+            top: -tokens.size.badgeInset,
+            right: -tokens.size.badgeInset,
+            width: tokens.size.dot,
+            height: tokens.size.dot,
             borderRadius: tokens.radius.sm,
             background: t.color.warning,
-            border: `2px solid ${t.color.bg}`,
+            border: `${tokens.border.thick} solid ${t.color.bg}`,
           }}
         />
       ) : null}
@@ -596,7 +596,7 @@ export function Chip({
         ...typeStyle('caption', t),
         color: t.color.textMuted,
         background: pressed ? t.color.accent : 'transparent',
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         borderRadius: t.radius.sm,
         padding: `0 ${t.space[2]}`,
       }}
@@ -641,7 +641,7 @@ export function ListRow({
           borderRadius: t.radius.md,
           background: selected ? t.color.accent : 'transparent',
           contentVisibility: 'auto',
-          containIntrinsicSize: 'auto 44px',
+          containIntrinsicSize: `auto ${tokens.size.listRowIntrinsic}px`,
           transition: transition('background', 'hover', t),
         }}
       >

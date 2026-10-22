@@ -52,7 +52,8 @@ export function ExtensionGlyph({
   size?: 'sm' | 'md' | 'lg';
 }) {
   const t = useTheme();
-  const px = size === 'lg' ? 56 : size === 'sm' ? 32 : 40;
+  const px =
+    tokens.size.appIcon[size === 'lg' ? 'lg' : size === 'sm' ? 'sm' : 'md'];
   return (
     <div
       aria-hidden
@@ -63,7 +64,7 @@ export function ExtensionGlyph({
         display: 'grid',
         placeItems: 'center',
         borderRadius: t.radius.lg,
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         background: t.color.accent,
         color: t.color.text,
       }}
@@ -251,7 +252,7 @@ export function IconLine({
         display: 'flex',
         alignItems: 'center',
         gap: t.space[3],
-        minHeight: 28,
+        minHeight: tokens.size.row.sm,
       }}
     >
       <Icon name={icon} size="sm" tone="muted" />
@@ -389,9 +390,9 @@ export function ModuleRow({
 /** Read by screen readers, not shown (the AppRow button's trailing "details"). */
 const VISUALLY_HIDDEN: CSSProperties = {
   position: 'absolute',
-  width: 1,
-  height: 1,
-  margin: -1,
+  width: tokens.size.srOnly,
+  height: tokens.size.srOnly,
+  margin: -tokens.size.srOnly,
   padding: 0,
   overflow: 'hidden',
   clip: 'rect(0 0 0 0)',
@@ -555,7 +556,7 @@ export function AppRow({
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            minWidth: 26,
+            minWidth: tokens.size.iconButton,
           }}
         >
           {action}
@@ -582,7 +583,7 @@ export function RowProgress({
   return (
     <span
       title={`${pct}%`}
-      style={{ display: 'block', width: 72 }}
+      style={{ display: 'block', width: tokens.size.rowProgress }}
       data-testid={testId ? `${testId}-wrap` : undefined}
     >
       <Progress

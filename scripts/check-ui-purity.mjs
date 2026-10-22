@@ -129,3 +129,12 @@ if (problems.length) {
   process.exit(1);
 }
 console.log('check-ui-purity: ok (no styled elements outside packages/ui)');
+
+// Inside packages/ui: every style value comes from tokens.ts (packages/ui/scripts/check-tokens.mjs).
+import { spawnSync } from 'node:child_process';
+const tok = spawnSync(
+  process.execPath,
+  [path.join(ROOT, 'packages', 'ui', 'scripts', 'check-tokens.mjs')],
+  { stdio: 'inherit' },
+);
+if (tok.status !== 0) process.exit(tok.status ?? 1);

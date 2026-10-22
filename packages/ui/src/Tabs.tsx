@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import { useTheme } from './theme';
 
 export function Tabs<T extends string>({
@@ -18,7 +18,7 @@ export function Tabs<T extends string>({
       style={{
         display: 'flex',
         gap: t.space[4],
-        borderBottom: `1px solid ${t.color.border}`,
+        borderBottom: `${tokens.border.hairline} solid ${t.color.border}`,
       }}
     >
       {tabs.map((tab) => {
@@ -35,10 +35,10 @@ export function Tabs<T extends string>({
               all: 'unset',
               cursor: 'pointer',
               padding: `${t.space[2]} 0`,
-              marginBottom: -1,
+              marginBottom: `-${tokens.border.hairline}`,
               ...typeStyle('label', t),
               color: on ? t.color.text : t.color.textMuted,
-              borderBottom: `2px solid ${on ? t.color.primary : 'transparent'}`,
+              borderBottom: `${tokens.border.thick} solid ${on ? t.color.primary : 'transparent'}`,
               transition: `color ${t.motion.fast} ${t.motion.easeOut}`,
             }}
           >

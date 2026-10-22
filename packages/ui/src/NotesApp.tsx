@@ -4,7 +4,7 @@ import { Text } from './Text';
 import { Input } from './Input';
 import { EmptyState } from './EmptyState';
 import { IconButton, ListRow } from './Layout';
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import type { UserError } from './UserError';
 
 export interface NotesAppItem {
@@ -75,12 +75,18 @@ export function NotesApp({
       data-testid="notes"
       style={{
         display: 'grid',
-        gridTemplateColumns: compact ? '1fr' : '200px minmax(0, 1fr)',
+        gridTemplateColumns: compact
+          ? '1fr'
+          : `${tokens.layout.notesSidebar}px minmax(0, 1fr)`,
         gridTemplateRows: compact ? 'auto minmax(0, 1fr)' : undefined,
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         borderRadius: t.radius.md,
-        minHeight: compact ? 220 : 420,
-        height: compact ? 260 : 'calc(100vh - 260px)',
+        minHeight: compact
+          ? tokens.layout.notesCompactMinHeight
+          : tokens.layout.notesMinHeight,
+        height: compact
+          ? tokens.layout.notesCompactHeight
+          : `calc(100vh - ${tokens.layout.notesChrome}px)`,
         minWidth: 0,
       }}
     >
@@ -91,9 +97,13 @@ export function NotesApp({
           gap: t.space[2],
           padding: t.space[2],
           minHeight: 0,
-          borderRight: compact ? undefined : `1px solid ${t.color.border}`,
-          borderBottom: compact ? `1px solid ${t.color.border}` : undefined,
-          maxHeight: compact ? 110 : undefined,
+          borderRight: compact
+            ? undefined
+            : `${tokens.border.hairline} solid ${t.color.border}`,
+          borderBottom: compact
+            ? `${tokens.border.hairline} solid ${t.color.border}`
+            : undefined,
+          maxHeight: compact ? tokens.layout.notesCompactListMax : undefined,
         }}
       >
         <div style={{ display: 'flex', gap: t.space[1] }}>
@@ -103,7 +113,7 @@ export function NotesApp({
             value={query}
             onChange={(e) => onQuery(e.target.value)}
             data-testid="notes-search"
-            style={{ height: 28 }}
+            style={{ height: tokens.size.row.sm }}
           />
           <IconButton
             icon="edit"
@@ -157,7 +167,7 @@ export function NotesApp({
               <div
                 style={{
                   padding: t.space[2],
-                  borderBottom: `1px solid ${t.color.border}`,
+                  borderBottom: `${tokens.border.hairline} solid ${t.color.border}`,
                 }}
               >
                 {banner}
@@ -192,7 +202,7 @@ export function NotesApp({
                 justifyContent: 'space-between',
                 gap: t.space[2],
                 padding: `${t.space[1]} ${t.space[2]}`,
-                borderTop: `1px solid ${t.color.border}`,
+                borderTop: `${tokens.border.hairline} solid ${t.color.border}`,
               }}
             >
               {error ? (

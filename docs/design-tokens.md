@@ -82,6 +82,8 @@ Use `transition(prop, "hover" | "enter" | "exit")` instead of raw durations. Red
 | `motion.enter` | `--q-motion-enter` | `180ms` |
 | `motion.exit` | `--q-motion-exit` | `120ms` |
 | `motion.pulse` | `--q-motion-pulse` | `1400ms` |
+| `motion.blink` | `--q-motion-blink` | `1100ms` |
+| `motion.spin` | `--q-motion-spin` | `700ms` |
 
 ## Focus
 
@@ -117,4 +119,4 @@ Feather icons only, through `<Icon name size>` (or `icon=` on `Button`/`IconButt
 | `z.toast` | `--q-z-toast` | `60` |
 | `z.tooltip` | `--q-z-tooltip` | `70` |
 
-_108 CSS variables in total._
+_190 CSS variables in total._

@@ -10,8 +10,8 @@ export function Kbd({ children }: { children: ReactNode }) {
         ...typeStyle('mono', t),
         padding: `0 ${tokens.space[1]}`,
         borderRadius: t.radius.sm,
-        border: `1px solid ${t.color.border}`,
-        borderBottomWidth: 2,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
+        borderBottomWidth: tokens.border.thick,
         background: t.color.surface,
         color: t.color.textMuted,
       }}

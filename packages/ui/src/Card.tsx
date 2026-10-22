@@ -111,7 +111,7 @@ export function Card({
     <div
       {...rest}
       style={{
-        border: `1px solid ${selected ? t.color.borderStrong : t.color.border}`,
+        border: `${tokens.border.hairline} solid ${selected ? t.color.borderStrong : t.color.border}`,
         borderRadius: t.radius.lg,
         padding: t.space[padding],
         background: selected ? t.color.surfaceHover : t.color.card,

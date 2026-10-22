@@ -53,7 +53,7 @@ export function TalkPill({
         boxSizing: 'border-box',
         // QRT-291: inside a page a failed pill grows to fit its reason (it wraps, never cut off).
         height: inline ? (failed ? 'auto' : 44) : '100vh',
-        minHeight: inline ? 44 : undefined,
+        minHeight: inline ? tokens.size.talkInlineMin : undefined,
         width: inline ? (failed ? 'fit-content' : 220) : '100%',
         maxWidth: '100%',
         display: 'flex',
@@ -63,7 +63,7 @@ export function TalkPill({
         padding:
           inline && failed ? `${t.space[2]} ${t.space[4]}` : `0 ${t.space[4]}`,
         background: t.color.surface,
-        border: `1px solid ${t.color.borderStrong}`,
+        border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
         borderRadius: inline && failed ? tokens.radius.lg : tokens.radius.full,
         overflow: 'hidden',
       }}
@@ -124,7 +124,7 @@ export function TalkHistoryRow({
         gridTemplateColumns: 'minmax(0, 1fr) auto',
         gap: t.space[3],
         padding: `${t.space[3]} 0`,
-        borderBottom: `1px solid ${t.color.border}`,
+        borderBottom: `${tokens.border.hairline} solid ${t.color.border}`,
         transition: transition('background', 'hover', t),
       }}
     >
@@ -194,7 +194,7 @@ export function DictionaryTerm({
         alignItems: 'center',
         gap: t.space[2],
         padding: `${tokens.space[0.5]} ${t.space[1]} ${tokens.space[0.5]} ${t.space[2]}`,
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         borderRadius: t.radius.sm,
       }}
     >

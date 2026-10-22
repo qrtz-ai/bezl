@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import { useTheme } from './theme';
 
 export function Spinner({
@@ -17,9 +18,9 @@ export function Spinner({
         width: size,
         height: size,
         borderRadius: t.radius.full,
-        border: `2px solid currentColor`,
+        border: `${tokens.border.thick} solid currentColor`,
         borderRightColor: 'transparent',
-        animation: `q-spin 700ms linear infinite`,
+        animation: `q-spin ${t.motion.spin} linear infinite`,
         flexShrink: 0,
       }}
     />
@@ -40,8 +41,8 @@ export function PaneLoading() {
         justifyContent: 'center',
         width: '100%',
         height: '100%',
-        minHeight: 120,
-        opacity: 0.6,
+        minHeight: tokens.layout.paneLoadingMin,
+        opacity: tokens.opacity.muted,
       }}
     >
       <Spinner size={18} label="loading" />

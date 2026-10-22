@@ -19,7 +19,7 @@ export function calloutBox(t: Theme, tone: CalloutTone = 'info') {
   }[tone];
   return {
     padding: `${tokens.space[2]} ${tokens.space[3]}`,
-    border: `1px solid color-mix(in srgb, ${c} 35%, transparent)`,
+    border: `${tokens.border.hairline} solid color-mix(in srgb, ${c} 35%, transparent)`,
     background: `color-mix(in srgb, ${c} 8%, transparent)`,
     borderRadius: t.radius.md,
   } as const;
@@ -77,14 +77,14 @@ export function Callout({
       <span
         aria-hidden
         style={{
-          width: 8,
-          height: 8,
+          width: tokens.size.dot,
+          height: tokens.size.dot,
           borderRadius: tokens.radius.sm,
           background: c,
           flex: 'none',
         }}
       />
-      <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+      <div style={{ flex: `1 1 ${tokens.size.calloutBody}px`, minWidth: 0 }}>
         <div
           style={{
             color: t.color.text,

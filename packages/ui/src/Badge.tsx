@@ -41,7 +41,7 @@ export function Badge({
         ...typeStyle('label', t),
         color: c,
         background: `color-mix(in srgb, ${c} 10%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${c} 20%, transparent)`,
+        border: `${tokens.border.hairline} solid color-mix(in srgb, ${c} 20%, transparent)`,
         borderRadius: t.radius.sm,
       }}
     >

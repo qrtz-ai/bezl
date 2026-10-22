@@ -45,7 +45,7 @@ function StreamRow({
       {...rest}
       style={{
         display: 'grid',
-        gridTemplateColumns: '56px minmax(0, 1fr)',
+        gridTemplateColumns: `${tokens.size.timeColumn}px minmax(0, 1fr)`,
         gap: t.space[2],
         padding: `${t.space[1]} ${t.space[2]}`,
       }}
@@ -222,10 +222,12 @@ export function PipelineSteps({
             display: 'flex',
             alignItems: 'center',
             gap: t.space[3],
-            minHeight: 28,
+            minHeight: tokens.size.row.sm,
           }}
         >
-          <Text style={{ minWidth: 120 }}>{s.label}</Text>
+          <Text style={{ minWidth: tokens.size.lifecycleLabel }}>
+            {s.label}
+          </Text>
           <Text variant="caption" tone={STATUS[s.status].tone}>
             {s.status === 'failed' && s.fallback
               ? 'on-device fallback'

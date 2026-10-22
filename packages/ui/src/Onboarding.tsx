@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import type { ReactNode } from 'react';
 import { Badge, type BadgeTone } from './Badge';
 import { Button } from './Button';
@@ -134,10 +135,10 @@ export function PermissionSetupRow({
         alignItems: 'center',
         columnGap: t.space[3],
         rowGap: t.space[2],
-        minHeight: 52,
+        minHeight: tokens.size.row.lg,
         padding: `${t.space[2]} ${t.space[3]}`,
         borderRadius: t.radius.md,
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         minWidth: 0,
       }}
     >

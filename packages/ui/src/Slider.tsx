@@ -3,7 +3,7 @@ import { Icon } from './Icon';
 import { lowerTitle } from './case';
 import { Text } from './Text';
 import { useTheme } from './theme';
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 
 /**
  * A range slider with its value shown beside it. `onChange` follows the drag (live); `onCommit` fires once when the
@@ -67,7 +67,7 @@ export function Slider({
         style={{
           ...typeStyle('body', t),
           color: t.color.textMuted,
-          minWidth: 52,
+          minWidth: tokens.size.sliderValue,
           textAlign: 'right',
           fontVariantNumeric: 'tabular-nums',
         }}

@@ -105,7 +105,7 @@ function Section({
           gap: t.space[3],
           alignItems: 'center',
           padding: t.space[4],
-          border: `1px solid ${t.color.border}`,
+          border: `${tokens.border.hairline} solid ${t.color.border}`,
           borderRadius: t.radius.lg,
         }}
       >
@@ -131,7 +131,7 @@ function Frame({
         height,
         position: 'relative',
         overflow: 'hidden',
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         borderRadius: t.radius.md,
         transform: 'translateZ(0)',
       }}
@@ -220,7 +220,7 @@ function Showcase({
                   data-testid="type-sample"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '96px 1fr 180px',
+                    gridTemplateColumns: `${tokens.gallery.typeName}px 1fr ${tokens.gallery.typeMeta}px`,
                     gap: t.space[4],
                     alignItems: 'baseline',
                   }}
@@ -279,14 +279,18 @@ function Showcase({
               .map(([k, v]) => (
                 <div
                   key={k}
-                  style={{ display: 'grid', gap: tokens.space[1], width: 96 }}
+                  style={{
+                    display: 'grid',
+                    gap: tokens.space[1],
+                    width: tokens.gallery.swatch,
+                  }}
                 >
                   <div
                     style={{
-                      height: 40,
+                      height: tokens.gallery.swatchHeight,
                       borderRadius: t.radius.md,
                       background: v,
-                      border: `1px solid ${t.color.border}`,
+                      border: `${tokens.border.hairline} solid ${t.color.border}`,
                     }}
                   />
                   <Text variant="caption" truncate>
@@ -339,7 +343,7 @@ function Showcase({
               <Kbd>⌘</Kbd> <Kbd>K</Kbd>
             </span>
             <Spinner />
-            <div style={{ width: 160 }}>
+            <div style={{ width: tokens.gallery.control }}>
               <Progress value={0.6} label="example progress" />
             </div>
             <Tooltip label="start recording (⌘⇧r)">
@@ -365,7 +369,7 @@ function Showcase({
               }),
               speechView({ state: 'idle', done: 0, total: 0 }, '1.0.0'),
             ].map((v, i) => (
-              <div key={i} style={{ width: 320 }}>
+              <div key={i} style={{ width: tokens.gallery.panel }}>
                 <SpeechSetupPanel
                   status={v}
                   manage
@@ -377,7 +381,7 @@ function Showcase({
                 />
               </div>
             ))}
-            <div style={{ width: 320 }}>
+            <div style={{ width: tokens.gallery.panel }}>
               <SpeechNotice
                 status={speechView({
                   state: 'paused',
@@ -891,8 +895,8 @@ function Showcase({
                 <div
                   style={{
                     width: v,
-                    height: 16,
-                    minWidth: 1,
+                    height: tokens.gallery.tick,
+                    minWidth: tokens.size.srOnly,
                     background: t.color.textMuted,
                     borderRadius: tokens.radius.xs,
                   }}
@@ -913,9 +917,9 @@ function Showcase({
               >
                 <div
                   style={{
-                    width: 40,
-                    height: 40,
-                    border: `1px solid ${t.color.borderStrong}`,
+                    width: tokens.gallery.tile,
+                    height: tokens.gallery.tile,
+                    border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
                     borderRadius: v,
                   }}
                 />
@@ -947,16 +951,26 @@ function Showcase({
                     alignItems: 'center',
                   }}
                 >
-                  <Text variant="caption" muted style={{ width: 140 }}>
+                  <Text
+                    variant="caption"
+                    muted
+                    style={{ width: tokens.gallery.narrow }}
+                  >
                     {speed} · {t.motion[speed]}
                   </Text>
-                  <div style={{ flex: 1, height: 8, position: 'relative' }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: tokens.size.dot,
+                      position: 'relative',
+                    }}
+                  >
                     <div
                       style={{
                         position: 'absolute',
-                        left: moved ? 'calc(100% - 8px)' : 0,
-                        width: 8,
-                        height: 8,
+                        left: moved ? `calc(100% - ${tokens.size.dot}px)` : 0,
+                        width: tokens.size.dot,
+                        height: tokens.size.dot,
                         borderRadius: tokens.radius.full,
                         background: t.color.primary,
                         transition: transition('left', speed, t),
@@ -1002,7 +1016,7 @@ function IconsPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${tokens.gallery.tileMin}px, 1fr))`,
             gap: t.space[3],
             width: '100%',
           }}
@@ -1016,7 +1030,7 @@ function IconsPage() {
                 alignItems: 'center',
                 gap: t.space[2],
                 padding: t.space[2],
-                border: `1px solid ${t.color.border}`,
+                border: `${tokens.border.hairline} solid ${t.color.border}`,
                 borderRadius: t.radius.md,
               }}
             >

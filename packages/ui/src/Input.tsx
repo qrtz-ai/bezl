@@ -1,7 +1,7 @@
 import { Children, cloneElement, isValidElement, type ReactNode } from 'react';
 import { lowerTitle } from './case';
 import { Text } from './Text';
-import { typeStyle } from './tokens';
+import { typeStyle, tokens } from './tokens';
 import {
   forwardRef,
   type InputHTMLAttributes,
@@ -12,11 +12,11 @@ import { useTheme } from './theme';
 const useFieldStyle = () => {
   const t = useTheme();
   return {
-    height: 34,
+    height: tokens.size.control.md,
     width: '100%',
     padding: `0 ${t.space[3]}`,
     borderRadius: t.radius.md,
-    border: `1px solid ${t.color.border}`,
+    border: `${tokens.border.hairline} solid ${t.color.border}`,
     background: t.color.bg,
     color: t.color.text,
     ...typeStyle('body', t),

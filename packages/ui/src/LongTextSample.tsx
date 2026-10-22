@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Text, LongText } from './Text';
@@ -27,7 +28,9 @@ function SampleRow({
   const t = useTheme();
   return (
     <div style={{ display: 'grid', gap: t.space[2], marginBottom: t.space[5] }}>
-      <span style={{ color: t.color.textMuted, fontSize: 12 }}>{label}</span>
+      <span style={{ color: t.color.textMuted, ...typeStyle('caption', t) }}>
+        {label}
+      </span>
       <div
         style={{
           display: 'flex',

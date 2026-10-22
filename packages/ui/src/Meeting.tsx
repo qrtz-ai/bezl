@@ -48,14 +48,14 @@ export const TranscriptRow = memo(function TranscriptRow({
       }}
       style={{
         display: 'grid',
-        gridTemplateColumns: '56px minmax(0, 1fr)',
+        gridTemplateColumns: `${tokens.size.timeColumn}px minmax(0, 1fr)`,
         gap: t.space[2],
         padding: `${t.space[1]} ${t.space[2]}`,
         borderRadius: t.radius.md,
         cursor: 'pointer',
         background: active ? t.color.surfaceHover : 'transparent',
         contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 56px',
+        containIntrinsicSize: `auto ${tokens.size.timeColumn}px`,
       }}
     >
       <Text variant="mono" muted>
@@ -161,7 +161,9 @@ export function NotesEditor({
           padding: 0,
           display: 'grid',
           gap: t.space[1],
-          ...(compact ? { maxHeight: 140, overflow: 'auto' } : {}),
+          ...(compact
+            ? { maxHeight: tokens.layout.compactListMax, overflow: 'auto' }
+            : {}),
         }}
       >
         {notes.map((n) => (
@@ -340,8 +342,8 @@ export function RecordDot({ on = true }: { on?: boolean }) {
     <span
       aria-hidden
       style={{
-        width: 8,
-        height: 8,
+        width: tokens.size.dot,
+        height: tokens.size.dot,
         flexShrink: 0,
         borderRadius: tokens.radius.sm,
         background: on ? t.color.recording : t.color.textSubtle,
@@ -360,8 +362,8 @@ export function LevelMeter({ level }: { level: number }) {
     <span
       aria-hidden
       style={{
-        width: 48,
-        height: 3,
+        width: tokens.size.meter.width,
+        height: tokens.size.meter.height,
         background: t.color.border,
         borderRadius: tokens.radius.xs,
         overflow: 'hidden',
@@ -374,7 +376,7 @@ export function LevelMeter({ level }: { level: number }) {
           width: `${Math.round(level * 100)}%`,
           height: '100%',
           background: t.color.text,
-          transition: 'width 120ms linear',
+          transition: `width ${tokens.motion.fast} linear`,
         }}
       />
     </span>
@@ -485,7 +487,7 @@ export const AudioPlayer = forwardRef<
       controls
       src={src}
       onTimeUpdate={(e) => onTime(e.currentTarget.currentTime * 1000)}
-      style={{ width: '100%', height: 32 }}
+      style={{ width: '100%', height: tokens.size.audio }}
     />
   );
 });
@@ -540,14 +542,14 @@ export function ActionMenu({
           style={{
             position: 'absolute',
             right: 0,
-            top: 30,
+            top: tokens.size.moreMenuOffset,
             zIndex: t.z.overlay,
-            minWidth: 200,
+            minWidth: tokens.size.moreMenuMin,
             display: 'grid',
             gap: tokens.space[0.5],
             padding: t.space[1],
             background: t.color.surface,
-            border: `1px solid ${t.color.borderStrong}`,
+            border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
             borderRadius: t.radius.lg,
           }}
         >
@@ -699,10 +701,10 @@ export function CommandPalette({
           }}
           style={{
             width: '100%',
-            height: 48,
+            height: tokens.layout.paletteInput,
             padding: `0 ${t.space[5]}`,
             border: 'none',
-            borderBottom: `1px solid ${t.color.border}`,
+            borderBottom: `${tokens.border.hairline} solid ${t.color.border}`,
             background: 'transparent',
             color: t.color.text,
             ...typeStyle('bodyLg', t),
@@ -714,7 +716,11 @@ export function CommandPalette({
           id="palette-results"
           role="listbox"
           aria-label="results"
-          style={{ maxHeight: 360, overflow: 'auto', padding: t.space[1] }}
+          style={{
+            maxHeight: tokens.layout.paletteMaxHeight,
+            overflow: 'auto',
+            padding: t.space[1],
+          }}
         >
           {results.map((r, i) => (
             <div
@@ -861,9 +867,9 @@ export function MiniHudFrame({
       style={{
         height: '100vh',
         display: 'grid',
-        gridTemplateRows: body ? '56px 1fr' : '1fr',
+        gridTemplateRows: body ? `${tokens.layout.paletteHeader}px 1fr` : '1fr',
         background: t.color.surface,
-        border: `1px solid ${t.color.borderStrong}`,
+        border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
         borderRadius: tokens.radius.lg,
         overflow: 'hidden',
       }}

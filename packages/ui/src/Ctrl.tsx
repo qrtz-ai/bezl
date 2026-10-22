@@ -190,7 +190,7 @@ function OptionBar({ o }: { o: DecisionOptionItem }) {
       style={{
         listStyle: 'none',
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) 80px 36px',
+        gridTemplateColumns: `minmax(0, 1fr) ${tokens.size.ctrlScore}px ${tokens.size.ctrlPct}px`,
         alignItems: 'center',
         gap: t.space[2],
         ...typeStyle('caption', t),
@@ -220,7 +220,7 @@ function OptionBar({ o }: { o: DecisionOptionItem }) {
       <span
         aria-hidden
         style={{
-          height: 4,
+          height: tokens.size.bar,
           borderRadius: t.radius.full,
           background: t.color.border,
           overflow: 'hidden',

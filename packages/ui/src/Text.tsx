@@ -131,7 +131,7 @@ export function Code({
     ...typeStyle('code', t),
     color: t.color.text,
     background: t.color.surfaceHover,
-    border: `1px solid ${t.color.border}`,
+    border: `${tokens.border.hairline} solid ${t.color.border}`,
     borderRadius: t.radius.sm,
   };
   return block ? (
@@ -191,8 +191,8 @@ export function Link({
     ...typeStyle(variant, t),
     color: toneColor(t, tone),
     textDecoration: 'underline',
-    textUnderlineOffset: '3px',
-    textDecorationThickness: '1px',
+    textUnderlineOffset: tokens.size.underlineOffset,
+    textDecorationThickness: tokens.border.hairline,
     cursor: 'pointer',
     borderRadius: t.radius.sm,
     transition: transition('color', 'hover', t),

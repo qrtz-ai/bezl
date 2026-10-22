@@ -47,7 +47,7 @@ export function Heading({
           aria-hidden
           style={{
             marginLeft: tokens.space[0.5],
-            animation: 'q-blink 1.1s step-end infinite',
+            animation: `q-blink ${tokens.motion.blink} step-end infinite`,
           }}
         >
           _

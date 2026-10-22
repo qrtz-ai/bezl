@@ -43,7 +43,7 @@ export function Dialog({
         inset: 0,
         zIndex: t.z.dialog,
         background: t.color.overlay,
-        backdropFilter: 'blur(2px)',
+        backdropFilter: tokens.blur.overlay,
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'flex-start',
@@ -62,9 +62,9 @@ export function Dialog({
         data-q-no-ring
         style={{
           width,
-          maxWidth: 'calc(100vw - 32px)',
+          maxWidth: `calc(100vw - ${tokens.space[8]})`,
           background: t.color.surface,
-          border: `1px solid ${t.color.borderStrong}`,
+          border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
           borderRadius: t.radius.lg,
           boxShadow: tokens.shadow.overlay,
           outline: 'none',
@@ -75,7 +75,7 @@ export function Dialog({
           <div
             style={{
               padding: `${t.space[4]} ${t.space[5]}`,
-              borderBottom: `1px solid ${t.color.border}`,
+              borderBottom: `${tokens.border.hairline} solid ${t.color.border}`,
             }}
           >
             <Text variant="h3">{lowerTitle(title)}</Text>
@@ -137,8 +137,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         aria-live="polite"
         style={{
           position: 'fixed',
-          right: 16,
-          bottom: 16,
+          right: tokens.space[4],
+          bottom: tokens.space[4],
           zIndex: t.z.toast,
           display: 'grid',
           gap: tokens.space[2],
@@ -153,18 +153,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               display: 'flex',
               alignItems: 'center',
               gap: tokens.space[3],
-              minWidth: 240,
+              minWidth: tokens.size.toastMin,
               padding: `${tokens.space[2]} ${tokens.space[3]}`,
               background: t.color.surface,
-              border: `1px solid ${t.color.borderStrong}`,
+              border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
               borderRadius: t.radius.md,
               animation: `q-fade-in ${t.motion.normal} ${t.motion.easeOut}`,
             }}
           >
             <span
               style={{
-                width: 6,
-                height: 6,
+                width: tokens.size.dotSm,
+                height: tokens.size.dotSm,
                 borderRadius: tokens.radius.sm,
                 background: dot[i.kind],
               }}
@@ -222,7 +222,7 @@ export function Tooltip({
           role="tooltip"
           style={{
             position: 'absolute',
-            bottom: 'calc(100% + 6px)',
+            bottom: `calc(100% + ${tokens.size.tooltipOffset}px)`,
             left: '50%',
             transform: 'translateX(-50%)',
             whiteSpace: 'nowrap',
@@ -230,7 +230,7 @@ export function Tooltip({
             ...typeStyle('caption', t),
             color: t.color.text,
             background: t.color.accent,
-            border: `1px solid ${t.color.borderStrong}`,
+            border: `${tokens.border.hairline} solid ${t.color.borderStrong}`,
             borderRadius: t.radius.sm,
             zIndex: t.z.tooltip,
             pointerEvents: 'none',
@@ -275,13 +275,13 @@ export function Switch({
         display: 'inline-flex',
         alignItems: 'center',
         gap: tokens.space[2],
-        opacity: disabled ? 0.5 : 1,
+        opacity: disabled ? tokens.opacity.disabled : 1,
       }}
     >
       <span
         style={{
-          width: 32,
-          height: 18,
+          width: tokens.size.switch.width,
+          height: tokens.size.switch.height,
           borderRadius: tokens.radius.lg,
           background: checked ? t.color.primary : t.color.borderStrong,
           position: 'relative',
@@ -291,10 +291,10 @@ export function Switch({
         <span
           style={{
             position: 'absolute',
-            top: 2,
-            left: checked ? 16 : 2,
-            width: 14,
-            height: 14,
+            top: tokens.size.switch.inset,
+            left: checked ? tokens.size.switch.on : tokens.size.switch.inset,
+            width: tokens.size.switch.thumb,
+            height: tokens.size.switch.thumb,
             borderRadius: tokens.radius.md,
             background: checked ? t.color.primaryText : t.color.text,
             transition: `left ${t.motion.fast} ${t.motion.easeOut}`,
@@ -316,10 +316,10 @@ export function TextArea({
       {...rest}
       style={{
         width: '100%',
-        minHeight: 80,
+        minHeight: tokens.size.textareaMin,
         padding: `${t.space[2]} ${t.space[3]}`,
         borderRadius: t.radius.md,
-        border: `1px solid ${t.color.border}`,
+        border: `${tokens.border.hairline} solid ${t.color.border}`,
         background: t.color.bg,
         color: t.color.text,
         ...typeStyle('body', t),

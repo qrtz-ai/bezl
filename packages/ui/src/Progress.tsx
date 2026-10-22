@@ -1,5 +1,5 @@
 import { useTheme } from './theme';
-import { transition } from './tokens';
+import { transition, tokens } from './tokens';
 
 /** Determinate progress bar (value 0..1). Accessible name via `label`. */
 export function Progress({
@@ -22,7 +22,7 @@ export function Progress({
       aria-valuenow={pct}
       data-testid={testId}
       style={{
-        height: 6,
+        height: tokens.size.progress,
         borderRadius: t.radius.full,
         background: t.color.border,
         overflow: 'hidden',
