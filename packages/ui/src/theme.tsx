@@ -1,3 +1,6 @@
+// Tailwind + shadcn variables (scoped: tw: prefix, no preflight), loaded with ThemeProvider so every window that
+// renders @qrtz/ui gets it (a barrel import would be tree-shaken: sideEffects). Consumers wire @tailwindcss/vite.
+import './styles.css';
 import {
   createContext,
   useContext,
@@ -9,6 +12,7 @@ import {
 } from 'react';
 import {
   globalCss,
+  tokensToCssVars,
   themeTokens,
   tokens,
   type ThemeMode,
@@ -81,7 +85,10 @@ export function ThemeScope({
     <ThemeContext.Provider value={t}>
       <div
         data-theme={mode}
+        // Scope the CSS variables too, so shadcn's var-driven classes and its dark: variant follow this palette.
+        data-q-mode={mode}
         style={{
+          ...(tokensToCssVars(t) as CSSProperties),
           background: t.color.bg,
           color: t.color.text,
           colorScheme: mode,

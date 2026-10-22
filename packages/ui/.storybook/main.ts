@@ -8,7 +8,9 @@ const config: StorybookConfig = {
   core: { disableTelemetry: true },
   async viteFinal(cfg) {
     const { default: react } = await import('@vitejs/plugin-react');
-    cfg.plugins = [...(cfg.plugins ?? []), react()];
+    // Tailwind for the shadcn components (config in src/styles.css: tw: prefix, no preflight).
+    const { default: tailwindcss } = await import('@tailwindcss/vite');
+    cfg.plugins = [...(cfg.plugins ?? []), react(), tailwindcss()];
     return cfg;
   },
 };
