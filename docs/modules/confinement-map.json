@@ -68,6 +68,7 @@
     "QrtzNano": "nano",
     "QrtzNanoMac": "nano",
     "qrtz-echo": "echo",
+    "qrtz-bubble-lab": "echo",
     "qrtz-nano": "nano",
     "qrtz-ctrl": "ctrl",
     "QrtzSnap": "snap",
