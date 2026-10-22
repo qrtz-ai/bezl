@@ -1,0 +1,85 @@
+/*
+ * @qrtz/ui's Tailwind entry (shadcn). Scoped so it can't restyle the apps:
+ *  - every utility carries the `tw:` prefix (components.json "prefix": "tw");
+ *  - no preflight: only Tailwind's theme and utilities layers are imported, never its base reset;
+ *  - globalCss (tokens.ts) stays the one reset, in the `base` layer, so utilities win over it.
+ * One source of truth: every shadcn variable and Tailwind theme value points at a --q-* token var, which
+ * ThemeProvider rewrites on :root when the theme changes, so runtime switching keeps working.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme) prefix(tw);
+@import 'tailwindcss/utilities.css' layer(utilities) prefix(tw);
+@source './';
+
+:root {
+  --background: var(--q-color-bg);
+  --foreground: var(--q-color-text);
+  --card: var(--q-color-card);
+  --card-foreground: var(--q-color-text);
+  --popover: var(--q-color-surface);
+  --popover-foreground: var(--q-color-text);
+  --primary: var(--q-color-primary);
+  --primary-foreground: var(--q-color-primary-text);
+  --secondary: var(--q-color-accent);
+  --secondary-foreground: var(--q-color-text);
+  --muted: var(--q-color-surface-hover);
+  --muted-foreground: var(--q-color-text-muted);
+  --accent: var(--q-color-accent);
+  --accent-foreground: var(--q-color-text);
+  --destructive: var(--q-color-danger);
+  --border: var(--q-color-border);
+  --input: var(--q-color-border);
+  --ring: var(--q-color-ring);
+  --radius: var(--q-radius-md);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-border-strong: var(--q-color-border-strong);
+  --color-overlay: var(--q-color-overlay);
+  --color-danger: var(--q-color-danger);
+  /* Spacing: tokens.space is a 4px grid (space[1] = 4px), so tw:p-2 = 8px = space[2]. */
+  --spacing: var(--q-space-1);
+  --radius-xs: var(--q-radius-xs);
+  --radius-sm: var(--q-radius-sm);
+  --radius-md: var(--q-radius-md);
+  --radius-lg: var(--q-radius-lg);
+  --radius-xl: var(--q-radius-lg);
+  /* One font and type scale (tokens.type); shadcn's text-sm/xs/base land on qrtz body sizes. */
+  --font-sans: var(--q-font-family);
+  --font-mono: var(--q-font-family);
+  --text-xs: var(--q-type-caption-size);
+  --text-xs--line-height: var(--q-type-caption-line-height);
+  --text-sm: var(--q-type-body-size);
+  --text-sm--line-height: var(--q-type-body-line-height);
+  --text-base: var(--q-type-body-size);
+  --text-base--line-height: var(--q-type-body-line-height);
+  --text-lg: var(--q-type-h3-size);
+  --text-lg--line-height: var(--q-type-h3-line-height);
+  --font-weight-normal: var(--q-font-weight);
+  --font-weight-medium: var(--q-font-weight);
+  --font-weight-semibold: var(--q-font-weight);
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: var(--q-shadow-overlay);
+  --shadow-lg: var(--q-shadow-overlay);
+  --z-index-50: var(--q-z-dialog);
+  --animate-in: q-fade-in var(--q-motion-fast) var(--q-motion-ease-out);
+}

@@ -7,6 +7,7 @@ const config: StorybookConfig = {
   stories: ['../stories/**/*.stories.tsx'],
   addons: [],
   core: { disableTelemetry: true },
+  // Tailwind (@qrtz/ui's shadcn styles) comes from ../vite.config.mts, which Storybook's Vite builder loads.
 };
 
 export default config;

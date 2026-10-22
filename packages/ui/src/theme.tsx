@@ -1,3 +1,6 @@
+// Tailwind + shadcn variables (scoped: tw: prefix, no preflight), loaded with ThemeProvider so every window that
+// renders @qrtz/ui gets it (a barrel import would be tree-shaken: sideEffects). Consumers wire @tailwindcss/vite.
+import './styles.css';
 import {
   createContext,
   useContext,
