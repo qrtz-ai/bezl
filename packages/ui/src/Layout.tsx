@@ -1,3 +1,4 @@
+import { Card as ShadcnCard } from './components/ui/card';
 import {
   Children,
   type CSSProperties,
@@ -732,16 +733,9 @@ export function SettingsSection({
       {variant === 'plain' ? (
         children
       ) : (
-        <div
+        <ShadcnCard
           data-settings-card=""
-          style={{
-            border: `1px solid ${t.color.border}`,
-            borderRadius: t.radius.lg,
-            background: t.color.card,
-            minWidth: 0,
-            overflow: 'hidden',
-            paddingBlock: t.space[2],
-          }}
+          className="tw:block tw:min-w-0 tw:gap-0 tw:border-border tw:overflow-hidden tw:rounded-lg tw:py-2 tw:text-[inherit] tw:shadow-none"
         >
           {cells.map((c, i) => (
             <div
@@ -757,7 +751,7 @@ export function SettingsSection({
               {c}
             </div>
           ))}
-        </div>
+        </ShadcnCard>
       )}
     </section>
   );

@@ -1,3 +1,5 @@
+import { Card as ShadcnCard } from './components/ui/card';
+import { cn } from './lib/utils';
 import { tokens } from './tokens';
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 import { useTheme } from './theme';
@@ -91,13 +93,16 @@ export function GridCard({
   );
 }
 
-/** qrtz.ai card: 1px border, rounded-lg, generous padding, no shadow. */
+const PAD = { 3: 'tw:p-3', 4: 'tw:p-4', 6: 'tw:p-6' } as const;
+
+/** qrtz.ai card on shadcn Card: 1px border, rounded-lg, generous padding, no shadow, block flow (not shadcn's column). */
 export function Card({
   children,
   padding = 6,
   interactive,
   selected,
   style,
+  className,
   ...rest
 }: {
   children: ReactNode;
@@ -108,19 +113,22 @@ export function Card({
 } & HTMLAttributes<HTMLDivElement>) {
   const t = useTheme();
   return (
-    <div
+    <ShadcnCard
       {...rest}
+      className={cn(
+        'tw:block tw:gap-0 tw:border-border tw:rounded-lg tw:py-0 tw:text-[inherit] tw:shadow-none',
+        PAD[padding],
+        selected &&
+          'tw:border-(--q-color-border-strong) tw:bg-(--q-color-surface-hover)',
+        interactive && 'tw:cursor-pointer',
+        className,
+      )}
       style={{
-        border: `1px solid ${selected ? t.color.borderStrong : t.color.border}`,
-        borderRadius: t.radius.lg,
-        padding: t.space[padding],
-        background: selected ? t.color.surfaceHover : t.color.card,
-        cursor: interactive ? 'pointer' : undefined,
         transition: `background ${t.motion.fast} ${t.motion.easeOut}, border-color ${t.motion.fast} ${t.motion.easeOut}`,
         ...style,
       }}
     >
       {children}
-    </div>
+    </ShadcnCard>
   );
 }
