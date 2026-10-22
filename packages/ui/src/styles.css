@@ -83,3 +83,12 @@
   --z-index-50: var(--q-z-dialog);
   --animate-in: q-fade-in var(--q-motion-fast) var(--q-motion-ease-out);
 }
+
+/* shadcn's own base rule (`* { border-color: var(--border) }`), scoped to its components (data-slot) since there
+   is no preflight: without it a stock `border` is currentColor. */
+@layer base {
+  [data-slot],
+  [data-slot] * {
+    border-color: var(--border);
+  }
+}
