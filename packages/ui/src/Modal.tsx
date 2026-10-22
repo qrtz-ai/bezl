@@ -1,6 +1,13 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { tokens } from './tokens';
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
 import { IconButton } from './Layout';
@@ -109,17 +116,28 @@ export function Modal({
 }) {
   const t = useTheme();
   const ref = useRef<HTMLDivElement>(null);
-  const inert = () => !!ref.current?.closest('[inert]');
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const setRef = useCallback((n: HTMLDivElement | null) => {
+    ref.current = n;
+    setNode(n);
+  }, []);
+  // Focus, the focus trap and Escape stay on the shared layer stack (useModalLayer), so a Dialog opened over it
+  // (a consent) traps and closes first, and a modal left open in a hidden (inert) sub app never takes keys.
+  // Radix supplies the dialog semantics, title labelling and close part; its own trap and dismiss are off.
+  useModalLayer(ref, open && !!node, onClose, initialFocus);
+  if (!open) return null;
   return (
     <DialogPrimitive.Root
+      modal={false}
       open={open}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
+      // Every close goes through onClose (useModalLayer's Escape, the scrim, the close button); Radix's own
+      // dismiss (Escape, outside) is ignored, so a non-cancelable Escape can't close two layers at once.
+      onOpenChange={() => {}}
     >
-      <DialogPrimitive.Overlay
+      <div
         data-testid={testId ? `${testId}-scrim` : undefined}
         data-modal-scrim=""
+        onMouseDown={(e) => e.target === e.currentTarget && onClose()}
         style={{
           position: 'fixed',
           inset: 0,
@@ -135,25 +153,15 @@ export function Modal({
         }}
       >
         <DialogPrimitive.Content
-          ref={ref}
+          ref={setRef}
           aria-describedby={undefined}
           data-q-no-ring
           data-testid={testId}
-          onOpenAutoFocus={(e) => {
-            const el = ref.current;
-            if (!el) return;
-            const marked = el.querySelector<HTMLElement>('[data-autofocus]');
-            if (marked) {
-              e.preventDefault();
-              marked.focus();
-            } else if (initialFocus === 'dialog') {
-              e.preventDefault();
-              el.focus();
-            }
-          }}
-          onEscapeKeyDown={(e) => {
-            if (inert()) e.preventDefault();
-          }}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          aria-modal="true"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
           style={{
             width,
             maxWidth: '100%',
@@ -185,14 +193,13 @@ export function Modal({
                 </Text>
               </span>
             </DialogPrimitive.Title>
-            <DialogPrimitive.Close asChild>
-              <IconButton
-                icon="close"
-                variant="ghost"
-                label={closeLabel}
-                data-testid={testId ? `${testId}-close` : undefined}
-              />
-            </DialogPrimitive.Close>
+            <IconButton
+              icon="close"
+              variant="ghost"
+              label={closeLabel}
+              onClick={onClose}
+              data-testid={testId ? `${testId}-close` : undefined}
+            />
           </div>
           <div
             style={{
@@ -206,7 +213,7 @@ export function Modal({
             {children}
           </div>
         </DialogPrimitive.Content>
-      </DialogPrimitive.Overlay>
+      </div>
     </DialogPrimitive.Root>
   );
 }
