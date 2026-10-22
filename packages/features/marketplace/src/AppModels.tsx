@@ -67,7 +67,11 @@ export function AppModels({
   const sets = keptFor(app, on);
   const kept = sets.filter((s) => s.keptFor.length);
   return (
-    <SettingsSection title="models" data-testid={`models-${app}`}>
+    <SettingsSection
+      variant="plain"
+      title="models"
+      data-testid={`models-${app}`}
+    >
       <ModelsPanel
         status={status}
         sets={sets}

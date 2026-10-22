@@ -62,8 +62,8 @@ export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
 );
 
 /**
- * The sidebar: the apps in registry order (echo, nano, ctrl, snap) at the top; pinned to the bottom "apps" (the
- * app manager at /qrtz) and "opts" (qrtz's own opts at /qrtz/settings), both plain text with no icon. The
+ * The sidebar: the apps in registry order (echo, nano, ctrl, snap) at the top, then "apps" (the app manager at
+ * /qrtz, a plus icon); pinned to the bottom "qrtz" (qrtz's own opts at /qrtz/settings, plain text). The
  * dev-only gallery has no row.
  */
 export function sidebarItems(
@@ -90,11 +90,13 @@ export function sidebarItems(
   const foot = rows.filter((r) => r.group === 'foot');
   return [
     ...main,
-    { id: APPS, label: 'apps', group: 'foot' },
+    // The app manager closes the app list as its last row: a plus, read as "add an app". Never first, so the
+    // default landing stays the top app.
+    { id: APPS, label: 'apps', icon: 'plus', group: 'main' },
     // ADR 0181: the dot says a newer qrtz is ready (opts → qrtz updates it).
     {
       id: OPTS,
-      label: 'opts',
+      label: 'qrtz',
       group: 'foot',
       ...(updateReady ? { dot: true, dotLabel: 'qrtz update ready' } : {}),
     },

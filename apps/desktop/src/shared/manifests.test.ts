@@ -19,7 +19,7 @@ describe('manifests', () => {
     expect(order.slice(0, 4)).toEqual(['echo', 'nano', 'ctrl', 'snap']);
   });
 
-  it('the sidebar is echo, nano, ctrl, snap, then apps and opts (no icons) pinned to the bottom', () => {
+  it('the sidebar is echo, nano, ctrl, snap, then apps (plus icon, last of the list) and qrtz opts pinned to the bottom', () => {
     const sorted = manifests
       // ADR 0228: dash is behind DASH_ENABLED (off) in packaged builds.
       .filter((m) => m.id !== 'shell' && m.id !== 'gallery')
@@ -33,13 +33,13 @@ describe('manifests', () => {
       'ctrl',
       'snap',
       'apps',
-      'opts',
+      'qrtz',
     ]);
     expect(items.slice(-2)).toEqual([
-      { id: 'apps', label: 'apps', group: 'foot' },
-      { id: 'opts', label: 'opts', group: 'foot' },
+      { id: 'apps', label: 'apps', icon: 'plus', group: 'main' },
+      { id: 'opts', label: 'qrtz', group: 'foot' },
     ]);
-    expect(items.filter((i) => i.group === 'foot')).toHaveLength(2);
+    expect(items.filter((i) => i.group === 'foot')).toHaveLength(1);
     expect(QRTZ_PAGE_PARTS).toEqual(new Set(['marketplace', 'settings']));
     expect([...SIDEBAR_FOOT]).toEqual([]);
     const withGallery = sidebarItems(
@@ -69,6 +69,7 @@ describe('manifests', () => {
       mod('x1', 'apps'),
       mod('x2', ' OPTS '),
       mod('x3', 'Apps'),
+      mod('x4', 'QRTZ'),
       mod('nano', 'nano'),
     ]);
     const ids = items.map((i) => i.id);
@@ -77,10 +78,10 @@ describe('manifests', () => {
     const named = (l: string) =>
       items.filter((i) => i.label.trim().toLowerCase() === l);
     expect(named('apps')).toHaveLength(1);
-    expect(named('opts')).toHaveLength(1);
+    expect(named('qrtz')).toHaveLength(1);
     expect(items.slice(-2)).toEqual([
-      { id: 'apps', label: 'apps', group: 'foot' },
-      { id: 'opts', label: 'opts', group: 'foot' },
+      { id: 'apps', label: 'apps', icon: 'plus', group: 'main' },
+      { id: 'opts', label: 'qrtz', group: 'foot' },
     ]);
   });
 });

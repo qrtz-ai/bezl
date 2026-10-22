@@ -439,8 +439,8 @@ function Showcase({
                     testIdPrefix="gallery-nav"
                     items={[
                       { id: 'note', label: 'nano', icon: 'edit-3' },
-                      { id: 'apps', label: 'apps', group: 'foot' },
-                      { id: 'opts', label: 'opts', group: 'foot' },
+                      { id: 'apps', label: 'apps', icon: 'plus' },
+                      { id: 'opts', label: 'qrtz', group: 'foot' },
                     ]}
                     active={bar}
                     onSelect={setBar}
