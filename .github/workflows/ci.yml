@@ -12,6 +12,9 @@ on:
     tags: ['app-v*', 'nano-v*', 'ctrl-v*', 'snap-v*', 'v*']
   # Public repo: outside PRs get CI too. pull_request (never pull_request_target): no secrets, read-only token.
   pull_request:
+  # QRT-310 follow-up: nightly full run (Linux + macOS) on main, ~3 AM PT (10:00 UTC). Schedules run on the default branch.
+  schedule:
+    - cron: '0 10 * * *'
   workflow_dispatch:
     inputs:
       macos:
@@ -142,8 +145,8 @@ jobs:
 
   macos:
     name: macOS · swift test · cargo test · cargo check desktop
-    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
-    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
+    # QRT-310: macOS only for releases (tag, release.yml), the nightly schedule, or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule'
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -197,8 +200,8 @@ jobs:
   # native/qrtz-helper (scripts/echo-warmup-ci.sh); the model is fetched from its pinned revision and sha256s.
   echo-warmup:
     name: macOS · echo warm-up race (QRT-270)
-    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
-    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
+    # QRT-310: macOS only for releases (tag, release.yml), the nightly schedule, or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule'
     runs-on: macos-26
     timeout-minutes: 40
     steps:
@@ -215,8 +218,8 @@ jobs:
   # are stored, no repo secret is used, and the token stays contents: read.
   keychain:
     name: macOS · KeychainStore (throwaway keychain)
-    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
-    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
+    # QRT-310: macOS only for releases (tag, release.yml), the nightly schedule, or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -263,8 +266,8 @@ jobs:
   # Unsigned release build on macOS. Named "release", so no restored caches: always a cold, reproducible build.
   release-unsigned:
     name: macOS · unsigned release build · verify-bundle (no Developer ID)
-    # QRT-310: macOS only for releases (tag, release.yml) or a manual run with the macos input.
-    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/')
+    # QRT-310: macOS only for releases (tag, release.yml), the nightly schedule, or a manual run with the macos input.
+    if: inputs.macos == true || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule'
     runs-on: macos-latest
     timeout-minutes: 90
     env:
