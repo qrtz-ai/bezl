@@ -1,4 +1,5 @@
 import {
+  Children,
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
@@ -694,17 +695,23 @@ export function SettingsSection({
   'data-testid'?: string;
 }) {
   const t = useTheme();
+  // Each child is one cell of a bordered card, divided by hairlines, so sections read as separate groups
+  // (Apple/Airbnb-style grouped settings). Empty children (null, false) take no cell.
+  const cells = Children.toArray(children);
   return (
     <section
       data-testid={testId}
+      data-settings-section=""
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: t.space[3],
+        gap: t.space[2],
         minWidth: 0,
       }}
     >
-      <div style={{ display: 'grid', gap: t.space[1] }}>
+      <div
+        style={{ display: 'grid', gap: t.space[1], paddingInline: t.space[1] }}
+      >
         <Text variant="label" tone="muted">
           {lowerTitle(title)}
         </Text>
@@ -714,31 +721,74 @@ export function SettingsSection({
           </Text>
         ) : null}
       </div>
-      {children}
+      <div
+        data-settings-card=""
+        style={{
+          border: `1px solid ${t.color.border}`,
+          borderRadius: t.radius.lg,
+          background: t.color.card,
+          minWidth: 0,
+          overflow: 'hidden',
+        }}
+      >
+        {cells.map((c, i) => (
+          <div
+            key={i}
+            data-settings-cell=""
+            style={{
+              padding: `${t.space[3]} ${t.space[4]}`,
+              borderTop: i ? `1px solid ${t.color.border}` : undefined,
+              display: 'grid',
+              gap: t.space[2],
+              minWidth: 0,
+            }}
+          >
+            {c}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
 
-/** One opt: label (and an optional muted description under it) on the left, control on the right. */
+/** The width of the control column in every opts row, so selects and buttons line up down the page. */
+export const SETTING_CONTROL_WIDTH = 240;
+
+/**
+ * One opt: label (and an optional muted description under it) on the left, control right-aligned in a fixed
+ * column. `as="div"` for rows whose control is a button: a <label> would forward clicks on the text to it.
+ */
 export function SettingRow({
   label,
   description,
   children,
+  as = 'label',
+  descriptionTestId,
+  descriptionRole,
+  'data-testid': testId,
 }: {
   label: string;
   description?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
+  as?: 'label' | 'div';
+  /** Test id and role (e.g. "status" for a live update line) for the description text. */
+  descriptionTestId?: string;
+  descriptionRole?: string;
+  'data-testid'?: string;
 }) {
   const t = useTheme();
-  // A <label> so Selects/Inputs get their accessible name and clicking the text toggles a Switch.
+  const Tag = as;
+  // A <label> by default so Selects/Inputs get their accessible name and clicking the text toggles a Switch.
   return (
-    <label
+    <Tag
+      data-testid={testId}
+      data-setting-row=""
       style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: t.space[4],
-        minHeight: 32,
+        minHeight: 36,
         minWidth: 0,
       }}
     >
@@ -752,22 +802,31 @@ export function SettingRow({
       >
         <Text>{lowerTitle(label)}</Text>
         {description ? (
-          <Text variant="caption" muted>
+          <Text
+            variant="caption"
+            muted
+            data-testid={descriptionTestId}
+            role={descriptionRole}
+          >
             {description}
           </Text>
         ) : null}
       </span>
-      <div
-        style={{
-          flex: '0 1 240px',
-          minWidth: 0,
-          display: 'flex',
-          justifyContent: 'flex-end',
-        }}
-      >
-        {children}
-      </div>
-    </label>
+      {children ? (
+        <div
+          style={{
+            flex: `0 1 ${SETTING_CONTROL_WIDTH}px`,
+            minWidth: 0,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: t.space[2],
+          }}
+        >
+          {children}
+        </div>
+      ) : null}
+    </Tag>
   );
 }
 

@@ -169,6 +169,18 @@ function RowsDemo() {
                 label="record automatically"
               />
             </SettingRow>
+            <SettingRow
+              as="div"
+              label="backup"
+              description="export or import your data."
+            >
+              <Button variant="secondary" size="sm">
+                export
+              </Button>
+              <Button variant="secondary" size="sm">
+                import
+              </Button>
+            </SettingRow>
           </SettingsSection>
         </div>
       </Row>

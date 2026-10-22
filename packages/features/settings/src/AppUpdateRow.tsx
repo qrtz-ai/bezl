@@ -144,41 +144,52 @@ export default function AppUpdateRow() {
     s?.state === 'installing';
   return (
     <Stack gap={2} data-testid="app-update">
-      <SettingRow label={`qrtz ${s?.current ?? ''}`.trim()}>
-        <Stack dir="row" gap={2}>
-          {s?.state === 'ready' ? (
-            <Button
-              size="sm"
-              icon="restart"
-              onClick={restart}
-              data-testid="app-update-restart"
-            >
-              restart to update
-            </Button>
-          ) : s?.state === 'available' ||
-            (s?.state === 'failed' && s.latest) ? (
-            <Button
-              size="sm"
-              icon="download"
-              onClick={() => run(qrtz.invoke('app-update:download'))}
-              data-testid="app-update-download"
-            >
-              update
-            </Button>
-          ) : null}
+      <SettingRow
+        as="div"
+        label="version"
+        descriptionTestId={
+          s?.state !== 'failed' && line ? 'update-result' : undefined
+        }
+        descriptionRole="status"
+        description={
+          s?.state !== 'failed' && line
+            ? line
+            : s?.current
+              ? `qrtz ${s.current}`
+              : null
+        }
+      >
+        {s?.state === 'ready' ? (
           <Button
-            variant="ghost"
             size="sm"
-            icon="refresh"
-            disabled={
-              !s || s.state === 'not-set-up' || busy || s.state === 'ready'
-            }
-            onClick={() => run(qrtz.invoke('app-update:check'))}
-            data-testid="update-check"
+            icon="restart"
+            onClick={restart}
+            data-testid="app-update-restart"
           >
-            check for updates
+            restart to update
           </Button>
-        </Stack>
+        ) : s?.state === 'available' || (s?.state === 'failed' && s.latest) ? (
+          <Button
+            size="sm"
+            icon="download"
+            onClick={() => run(qrtz.invoke('app-update:download'))}
+            data-testid="app-update-download"
+          >
+            update
+          </Button>
+        ) : null}
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="refresh"
+          disabled={
+            !s || s.state === 'not-set-up' || busy || s.state === 'ready'
+          }
+          onClick={() => run(qrtz.invoke('app-update:check'))}
+          data-testid="update-check"
+        >
+          check for updates
+        </Button>
       </SettingRow>
       {s?.state === 'downloading' ? (
         <Progress
@@ -187,13 +198,7 @@ export default function AppUpdateRow() {
           data-testid="app-update-progress"
         />
       ) : null}
-      {s?.state === 'failed' ? (
-        <FailedUpdate s={s} />
-      ) : line ? (
-        <Text variant="caption" muted role="status" data-testid="update-result">
-          {line}
-        </Text>
-      ) : null}
+      {s?.state === 'failed' ? <FailedUpdate s={s} /> : null}
       {s?.notes && (s.state === 'available' || s.state === 'ready') ? (
         <Text variant="caption" muted data-testid="app-update-notes">
           {s.notes.toLowerCase()}

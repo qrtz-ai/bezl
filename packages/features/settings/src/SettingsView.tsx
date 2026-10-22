@@ -182,14 +182,6 @@ export default function SettingsView() {
       <SettingsSection title="qrtz" data-testid="about-qrtz">
         <AppUpdateRow />
       </SettingsSection>
-      <SettingsSection title="privacy" data-testid="privacy-card">
-        <Text variant="caption" muted data-testid="offline-note">
-          qrtz runs entirely on this computer: audio, transcripts and notes
-          never leave it. it goes online to check for a new qrtz (at launch and
-          every 6 hours; nothing about you is sent) and when you ask: to
-          download signed apps, models and speech updates.
-        </Text>
-      </SettingsSection>
       <SettingsSection title="app">
         <SettingRow label="theme">
           <Select
@@ -269,147 +261,194 @@ export default function SettingsView() {
         )}
       </SettingsSection>
       <SettingsSection title="permissions" data-testid="permissions-card">
-        <Text variant="caption" muted data-testid="permissions-note">
-          {/* ADR 0184 amendment: system audio is listed only with nano installed. */}
-          {nanoInstalled
-            ? 'the microphone, system audio and accessibility, with their state.'
-            : 'the microphone and accessibility, with their state.'}{' '}
-          each app also asks the first time it needs one.
-        </Text>
-        <Stack dir="row" gap={2}>
+        <SettingRow
+          as="div"
+          label="permissions"
+          descriptionTestId="permissions-note"
+          description={
+            <>
+              {/* ADR 0184 amendment: system audio is listed only with nano installed. */}
+              {nanoInstalled
+                ? 'microphone, system audio and accessibility.'
+                : 'microphone and accessibility.'}{' '}
+              each app also asks the first time it needs one.
+            </>
+          }
+        >
           <Button
             variant="secondary"
             size="sm"
             onClick={() => requestNavigate({ app: 'qrtz', onboarding: true })}
             data-testid="onboarding-reopen"
           >
-            set up permissions
+            set up
           </Button>
-        </Stack>
+        </SettingRow>
       </SettingsSection>
       <SettingsSection title="backup" data-testid="backup-card">
-        <Stack dir="row" gap={2}>
+        <>
+          <SettingRow
+            as="div"
+            label="backup"
+            description="export your meetings and recordings to one file, or import one."
+          >
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={backupBusy}
+              onClick={() => backup('export')}
+              data-testid="backup-export"
+            >
+              export
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={backupBusy}
+              onClick={() => backup('import')}
+              data-testid="backup-import"
+            >
+              import
+            </Button>
+          </SettingRow>
+          {backupBusy && backupProgress && backupProgress.phase !== 'done' ? (
+            <Stack gap={1} data-testid="backup-progress">
+              <Progress
+                value={backupProgress.done / Math.max(1, backupProgress.total)}
+                label={`backup ${backupProgress.kind} progress`}
+              />
+              <Text variant="caption" muted>
+                {
+                  {
+                    checksum: 'computing checksums…',
+                    write: 'writing zip…',
+                    verify: 'verifying backup…',
+                    import: 'importing meetings…',
+                    done: '',
+                  }[backupProgress.phase]
+                }{' '}
+                {backupProgress.phase === 'import'
+                  ? ''
+                  : `${Math.round((backupProgress.done / Math.max(1, backupProgress.total)) * 100)}%`}
+              </Text>
+            </Stack>
+          ) : null}
+          <ErrorCallout
+            error={backupErr}
+            onDismiss={() => setBackupErr(null)}
+            data-testid="backup-error"
+          />
+          {backupMsg ? (
+            <Text
+              variant="caption"
+              muted
+              data-testid="backup-result"
+              role="status"
+            >
+              {backupMsg}
+            </Text>
+          ) : null}
+        </>
+      </SettingsSection>
+      <SettingsSection title="system" data-testid="system-card">
+        <SettingRow
+          as="div"
+          label="this computer"
+          descriptionTestId="system-info"
+          description={
+            <>
+              {info
+                ? `qrtz ${info.version} · ${info.platform}/${info.arch} · ${info.electron}`
+                : '…'}
+              {db
+                ? ` · database ${db.ok ? 'ok' : 'error'}, schema v${db.schemaVersion}, fts5 ${db.fts5 ? 'on' : 'off'}`
+                : ''}
+              {h ? ` · helper ${h.state} (restarts ${h.restarts})` : ''}
+            </>
+          }
+        >
           <Button
             variant="secondary"
-            disabled={backupBusy}
-            onClick={() => backup('export')}
-            data-testid="backup-export"
-          >
-            export
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={backupBusy}
-            onClick={() => backup('import')}
-            data-testid="backup-import"
-          >
-            import
-          </Button>
-        </Stack>
-        {backupBusy && backupProgress && backupProgress.phase !== 'done' ? (
-          <Stack gap={1} data-testid="backup-progress">
-            <Progress
-              value={backupProgress.done / Math.max(1, backupProgress.total)}
-              label={`backup ${backupProgress.kind} progress`}
-            />
-            <Text variant="caption" muted>
-              {
-                {
-                  checksum: 'computing checksums…',
-                  write: 'writing zip…',
-                  verify: 'verifying backup…',
-                  import: 'importing meetings…',
-                  done: '',
-                }[backupProgress.phase]
-              }{' '}
-              {backupProgress.phase === 'import'
-                ? ''
-                : `${Math.round((backupProgress.done / Math.max(1, backupProgress.total)) * 100)}%`}
-            </Text>
-          </Stack>
-        ) : null}
-        <ErrorCallout
-          error={backupErr}
-          onDismiss={() => setBackupErr(null)}
-          data-testid="backup-error"
-        />
-        {backupMsg ? (
-          <Text
-            variant="caption"
-            muted
-            data-testid="backup-result"
-            role="status"
-          >
-            {backupMsg}
-          </Text>
-        ) : null}
-      </SettingsSection>
-      <SettingsSection title="system">
-        <Text variant="caption" muted>
-          {info
-            ? `qrtz ${info.version} · ${info.platform}/${info.arch} · ${info.electron}`
-            : '…'}
-        </Text>
-        <Text variant="caption" muted>
-          {db
-            ? `database: ${db.ok ? 'ok' : 'error'} · schema v${db.schemaVersion} · fts5 ${db.fts5 ? 'on' : 'off'}`
-            : ''}
-        </Text>
-        <Text variant="caption" muted>
-          {h ? `native helper: ${h.state} (restarts ${h.restarts})` : ''}
-        </Text>
-        <Stack dir="row" gap={2} wrap>
-          <Button
-            variant="ghost"
             size="sm"
             onClick={refresh}
             data-testid="settings-refresh"
           >
             refresh
           </Button>
+        </SettingRow>
+        <SettingRow
+          as="div"
+          label="logs"
+          description="for sending to us when something breaks."
+        >
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => logs(false)}
-            data-testid="logs-export"
-          >
-            export logs
-          </Button>
-          <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
             onClick={() => logs(true)}
             data-testid="logs-show"
           >
-            show logs
+            show
           </Button>
           <Button
-            variant="ghost"
+            variant="secondary"
+            size="sm"
+            onClick={() => logs(false)}
+            data-testid="logs-export"
+          >
+            export
+          </Button>
+        </SettingRow>
+        <SettingRow
+          as="div"
+          label="diagnostics"
+          description="logs plus crash reports, in one file."
+        >
+          <Button
+            variant="secondary"
             size="sm"
             onClick={diagnostics}
             data-testid="diagnostics-export"
           >
-            export diagnostics
+            export
           </Button>
+        </SettingRow>
+        <SettingRow as="div" label="open-source licenses">
           <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
             onClick={openLicenses}
             data-testid="licenses-open"
           >
-            open-source licenses
+            view
           </Button>
-        </Stack>
-        <ErrorCallout
-          error={logsErr}
-          onDismiss={() => setLogsErr(null)}
-          data-testid="logs-error"
-        />
-        {logsMsg ? (
-          <Text variant="caption" muted data-testid="logs-result" role="status">
-            {logsMsg}
-          </Text>
+        </SettingRow>
+        {logsErr || logsMsg ? (
+          <>
+            <ErrorCallout
+              error={logsErr}
+              onDismiss={() => setLogsErr(null)}
+              data-testid="logs-error"
+            />
+            {logsMsg ? (
+              <Text
+                variant="caption"
+                muted
+                data-testid="logs-result"
+                role="status"
+              >
+                {logsMsg}
+              </Text>
+            ) : null}
+          </>
         ) : null}
+      </SettingsSection>
+      <SettingsSection title="privacy" data-testid="privacy-card">
+        <Text variant="caption" muted data-testid="offline-note">
+          qrtz runs entirely on this computer: audio, transcripts and notes
+          never leave it. it goes online to check for a new qrtz (at launch and
+          every 6 hours; nothing about you is sent) and when you ask: to
+          download signed apps, models and speech updates.
+        </Text>
       </SettingsSection>
       <Dialog
         open={licenses !== null}
