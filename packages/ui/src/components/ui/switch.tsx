@@ -5,9 +5,12 @@ import { Switch as SwitchPrimitive } from 'radix-ui';
 function Switch({
   className,
   size = 'default',
+  thumbClassName,
   ...props
 }: React.ComponentProps<typeof SwitchPrimitive.Root> & {
   size?: 'sm' | 'default';
+  /** qrtz: classes for the thumb (our track geometry differs from shadcn's). */
+  thumbClassName?: string;
 }) {
   return (
     <SwitchPrimitive.Root
@@ -23,6 +26,7 @@ function Switch({
         data-slot="switch-thumb"
         className={cn(
           'tw:pointer-events-none tw:block tw:rounded-full tw:bg-background tw:ring-0 tw:transition-transform tw:group-data-[size=default]/switch:size-4 tw:group-data-[size=sm]/switch:size-3 tw:data-[state=checked]:translate-x-[calc(100%-2px)] tw:data-[state=unchecked]:translate-x-0 tw:dark:data-[state=checked]:bg-primary-foreground tw:dark:data-[state=unchecked]:bg-foreground',
+          thumbClassName,
         )}
       />
     </SwitchPrimitive.Root>
