@@ -1,3 +1,4 @@
+import * as SliderPrimitive from '@radix-ui/react-slider';
 import { useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { lowerTitle } from './case';
@@ -6,7 +7,7 @@ import { useTheme } from './theme';
 import { typeStyle } from './tokens';
 
 /**
- * A range slider with its value shown beside it. `onChange` follows the drag (live); `onCommit` fires once when the
+ * A range slider on Radix Slider (shadcn `Slider`) with its value shown beside it. `onChange` follows the drag (live); `onCommit` fires once when the
  * drag or key press ends, for callers that persist (a config write per pixel would be wasteful).
  */
 export function Slider({
@@ -33,8 +34,6 @@ export function Slider({
 }) {
   const t = useTheme();
   const decimals = Math.max(0, Math.min(3, -Math.floor(Math.log10(step))));
-  const read = (e: { currentTarget: HTMLInputElement }) =>
-    Number(e.currentTarget.value);
   return (
     <span
       style={{
@@ -45,24 +44,58 @@ export function Slider({
         minWidth: 0,
       }}
     >
-      <input
-        type="range"
+      <SliderPrimitive.Root
         aria-label={label.toLowerCase()}
-        data-testid={testId}
         min={min}
         max={max}
         step={step}
-        value={value}
-        onChange={(e) => onChange?.(read(e))}
-        onPointerUp={(e) => onCommit?.(read(e))}
-        onKeyUp={(e) => onCommit?.(read(e))}
+        value={[value]}
+        onValueChange={([v]) => onChange?.(v!)}
+        onValueCommit={([v]) => onCommit?.(v!)}
         style={{
+          position: 'relative',
           flex: '1 1 auto',
           minWidth: 0,
-          accentColor: t.color.primary,
+          display: 'flex',
+          alignItems: 'center',
+          height: 18,
           cursor: 'pointer',
+          touchAction: 'none',
+          userSelect: 'none',
         }}
-      />
+      >
+        <SliderPrimitive.Track
+          style={{
+            position: 'relative',
+            flexGrow: 1,
+            height: 4,
+            borderRadius: t.radius.full,
+            background: t.color.borderStrong,
+            overflow: 'hidden',
+          }}
+        >
+          <SliderPrimitive.Range
+            style={{
+              position: 'absolute',
+              height: '100%',
+              background: t.color.primary,
+            }}
+          />
+        </SliderPrimitive.Track>
+        <SliderPrimitive.Thumb
+          aria-label={label.toLowerCase()}
+          data-testid={testId}
+          style={{
+            display: 'block',
+            width: 14,
+            height: 14,
+            borderRadius: t.radius.full,
+            background: t.color.primary,
+            border: `2px solid ${t.color.bg}`,
+            boxShadow: `0 0 0 1px ${t.color.borderStrong}`, // tokens-allow: thumb outline built from tokens
+          }}
+        />
+      </SliderPrimitive.Root>
       <span
         style={{
           ...typeStyle('body', t),
