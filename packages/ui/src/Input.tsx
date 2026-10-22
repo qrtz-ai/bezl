@@ -1,3 +1,5 @@
+import { Input as ShadcnInput } from './components/ui/input';
+import { cn } from './lib/utils';
 import {
   Select as ShadcnSelect,
   SelectContent,
@@ -30,12 +32,26 @@ const useFieldStyle = () => {
   } as const;
 };
 
+/**
+ * A text field on shadcn's Input with the qrtz field geometry (34px, body type, bg background) and the one global
+ * focus ring (shadcn's ring is off). Text selection keeps the qrtz selection color.
+ */
 export const Input = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement>
->(function Input({ style, ...rest }, ref) {
-  const base = useFieldStyle();
-  return <input ref={ref} {...rest} style={{ ...base, ...style }} />;
+>(function Input({ style, className, ...rest }, ref) {
+  const t = useTheme();
+  return (
+    <ShadcnInput
+      ref={ref}
+      {...rest}
+      className={cn(
+        'tw:h-[34px] tw:border-border tw:bg-background tw:px-3 tw:py-0 tw:text-foreground tw:shadow-none tw:focus-visible:ring-0 tw:dark:bg-background tw:selection:bg-(--q-color-selection) tw:selection:text-foreground',
+        className,
+      )}
+      style={{ ...typeStyle('body', t), ...style }}
+    />
+  );
 });
 
 /** Dropdown options are UI chrome: lowercase (brand rule), including brand and model names. */
