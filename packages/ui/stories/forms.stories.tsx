@@ -9,6 +9,7 @@ import {
   Menu,
   Modal,
   Select,
+  SelectMenu,
   Switch,
   Tabs,
   KeepAlive,
@@ -39,6 +40,16 @@ function InputsDemo() {
             <option value="a">alpha</option>
             <option value="b">beta</option>
           </Select>
+        </Field>
+        <Field label="select menu (radix)">
+          <SelectMenu
+            value="dark"
+            onValueChange={() => {}}
+            options={[
+              { value: 'dark', label: 'dark' },
+              { value: 'light', label: 'light' },
+            ]}
+          />
         </Field>
         <Field label="textarea">
           <TextArea placeholder="notes" />
