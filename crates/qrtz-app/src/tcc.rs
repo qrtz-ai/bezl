@@ -32,14 +32,15 @@ pub fn needs_restart(pane: &str) -> bool {
     matches!(pane, "screen-recording" | "input-monitoring")
 }
 
-/// The permissions this process can read itself (macOS only): accessibility, screen recording, input monitoring.
+/// The permissions this process can read itself (macOS only): accessibility and screen recording. These go over
+/// `permissions:get`, whose contract keys are `OsPermission`; input monitoring isn't one (QRT-337: it reaches snap's
+/// view as `snap:status.inputMonitoring`, read with [`listen_granted`]), so it stays out of this list.
 pub fn native_status() -> Vec<(&'static str, bool)> {
     #[cfg(target_os = "macos")]
     {
         vec![
             ("accessibility", mac::ax_trusted()),
             ("screen-recording", mac::screen_preflight()),
-            ("input-monitoring", mac::listen_preflight()),
         ]
     }
     #[cfg(not(target_os = "macos"))]
@@ -86,7 +87,6 @@ pub fn request(pane: &str) -> bool {
         let granted = match pane {
             "accessibility" => mac::ax_prompt(),
             "screen-recording" => mac::screen_request(),
-            "input-monitoring" => mac::listen_request(),
             _ => false,
         };
         if granted {
@@ -289,6 +289,8 @@ mod tests {
         assert!(!ask_input_monitoring_once());
         #[cfg(not(target_os = "macos"))]
         assert!(!listen_granted());
+        // permissions:get's contract keys are OsPermission only: no input-monitoring in the overlay.
+        assert!(native_status().iter().all(|(k, _)| *k != "input-monitoring"));
     }
 
     #[test]
