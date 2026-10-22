@@ -1,6 +1,8 @@
-import { typeStyle, tokens } from './tokens';
+import { typeStyle } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
+import { Badge as ShadcnBadge } from './components/ui/badge';
+import { cn } from './lib/utils';
 
 export type BadgeTone =
   | 'neutral'
@@ -9,7 +11,18 @@ export type BadgeTone =
   | 'warning'
   | 'danger';
 
-/** qrtz.ai badge: tinted bg (10%), tinted border (20%), xs semibold. */
+const TONE: Record<BadgeTone, string> = {
+  neutral: 'tw:[--badge:var(--q-color-text-muted)]',
+  primary: 'tw:[--badge:var(--q-color-primary)]',
+  success: 'tw:[--badge:var(--q-color-success)]',
+  warning: 'tw:[--badge:var(--q-color-warning)]',
+  danger: 'tw:[--badge:var(--q-color-danger)]',
+};
+
+/**
+ * qrtz.ai badge on shadcn's outline Badge: tinted bg (10%), tinted border (20%), label type, sm radius. It wraps and
+ * shrinks like the old span (shadcn's nowrap, shrink-0 and centering are off).
+ */
 export function Badge({
   children,
   tone = 'primary',
@@ -22,30 +35,18 @@ export function Badge({
   'data-testid'?: string;
 }) {
   const t = useTheme();
-  const c = {
-    neutral: t.color.textMuted,
-    primary: t.color.primary,
-    success: t.color.success,
-    warning: t.color.warning,
-    danger: t.color.danger,
-  }[tone];
   return (
-    <span
+    <ShadcnBadge
+      variant="outline"
       data-testid={testId}
       role={role}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: tokens.space[1],
-        padding: `${tokens.space[0.5]} ${tokens.space[2]}`,
-        ...typeStyle('label', t),
-        color: c,
-        background: `color-mix(in srgb, ${c} 10%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${c} 20%, transparent)`,
-        borderRadius: t.radius.sm,
-      }}
+      className={cn(
+        TONE[tone],
+        'tw:w-auto tw:shrink tw:justify-start tw:overflow-visible tw:rounded-sm tw:whitespace-normal tw:border-[color-mix(in_srgb,var(--badge)_20%,transparent)] tw:bg-[color-mix(in_srgb,var(--badge)_10%,transparent)] tw:text-(--badge) tw:transition-none',
+      )}
+      style={typeStyle('label', t)}
     >
       {children}
-    </span>
+    </ShadcnBadge>
   );
 }
