@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
+  ContextMenu,
   DictionaryTerm,
   ModelsPanel,
   PlainList,
@@ -115,6 +116,12 @@ export const History: S = {
           onDelete={noop}
         />
       </PlainList>
+      <ContextMenu
+        label="actions"
+        items={[{ id: 'copy', label: 'copy', icon: 'copy', onSelect: noop }]}
+      >
+        <Text>right-click for the bare context menu</Text>
+      </ContextMenu>
       <TermList>
         <DictionaryTerm term="qrtz" aliases={['cue arts']} onRemove={noop} />
         <DictionaryTerm term="Parakeet" aliases={[]} onRemove={noop} />

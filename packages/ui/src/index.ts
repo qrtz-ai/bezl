@@ -31,6 +31,7 @@ export * from './ModuleSettings';
 export * from './Marketplace';
 export * from './Modal';
 export * from './Menu';
+export * from './ContextMenu';
 export * from './Onboarding';
 export * from './Slider';
 export * from './ModelRequirement';

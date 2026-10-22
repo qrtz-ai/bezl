@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
-// The shadcn/radix primitives in @qrtz/ui (Modal, Menu, Tabs, Switch, Select, Slider): one screenshot per
+// The shadcn/radix primitives in @qrtz/ui (Modal, Menu, ContextMenu, Tabs, Switch, Select, Slider): one screenshot per
 // `primitives-*` story, opened the way a user would (menus and selects are clicked open), plus an axe pass
 // (closed and open) with no serious or critical violations.
 type Entry = { id: string; type: string };
@@ -57,6 +57,12 @@ for (const s of stories) {
       await trigger.click();
       await page.locator('[role="menu"], [role="listbox"]').first().waitFor();
       listbox = (await page.locator('[role="listbox"]').count()) > 0;
+    }
+    // A context menu opens on right-click.
+    const ctx = page.locator('[data-slot="context-menu-trigger"]').first();
+    if (await ctx.count()) {
+      await ctx.click({ button: 'right', position: { x: 40, y: 12 } });
+      await page.locator('[role="menu"]').first().waitFor();
     }
     await page.screenshot({ path: info.outputPath(`${s.id}.png`) });
     await expect(page).toHaveScreenshot(`${s.id}.png`, {

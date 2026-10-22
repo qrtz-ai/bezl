@@ -3,8 +3,8 @@ import { useTheme } from './theme';
 import { transition, typeStyle, tokens } from './tokens';
 import { Text } from './Text';
 import { Icon } from './Icon';
-import { IconButton } from './Layout';
 import { Waveform } from './Waveform';
+import { ContextMenu } from './ContextMenu';
 
 export type TalkPillPhase =
   | 'idle'
@@ -99,7 +99,10 @@ export function TalkPill({
   );
 }
 
-/** One dictation in the talk history: the text, a quiet meta line, copy/delete. */
+/**
+ * One dictation in the talk history: the text at full width and a quiet meta line. A click (or Enter/Space) copies
+ * the text; right-click (or the Menu key / Shift+F10) opens a context menu with copy and delete.
+ */
 export function TalkHistoryRow({
   text,
   meta,
@@ -117,38 +120,59 @@ export function TalkHistoryRow({
   const t = useTheme();
   return (
     <li
-      data-testid="talk-entry"
-      style={{
-        listStyle: 'none',
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) auto',
-        gap: t.space[3],
-        padding: `${t.space[3]} 0`,
-        borderBottom: `1px solid ${t.color.border}`,
-        transition: transition('background', 'hover', t),
-      }}
+      style={{ listStyle: 'none', borderBottom: `1px solid ${t.color.border}` }}
     >
-      <div style={{ display: 'grid', gap: t.space[1], minWidth: 0 }}>
-        <Text data-testid="talk-entry-text">{text}</Text>
-        <Text variant="caption" muted data-testid="talk-entry-meta">
-          {meta}
-          {flag ? ` · ${flag}` : ''}
-        </Text>
-      </div>
-      <div style={{ display: 'flex', gap: t.space[1], alignItems: 'start' }}>
-        <IconButton
-          icon="copy"
-          label="copy"
+      <ContextMenu
+        label="actions for this dictation"
+        data-testid="talk-entry-menu"
+        items={[
+          {
+            id: 'copy',
+            label: 'copy',
+            icon: 'copy',
+            onSelect: onCopy,
+            testId: 'talk-entry-copy',
+          },
+          {
+            id: 'delete',
+            label: 'delete',
+            icon: 'trash',
+            danger: true,
+            onSelect: onDelete,
+            testId: 'talk-entry-delete',
+          },
+        ]}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          data-testid="talk-entry"
+          aria-description="click to copy. right-click or shift+f10 for more"
+          title="click to copy · right-click for more"
           onClick={onCopy}
-          data-testid="talk-entry-copy"
-        />
-        <IconButton
-          icon="trash"
-          label="delete"
-          onClick={onDelete}
-          data-testid="talk-entry-delete"
-        />
-      </div>
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onCopy();
+            }
+          }}
+          style={{
+            display: 'grid',
+            gap: t.space[1],
+            minWidth: 0,
+            padding: `${t.space[3]} 0`,
+            cursor: 'pointer',
+            transition: transition('background', 'hover', t),
+          }}
+        >
+          <Text data-testid="talk-entry-text">{text}</Text>
+          <Text variant="caption" muted data-testid="talk-entry-meta">
+            {meta}
+            {flag ? ` · ${flag}` : ''}
+          </Text>
+        </div>
+      </ContextMenu>
     </li>
   );
 }
