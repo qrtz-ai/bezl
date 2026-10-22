@@ -8,8 +8,14 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  thumbProps,
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+}: React.ComponentProps<typeof SliderPrimitive.Root> & {
+  /** qrtz: props for every thumb (its accessible name and test id). */
+  thumbProps?: React.ComponentProps<typeof SliderPrimitive.Thumb> & {
+    [k: `data-${string}`]: string | undefined;
+  };
+}) {
   const _values = React.useMemo(
     () =>
       Array.isArray(value)
@@ -33,10 +39,11 @@ function Slider({
       )}
       {...props}
     >
+      {/* qrtz: track in border-strong (shadcn's bg-muted is near-invisible on our dark bg). */}
       <SliderPrimitive.Track
         data-slot="slider-track"
         className={cn(
-          'tw:relative tw:grow tw:overflow-hidden tw:rounded-full tw:bg-muted tw:data-[orientation=horizontal]:h-1.5 tw:data-[orientation=horizontal]:w-full tw:data-[orientation=vertical]:h-full tw:data-[orientation=vertical]:w-1.5',
+          'tw:relative tw:grow tw:overflow-hidden tw:rounded-full tw:bg-border-strong tw:data-[orientation=horizontal]:h-1.5 tw:data-[orientation=horizontal]:w-full tw:data-[orientation=vertical]:h-full tw:data-[orientation=vertical]:w-1.5',
         )}
       >
         <SliderPrimitive.Range
@@ -51,6 +58,7 @@ function Slider({
           data-slot="slider-thumb"
           key={index}
           className="tw:block tw:size-4 tw:shrink-0 tw:rounded-full tw:border tw:border-primary tw:bg-white tw:shadow-sm tw:ring-ring/50 tw:transition-[color,box-shadow] tw:hover:ring-4 tw:focus-visible:ring-4 tw:focus-visible:outline-hidden tw:disabled:pointer-events-none tw:disabled:opacity-50"
+          {...thumbProps}
         />
       ))}
     </SliderPrimitive.Root>
