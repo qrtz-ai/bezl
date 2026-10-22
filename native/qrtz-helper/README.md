@@ -23,3 +23,16 @@ bun run test:helper
 On Linux, `QrtzHelperCore` (protocol, classifier, scrapers, segmenter, WAV, controller) builds and passes all tests. The executable builds as a stub that has the protocol but no capture backends. The `mac/` sources are only syntax-checked there (`swift-format lint`, `swiftc -parse`) and need a Mac to type-check. [MAC-VERIFY]
 
 You can point the app at any helper build with `QRTZ_HELPER_BIN=/path/to/qrtz-helper`.
+
+## Bubble lab (echo's dictation pill, alone)
+
+`qrtz-bubble-lab` shows just the dictation bubble, for fast iteration on its look and motion. Hold fn and the real pill opens with its show animation and the wave runs on fake levels. Let go and it closes with the real hide animation. There's no mic, recording, model, text insertion, host or Tauri. It links the shipping `NativePill`, `NotchSurface`, `PillWave` and `MacHotkeys`, so edits to those change the real bubble. macOS only:
+
+```sh
+cd native/qrtz-helper
+swift run qrtz-bubble-lab            # or scripts/bubble-lab.sh
+swift run qrtz-bubble-lab --idle     # level 0 (quiet wave)
+swift run qrtz-bubble-lab --processing  # show the processing swell for 1.2 s after release
+```
+
+Your terminal app needs **Input Monitoring**, or fn presses aren't seen (it prints a message at launch if that's missing). **Accessibility** is optional: with it, fn is swallowed so macOS's globe action doesn't also run.
