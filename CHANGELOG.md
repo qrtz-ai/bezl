@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.1 (2026-10-21)
+
 - Feature: Snap can summon an app. Hold left ⌘ and right ⌘ together to bring it forward, and again to go back (off by default; needs Input Monitoring).
 
 ## 0.3.0 (2026-10-21)
