@@ -17,6 +17,7 @@
 //   node scripts/modules/gh-assets.mjs upload <out dir> [--timestamp-only]   upload what the release lacks, in
 //        `qrtz-publish upload-list` order; immutable objects are never replaced (an existing asset with other bytes
 //        fails the run), the timestamp pair goes last with --clobber.
+//        With no release yet, either mode creates it (--latest=false) and uploads the whole seeded out dir (QRT-343).
 //
 // Env: GH_TOKEN (contents: write for upload/create), GITHUB_REPOSITORY (qrtz-ai/qrtz), QRTZ_PUBLISH_BIN,
 // QRTZ_MODULES_RELEASE (modules-index), QRTZ_SEED_URL. Uses the `gh` CLI. No secret is ever printed.
@@ -149,16 +150,26 @@ async function hydrate(out) {
   }
 }
 
+/**
+ * The `qrtz-publish upload-list` arguments. --timestamp-only narrows the list to the timestamp pair only while the
+ * release exists; the first upload (no release yet, QRT-343) lists the whole out dir, which hydrate seeded from
+ * modules.qrtz.ai and `qrtz-publish timestamp` verified against root 1, so the release starts as a full mirror.
+ */
+export function uploadListArgs(out, timestampOnly, releaseExists) {
+  return [
+    'upload-list',
+    '--out',
+    out,
+    ...(timestampOnly && releaseExists ? ['--timestamp-only'] : []),
+  ];
+}
+
 function upload(out, timestampOnly) {
   const bin = process.env.QRTZ_PUBLISH_BIN || 'qrtz-publish';
+  let assets = releaseAssets();
   const list = execFileSync(
     bin,
-    [
-      'upload-list',
-      '--out',
-      out,
-      ...(timestampOnly ? ['--timestamp-only'] : []),
-    ],
+    uploadListArgs(out, timestampOnly, assets !== null),
     {
       encoding: 'utf8',
     },
@@ -166,10 +177,7 @@ function upload(out, timestampOnly) {
     .trim()
     .split('\n')
     .map((l) => l.split('\t'));
-  let assets = releaseAssets();
   if (!assets) {
-    if (timestampOnly)
-      throw new Error(`no release ${RELEASE} yet: run modules.yml first`);
     gh([
       'release',
       'create',

@@ -1,6 +1,6 @@
 // ADR 0218: the flat GitHub release asset names map one to one onto the module store layout.
 import { describe, expect, it } from 'vitest';
-import { assetName, layoutPath } from './gh-assets.mjs';
+import { assetName, layoutPath, uploadListArgs } from './gh-assets.mjs';
 
 const h = 'ab'.repeat(32);
 const paths = [
@@ -30,5 +30,33 @@ describe('gh-assets names', () => {
     ])
       expect(layoutPath(n)).toBeNull();
     expect(() => assetName('v1/app/latest.json')).toThrow();
+  });
+});
+
+describe('gh-assets upload list (QRT-343)', () => {
+  it('narrows to the timestamp pair only when the release exists', () => {
+    expect(uploadListArgs('/o', true, true)).toEqual([
+      'upload-list',
+      '--out',
+      '/o',
+      '--timestamp-only',
+    ]);
+  });
+  it('lists the whole seeded out dir for the first upload, timestamp mode too', () => {
+    expect(uploadListArgs('/o', true, false)).toEqual([
+      'upload-list',
+      '--out',
+      '/o',
+    ]);
+    expect(uploadListArgs('/o', false, false)).toEqual([
+      'upload-list',
+      '--out',
+      '/o',
+    ]);
+    expect(uploadListArgs('/o', false, true)).toEqual([
+      'upload-list',
+      '--out',
+      '/o',
+    ]);
   });
 });
