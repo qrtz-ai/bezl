@@ -1,3 +1,4 @@
+import * as SwitchPrimitive from '@radix-ui/react-switch';
 import { typeStyle, tokens } from './tokens';
 import {
   createContext,
@@ -243,6 +244,7 @@ export function Tooltip({
   );
 }
 
+/** A switch on Radix Switch (shadcn `Switch`): role=switch with aria-checked, Space/Enter toggle. */
 export function Switch({
   checked,
   onChange,
@@ -261,14 +263,12 @@ export function Switch({
 }) {
   const t = useTheme();
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
+    <SwitchPrimitive.Root
+      checked={checked}
+      onCheckedChange={onChange}
       aria-label={label}
       disabled={disabled}
       data-testid={testId}
-      onClick={() => onChange(!checked)}
       style={{
         all: 'unset',
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -288,7 +288,7 @@ export function Switch({
           transition: `background ${t.motion.fast}`,
         }}
       >
-        <span
+        <SwitchPrimitive.Thumb
           style={{
             position: 'absolute',
             top: 2,
@@ -302,7 +302,7 @@ export function Switch({
         />
       </span>
       {label && showLabel ? <Text variant="bodySm">{label}</Text> : null}
-    </button>
+    </SwitchPrimitive.Root>
   );
 }
 
