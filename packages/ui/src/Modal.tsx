@@ -1,12 +1,17 @@
-import { tokens } from './tokens';
 import {
+  useCallback,
   useEffect,
-  useId,
   useRef,
+  useState,
   type ReactNode,
   type RefObject,
 } from 'react';
-import { useTheme } from './theme';
+import {
+  Dialog as DialogRoot,
+  DialogContent,
+  DialogTitle,
+} from './components/ui/dialog';
+import { cn } from './lib/utils';
 import { Text } from './Text';
 import { IconButton } from './Layout';
 import { lowerTitle } from './case';
@@ -86,10 +91,18 @@ export function useModalLayer(
   }, [open, ref, initialFocus]);
 }
 
+/** The scrim behind a Modal or Dialog (shadcn's overlay look, owned here because both render inline). */
+export const SCRIM_CLASS =
+  'tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-start tw:justify-center tw:box-border tw:bg-overlay tw:backdrop-blur-[2px] tw:animate-in';
+
 /**
- * A large modal (an app's detail on the qrtz page): a dimmed scrim (click it to close), a title row with a close
- * button, and a body that scrolls vertically inside the window (never sideways). Esc closes; focus is trapped
- * inside while it is open.
+ * A large modal (an app's detail on the qrtz page) on shadcn's Dialog: a dimmed scrim (click it to close), a title
+ * row with a close button, and a body that scrolls vertically inside the window (never sideways).
+ *
+ * Focus, the focus trap and Escape stay on the shared layer stack (useModalLayer), not Radix's: Radix's trap stole
+ * focus from a Dialog opened over a modal (a consent), and its Escape closed both layers at once. It renders
+ * inline (no Portal) so a modal left open in a hidden (inert) sub app stays hidden. Radix supplies the dialog
+ * semantics and title labelling.
  */
 export function Modal({
   open,
@@ -111,87 +124,58 @@ export function Modal({
   initialFocus?: 'first' | 'dialog';
   'data-testid'?: string;
 }) {
-  const t = useTheme();
   const ref = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  useModalLayer(ref, open, onClose, initialFocus);
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const setRef = useCallback((n: HTMLDivElement | null) => {
+    ref.current = n;
+    setNode(n);
+  }, []);
+  useModalLayer(ref, open && !!node, onClose, initialFocus);
   if (!open) return null;
   return (
-    <div
-      data-testid={testId ? `${testId}-scrim` : undefined}
-      data-modal-scrim=""
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: t.z.dialog,
-        background: t.color.overlay,
-        backdropFilter: 'blur(2px)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        padding: `10vh ${tokens.space[4]} ${tokens.space[4]}`,
-        boxSizing: 'border-box',
-        animation: `q-fade-in ${t.motion.fast} ${t.motion.easeOut}`,
-      }}
-    >
+    <DialogRoot modal={false} open onOpenChange={() => {}}>
       <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        data-q-no-ring
-        data-testid={testId}
-        style={{
-          width,
-          maxWidth: '100%',
-          maxHeight: '80vh',
-          display: 'flex',
-          flexDirection: 'column',
-          background: t.color.surface,
-          border: `1px solid ${t.color.border}`,
-          borderRadius: t.radius.lg,
-          boxShadow: tokens.shadow.overlay,
-          outline: 'none',
-          overflow: 'hidden',
-        }}
+        data-testid={testId ? `${testId}-scrim` : undefined}
+        data-modal-scrim=""
+        onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+        className={cn(SCRIM_CLASS, 'tw:px-4 tw:pb-4 tw:pt-[10vh]')}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: t.space[2],
-            flex: '0 0 auto',
-            padding: `${t.space[5]} ${t.space[4]} ${t.space[2]} ${t.space[5]}`,
-            minWidth: 0,
-          }}
+        <DialogContent
+          inline
+          ref={setRef}
+          aria-modal="true"
+          aria-describedby={undefined}
+          tabIndex={-1}
+          data-q-no-ring
+          data-testid={testId}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="tw:flex tw:max-h-[80vh] tw:max-w-full tw:flex-col tw:gap-0 tw:overflow-hidden tw:border-border tw:bg-popover tw:p-0"
+          style={{ width }}
         >
-          <span id={titleId} style={{ minWidth: 0, flex: 1 }}>
-            <Text variant="h3" truncate>
-              {lowerTitle(title)}
-            </Text>
-          </span>
-          <IconButton
-            icon="close"
-            variant="ghost"
-            label={closeLabel}
-            onClick={onClose}
-            data-testid={testId ? `${testId}-close` : undefined}
-          />
-        </div>
-        <div
-          style={{
-            padding: `${t.space[3]} ${t.space[5]} ${t.space[5]}`,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            minHeight: 0,
-            minWidth: 0,
-          }}
-        >
-          {children}
-        </div>
+          <div className="tw:flex tw:min-w-0 tw:flex-none tw:items-center tw:gap-2 tw:pt-5 tw:pr-4 tw:pb-2 tw:pl-5">
+            <DialogTitle asChild>
+              <span className="tw:min-w-0 tw:flex-1">
+                <Text variant="h3" truncate>
+                  {lowerTitle(title)}
+                </Text>
+              </span>
+            </DialogTitle>
+            <IconButton
+              icon="close"
+              variant="ghost"
+              label={closeLabel}
+              onClick={onClose}
+              data-testid={testId ? `${testId}-close` : undefined}
+            />
+          </div>
+          <div className="tw:min-h-0 tw:min-w-0 tw:overflow-x-hidden tw:overflow-y-auto tw:px-5 tw:pt-3 tw:pb-5">
+            {children}
+          </div>
+        </DialogContent>
       </div>
-    </div>
+    </DialogRoot>
   );
 }

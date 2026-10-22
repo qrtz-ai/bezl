@@ -49,10 +49,26 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  inline = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  /** qrtz: render in place (no Portal, no Overlay, no built-in close) inside a caller-owned scrim. */
+  inline?: boolean;
 }) {
+  if (inline)
+    return (
+      <DialogPrimitive.Content
+        data-slot="dialog-content"
+        className={cn(
+          'tw:grid tw:w-full tw:gap-4 tw:rounded-lg tw:border tw:bg-background tw:p-6 tw:shadow-lg tw:outline-none',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </DialogPrimitive.Content>
+    );
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
