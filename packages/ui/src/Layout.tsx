@@ -5,6 +5,7 @@ import {
   type MouseEvent,
   type ReactNode,
   type Ref,
+  type ButtonHTMLAttributes,
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
@@ -486,10 +487,15 @@ export function IconButton({
   'aria-expanded': expanded,
   'aria-haspopup': hasPopup,
   'aria-controls': controls,
-}: {
+  ...rest
+}: Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'onClick' | 'aria-haspopup' | 'style' | 'className'
+> & {
   icon: IconName;
   label: string;
-  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  /** Optional only for a Radix trigger (`asChild`), which wires its own handlers through `rest`. */
+  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   pressed?: boolean;
   disabled?: boolean;
   badge?: boolean;
@@ -499,12 +505,13 @@ export function IconButton({
   ref?: Ref<HTMLButtonElement>;
   'data-testid'?: string;
   'aria-expanded'?: boolean;
-  'aria-haspopup'?: 'menu';
+  'aria-haspopup'?: 'menu' | 'dialog' | boolean;
   'aria-controls'?: string;
 }) {
   const t = useTheme();
   return (
     <button
+      {...rest}
       ref={ref}
       type="button"
       aria-label={label.toLowerCase()}

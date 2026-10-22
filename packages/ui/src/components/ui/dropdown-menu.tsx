@@ -31,10 +31,15 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
   className,
   sideOffset = 4,
+  inline = false,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  /** qrtz: render in place (no Portal), so it stays inside an inert, hidden sub app. */
+  inline?: boolean;
+}) {
+  const Wrap = inline ? React.Fragment : DropdownMenuPrimitive.Portal;
   return (
-    <DropdownMenuPrimitive.Portal>
+    <Wrap>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
@@ -44,7 +49,7 @@ function DropdownMenuContent({
         )}
         {...props}
       />
-    </DropdownMenuPrimitive.Portal>
+    </Wrap>
   );
 }
 
