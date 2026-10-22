@@ -64,6 +64,8 @@ export function ThemeProvider({
       document.head.appendChild(style);
     }
     style.textContent = globalCss(t, fontUrl);
+    // shadcn's dark: variant follows the qrtz theme (styles.css @custom-variant), not the OS setting.
+    document.documentElement.dataset.qMode = t.mode;
     document.documentElement.dataset.theme = resolved;
   }, [resolved]);
   return <ThemeContext.Provider value={t}>{children}</ThemeContext.Provider>;

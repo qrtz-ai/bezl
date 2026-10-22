@@ -11,6 +11,9 @@
 @import 'tailwindcss/utilities.css' layer(utilities) prefix(tw);
 @source './';
 
+/* shadcn's dark: classes follow ThemeProvider (data-q-mode on <html>), not prefers-color-scheme. */
+@custom-variant dark (&:where([data-q-mode='dark'], [data-q-mode='dark'] *));
+
 :root {
   --background: var(--q-color-bg);
   --foreground: var(--q-color-text);
