@@ -1007,3 +1007,30 @@ async fn an_older_pair_committed_after_a_newer_one_is_a_rollback() {
     let (_, v) = a.cached_index().unwrap();
     assert_eq!(v.index.version, 3);
 }
+
+/// ADR 0218: a host playing the GitHub release `modules-index` serves the same output dir under flat asset names
+/// (`v1.blobs.sha256.<sha>`, ...); a client pointed at it refreshes and installs with no tree path ever requested.
+#[tokio::test]
+async fn a_flat_github_release_host_serves_refresh_and_install() {
+    let w = world().await;
+    let gh = Server::start().await;
+    let mut v = vec![];
+    files(&w.out, &w.out, &mut v);
+    for (p, b) in v {
+        gh.put(&qrtz_app::module_hosting::flat_asset_name(&p), b);
+    }
+    let c = Packages::with(
+        Installer::new(w.dir.join("flat"), Some(w.pin.clone()), Box::new(NoAppleChecks)),
+        w.transport(std::slice::from_ref(&gh.base)).with_flat_host(0),
+    );
+    c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
+    install(&c, w.now).await.unwrap();
+    echo_lock(&c);
+    let hits = gh.faults.lock().unwrap().hits.clone();
+    assert!(!hits.is_empty());
+    assert!(
+        hits.keys().all(|k| !k.trim_start_matches('/').contains('/')),
+        "{hits:?}"
+    );
+    assert_eq!(w.hits(), 0, "the tree hosts are never asked");
+}

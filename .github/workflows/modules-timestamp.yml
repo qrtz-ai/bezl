@@ -1,0 +1,61 @@
+# The daily timestamp re-sign (ADR 0153 §3, ADR 0218): the timestamp is signed for 7 days and clients refuse it
+# after 8, so every day this re-signs the timestamp over the index the `modules-index` release already serves and
+# replaces only the v1.timestamp.json pair. It holds only the timestamp key (environment `modules-timestamp`, no
+# required reviewer: a daily Approve would never happen). The timestamp key can't sign an index; it can only
+# re-attest the one already signed with the index key, so it can't add or change any package. Linux, no Mac.
+name: modules-timestamp
+on:
+  schedule:
+    - cron: '0 16 * * *' # 09:00 PDT / 08:00 PST
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: modules-publish # shared with modules.yml
+  cancel-in-progress: false
+jobs:
+  timestamp:
+    name: re-sign + upload v1.timestamp.json
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: modules-timestamp
+    permissions:
+      contents: write # replace the timestamp pair on the modules-index release
+    env:
+      QRTZ_PUBLISH_HOST: github
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - name: build qrtz-publish (before any secret is in the job)
+        run: |
+          cargo build --release -p qrtz-publish
+          {
+            echo "QRTZ_PUBLISH_BIN=$PWD/target/release/qrtz-publish"
+            echo "QRTZ_PUBLISH_OUT=$RUNNER_TEMP/qrtz-publish-out"
+          } >>"$GITHUB_ENV"
+      - name: the timestamp key only (0600 temp file)
+        env:
+          QRTZ_TIMESTAMP_KEY: ${{ secrets.QRTZ_TIMESTAMP_KEY }}
+        run: |
+          [[ -n "$QRTZ_TIMESTAMP_KEY" ]] || { echo "::error::QRTZ_TIMESTAMP_KEY isn't set in the modules-timestamp environment"; exit 1; }
+          bash scripts/ci/macos-signing.sh keys
+      - name: publish.sh --timestamp (the release must already exist; modules.yml seeds it)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/modules/publish.sh --timestamp
+      - name: the release serves the new timestamp, and it verifies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          live="$RUNNER_TEMP/live"
+          node scripts/modules/gh-assets.mjs hydrate "$live"
+          pin="$(node -p "require('./crates/qrtz-app/src/module_hosts.json').root1Sha256")"
+          "$QRTZ_PUBLISH_BIN" verify --out "$live" --root-sha256 "$pin"
+          cmp "$live/v1/timestamp.json" "$QRTZ_PUBLISH_OUT/v1/timestamp.json"
+      - name: remove the key
+        if: always()
+        run: bash scripts/ci/macos-signing.sh cleanup

@@ -1,0 +1,111 @@
+# Module publish (ADR 0218, 0.3.0): build the chosen modules' packages, sign them (Developer ID), notarize, sign the
+# module index and a fresh timestamp, and upload them as assets of the one GitHub release `modules-index` (flat
+# asset names, scripts/modules/gh-assets.mjs). Replaces publish.sh on the release Mac and the R2 bucket.
+# Runs only by hand (Run workflow) from main, and only after Jared's Approve on the protected `release` environment
+# (env secrets only; no bot approves). Versions are bumped beforehand in a normal commit on main
+# (`node scripts/modules/version.mjs bump <m>`); this workflow never commits or pushes a branch. After the upload it
+# creates each published module's new `<m>-v<version>` tag at the run's commit (never moves an existing one).
+# The first run seeds the release from modules.qrtz.ai (the live index and its blobs, re-verified).
+name: modules
+on:
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: 'modules to publish (space-separated: nano ctrl snap); each must be bumped and untagged'
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: modules-publish # shared with modules-timestamp.yml: never two index writers at once
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: build · notarize · sign index · upload (waits for Jared's Approve)
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 120
+    environment: release
+    permissions:
+      contents: write # the modules-index release assets and the new <module>-v<version> tags
+    env:
+      QRTZ_TEAM_ID: MR26CCZ496
+      QRTZ_PUBLISH_HOST: github
+      SWIFT_BUILD_FLAGS: --disable-keychain
+      MODS: ${{ inputs.modules }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: the module list, and none of their versions is tagged yet
+        run: |
+          [[ -n "${MODS// /}" ]] || { echo "::error::no modules given"; exit 1; }
+          for m in $MODS; do
+            case "$m" in nano | ctrl | snap) ;; *) echo "::error::$m is not a module (nano, ctrl, snap)"; exit 1 ;; esac
+            v="$(node -p "require('./modules/$m/qrtz.json').version")"
+            if git rev-parse -q --verify "refs/tags/$m-v$v" >/dev/null; then
+              echo "::error::$m-v$v is already tagged: bump it first (node scripts/modules/version.mjs bump $m) in a commit on main"
+              exit 1
+            fi
+            echo "$m $v"
+          done
+          {
+            echo "QRTZ_PUBLISH_OUT=$RUNNER_TEMP/qrtz-publish-out"
+            echo "QRTZ_PACKAGES_OUT=$RUNNER_TEMP/qrtz-packages"
+            echo "QRTZ_MODEL_CACHE=$RUNNER_TEMP/qrtz-publish-models"
+            echo "QRTZ_MODELS_DIR=$RUNNER_TEMP/no-app-models"
+          } >>"$GITHUB_ENV"
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - name: build qrtz-publish (before any secret is in the job)
+        run: |
+          cargo build --release -p qrtz-publish
+          echo "QRTZ_PUBLISH_BIN=$PWD/target/release/qrtz-publish" >>"$GITHUB_ENV"
+      - name: Developer ID identity, notary profile, index + timestamp keys (temp keychain, 0600 files)
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          AC_API_KEY: ${{ secrets.AC_API_KEY }}
+          AC_KEY_ID: ${{ secrets.AC_KEY_ID }}
+          AC_ISSUER_ID: ${{ secrets.AC_ISSUER_ID }}
+          QRTZ_INDEX_KEY: ${{ secrets.QRTZ_INDEX_KEY }}
+          QRTZ_TIMESTAMP_KEY: ${{ secrets.QRTZ_TIMESTAMP_KEY }}
+        run: |
+          [[ -n "$QRTZ_INDEX_KEY" && -n "$QRTZ_TIMESTAMP_KEY" ]] || {
+            echo "::error::QRTZ_INDEX_KEY and QRTZ_TIMESTAMP_KEY must both be secrets of the release environment (docs/modules/github-publishing.md)"
+            exit 1
+          }
+          bash scripts/ci/macos-signing.sh setup
+      - name: build the packages
+        run: bash scripts/modules/build-packages.sh --out "$QRTZ_PACKAGES_OUT" $MODS
+      - name: publish.sh (QRTZ_PUBLISH_HOST=github)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pk=""; for m in $MODS; do pk="$pk $QRTZ_PACKAGES_OUT/packages/$m"; done
+          export QRTZ_PUBLISH_PACKAGES="$pk"
+          export QRTZ_PUBLISH_MODELS="$(for m in $MODS; do cat "$QRTZ_PACKAGES_OUT/packages/$m/qrtz.json"; done | grep -o '"model\.[a-z0-9-]*"' | tr -d '"' | sort -u | tr '\n' ' ')"
+          bash scripts/modules/publish.sh
+      - name: what the release serves verifies against root 1, and is what was signed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          live="$RUNNER_TEMP/live"
+          node scripts/modules/gh-assets.mjs hydrate "$live"
+          pin="$(node -p "require('./crates/qrtz-app/src/module_hosts.json').root1Sha256")"
+          "$QRTZ_PUBLISH_BIN" verify --out "$live" --root-sha256 "$pin"
+          cmp "$live/v1/timestamp.json" "$QRTZ_PUBLISH_OUT/v1/timestamp.json"
+      - name: tag each published module <m>-v<version> at this commit (new tags only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for m in $MODS; do
+            v="$(node -p "require('./modules/$m/qrtz.json').version")"
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$m-v$v" -f "sha=$GITHUB_SHA" >/dev/null
+            echo "tagged $m-v$v at $GITHUB_SHA"
+          done
+      - name: delete the keychain and every secret file
+        if: always()
+        run: bash scripts/ci/macos-signing.sh cleanup

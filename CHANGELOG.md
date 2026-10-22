@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-10-21)
+
+- Breaking: modules now download from GitHub (the `modules-index` release) instead of modules.qrtz.ai, which stays as a fallback for now.
+- Feature: modules are published and their index re-signed daily by GitHub Actions; no Mac in the loop.
+
 ## 0.2.7 (2026-10-21)
 
 - Updates now come from GitHub releases.

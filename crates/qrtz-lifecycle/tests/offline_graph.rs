@@ -12,8 +12,8 @@
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
 //! 5. ADR 0157 (tightening ADR 0079 and 0153): the downloader's only callers are qrtz-app's `setup.rs` (the signed
 //!    speech bundle, `Downloader` only) and `module_hosting.rs` (the package manager's one fetcher, `fetch_meta` and
-//!    `fetch_range`, to the host pinned in `module_hosts.json`: exactly `https://modules.qrtz.ai` (ADR 0167: no
-//!    Backblaze B2 mirror), and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
+//!    `fetch_range`, to the hosts pinned in `module_hosts.json`: exactly the GitHub release `modules-index` of
+//!    qrtz-ai/qrtz, then `https://modules.qrtz.ai` as its one mirror (ADR 0218; ADR 0167: no Backblaze B2), and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
 //!    (`DownloadControl`, `Progress`); naming `Downloader` or any fetch there (the retired direct-HF
 //!    `download_files` path) fails, and `download_files` has no caller outside qrtz-speech's `download_bundle`.
 //!    The pinned models are fixed Hugging Face revisions with sha256s; ctrl's Laya model (ADR 0116) goes through
@@ -501,20 +501,22 @@ fn only_setup_and_the_package_fetcher_call_the_downloader() {
             }
         }
     }
-    // ADR 0153 / ADR 0167: exactly one package host (Cloudflare R2 behind modules.qrtz.ai), no B2 mirror;
-    // https, no path, query or credentials. Adding a host changes this test and the ADR.
+    // ADR 0153 / ADR 0167 / ADR 0218: the package host is the GitHub release `modules-index` of qrtz-ai/qrtz
+    // (flat asset names), and the only mirror is Cloudflare R2 behind modules.qrtz.ai (the pre-0.3.0 host, kept
+    // until it is shut down); no B2 mirror. Adding a host changes this test and the ADR.
     let hosts: Value = serde_json::from_str(
         &std::fs::read_to_string(r.join("crates/qrtz-app/src/module_hosts.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(
-        hosts["primary"], "https://modules.qrtz.ai",
+        hosts["primary"], "https://github.com/qrtz-ai/qrtz/releases/download/modules-index",
         "module_hosts.json primary"
     );
     let mirrors = hosts["mirrors"].as_array().unwrap();
-    assert!(
-        mirrors.is_empty(),
-        "module_hosts.json: no package-host mirror (ADR 0167), got {mirrors:?}"
+    assert_eq!(
+        mirrors,
+        &vec![Value::from("https://modules.qrtz.ai")],
+        "module_hosts.json: modules.qrtz.ai is the only package-host mirror (ADR 0218)"
     );
     // ADR 0157: the only extra mirror host a signed tree may point at (the pinned models' upstream).
     assert_eq!(

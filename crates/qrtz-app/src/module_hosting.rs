@@ -28,6 +28,31 @@ pub use qrtz_modules::install::{
 
 pub const HOSTS: &str = include_str!("module_hosts.json");
 
+/// ADR 0218: the package host since 0.3.0, the assets of the one GitHub release `modules-index` of qrtz-ai/qrtz
+/// (published by `.github/workflows/modules.yml`, timestamp re-signed by `modules-timestamp.yml`).
+pub const GITHUB_MODULES: &str = "https://github.com/qrtz-ai/qrtz/releases/download/modules-index";
+/// Where a GitHub release asset request may be redirected to (and nowhere else): GitHub's asset storage, plus
+/// `github.com` itself for an intermediate hop (the same hosts as the app update, [`crate::update_redirect`]).
+pub const GITHUB_REDIRECT_HOSTS: &[&str] = &[
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
+/// ADR 0218: a release has no directories, so a host whose base is under `https://github.com/` serves each layout
+/// path as one flat asset name: every `/` becomes `.` (`v1/timestamp.json` → `v1.timestamp.json`,
+/// `v1/index/<sha>.json.sig` → `v1.index.<sha>.json.sig`, `v1/blobs/sha256/<sha>` → `v1.blobs.sha256.<sha>`,
+/// `v1/root/1.root.json` → `v1.root.1.root.json`). Injective over [`layout::is_valid`] paths: each kind has a
+/// distinct fixed prefix and the variable parts are hex or decimal. `scripts/modules/gh-assets.mjs` is the same map.
+pub fn flat_asset_name(path: &str) -> String {
+    path.replace('/', ".")
+}
+
+/// True for a host base served as flat GitHub release assets ([`flat_asset_name`]).
+pub fn is_flat_host(base: &str) -> bool {
+    base.starts_with("https://github.com/")
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hosts {
@@ -58,6 +83,8 @@ impl Hosts {
 /// The sole package host, plus the allowed model mirror hosts, over the shared downloader.
 pub struct HttpTransport {
     hosts: Vec<Downloader>,
+    /// Per host: served as flat release asset names ([`flat_asset_name`]) rather than the `v1/` tree.
+    flat: Vec<bool>,
     /// `(allowed prefix, downloader)`: a mirror URL `<prefix>/<path>` is fetched as `<path>` from the downloader's
     /// base (the prefix itself in the app; a loopback server in tests).
     extra: Vec<(String, Downloader)>,
@@ -79,7 +106,17 @@ impl HttpTransport {
     /// [`Hosts::pinned`].
     pub fn new(bases: &[String], extra: &[(String, String)]) -> Self {
         Self {
-            hosts: bases.iter().map(|b| Downloader::new(b)).collect(),
+            hosts: bases
+                .iter()
+                .map(|b| {
+                    if is_flat_host(b) {
+                        Downloader::with_redirect_hosts(b, GITHUB_REDIRECT_HOSTS)
+                    } else {
+                        Downloader::new(b)
+                    }
+                })
+                .collect(),
+            flat: bases.iter().map(|b| is_flat_host(b)).collect(),
             extra: extra
                 .iter()
                 .map(|(p, b)| (p.trim_end_matches('/').to_owned(), Downloader::new(b)))
@@ -107,6 +144,21 @@ impl HttpTransport {
     pub fn with_url_dir(mut self, prefix: impl Into<String>, dir: impl Into<PathBuf>) -> Self {
         self.url_dirs.push((prefix.into(), dir.into()));
         self
+    }
+    /// Serve host `i` with flat asset names ([`flat_asset_name`]) whatever its base (tests: a loopback server
+    /// playing the GitHub release).
+    pub fn with_flat_host(mut self, i: usize) -> Self {
+        if let Some(f) = self.flat.get_mut(i) {
+            *f = true;
+        }
+        self
+    }
+    fn host_path(&self, host: usize, path: &str) -> String {
+        if self.flat.get(host).copied().unwrap_or(false) {
+            flat_asset_name(path)
+        } else {
+            path.to_owned()
+        }
     }
     /// Marks the package hosts as not set up: no index request and no blob request reaches them.
     pub fn unconfigured(mut self) -> Self {
@@ -206,7 +258,7 @@ impl Transport for HttpTransport {
             return Err(format!("{path}: the package hosts aren't set up yet"));
         }
         let b = self.hosts[host]
-            .fetch_meta(path)
+            .fetch_meta(&self.host_path(host, path))
             .await
             .map_err(|e| e.to_string())?;
         match b {
@@ -238,7 +290,10 @@ impl Transport for HttpTransport {
         }
         let (dl, path) = match src {
             Source::Host(_) if !self.configured => return Err("the package hosts aren't set up yet".into()),
-            Source::Host(i) => (self.hosts.get(*i).ok_or("no such host")?, layout::blob(sha256)),
+            Source::Host(i) => (
+                self.hosts.get(*i).ok_or("no such host")?,
+                self.host_path(*i, &layout::blob(sha256)),
+            ),
             Source::Url(u) => self
                 .extra
                 .iter()
@@ -538,11 +593,41 @@ mod tests {
     #[test]
     fn the_pinned_hosts_are_https_and_name_no_user() {
         let h = Hosts::pinned();
-        assert_eq!(h.primary, "https://modules.qrtz.ai");
-        assert!(h.mirrors.is_empty(), "ADR 0167: no package-host mirror");
-        assert_eq!(h.all(), ["https://modules.qrtz.ai"]);
+        // ADR 0218: GitHub release assets first, modules.qrtz.ai (R2) kept as the fallback until it is shut down.
+        assert_eq!(h.primary, GITHUB_MODULES);
+        assert_eq!(h.mirrors, ["https://modules.qrtz.ai"]);
+        assert_eq!(h.all(), [GITHUB_MODULES, "https://modules.qrtz.ai"]);
+        assert!(is_flat_host(&h.all()[0]) && !is_flat_host(&h.all()[1]));
         assert!(h.all().iter().all(|u| !u.contains('?') && !u.ends_with('/')));
         assert_eq!(h.model_mirrors, ["https://huggingface.co"]);
+    }
+
+    #[test]
+    fn flat_asset_names_cover_the_layout_one_to_one() {
+        let h = "ab".repeat(32);
+        let paths = [
+            layout::root(1),
+            layout::sig(&layout::root(1)),
+            layout::root(12),
+            layout::timestamp(),
+            layout::sig(&layout::timestamp()),
+            layout::index(&h),
+            layout::sig(&layout::index(&h)),
+            layout::blob(&h),
+        ];
+        let names: Vec<String> = paths.iter().map(|p| flat_asset_name(p)).collect();
+        assert_eq!(names[3], "v1.timestamp.json");
+        assert_eq!(names[4], "v1.timestamp.json.sig");
+        assert_eq!(names[7], format!("v1.blobs.sha256.{h}"));
+        assert_eq!(names[0], "v1.root.1.root.json");
+        let set: std::collections::BTreeSet<_> = names.iter().collect();
+        assert_eq!(set.len(), names.len());
+        for n in &names {
+            assert!(
+                !n.contains('/') && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.'),
+                "{n}"
+            );
+        }
     }
 
     /// P0-3: with no pinned root (today), the pinned transport reaches only the model mirror: a pinned model file

@@ -88,6 +88,38 @@ impl Downloader {
         }
     }
 
+    /// ADR 0218: [`Downloader::new`] for an HTTPS host that answers with redirects (GitHub release assets):
+    /// redirects are followed (at most [`MAX_HOPS`], Range kept) only to an `https` URL, with no user info or port,
+    /// whose host is exactly one of `hosts`; any other hop fails the request before it is made.
+    pub fn with_redirect_hosts(base: &str, hosts: &'static [&'static str]) -> Self {
+        let policy = reqwest::redirect::Policy::custom(move |a| {
+            let u = a.url();
+            let ok = a.previous().len() <= MAX_HOPS
+                && u.scheme() == "https"
+                && u.username().is_empty()
+                && u.password().is_none()
+                && u.port().is_none()
+                && u.host_str().is_some_and(|h| hosts.contains(&h));
+            if ok {
+                a.follow()
+            } else {
+                let msg = format!("redirect to {u} refused");
+                a.error(msg)
+            }
+        });
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .read_timeout(std::time::Duration::from_secs(60))
+            .https_only(true)
+            .redirect(policy)
+            .build()
+            .expect("http client");
+        Self {
+            client,
+            base: base.trim_end_matches('/').to_owned(),
+        }
+    }
+
     /// A small signed document; `Ok(None)` on 404.
     pub async fn fetch_meta(&self, path: &str) -> Result<Option<Vec<u8>>, SpeechError> {
         let r = self
