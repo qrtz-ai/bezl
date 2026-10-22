@@ -1,7 +1,12 @@
+import * as TabsPrimitive from '@radix-ui/react-tabs';
 import type { ReactNode } from 'react';
 import { typeStyle } from './tokens';
 import { useTheme } from './theme';
 
+/**
+ * A row of tabs on Radix Tabs (shadcn `Tabs`): ArrowLeft/ArrowRight/Home/End move between tabs (roving focus) and
+ * select them. Only the list lives here; panels are separate (KeepAlive), so triggers carry no aria-controls.
+ */
 export function Tabs<T extends string>({
   tabs,
   value,
@@ -13,40 +18,41 @@ export function Tabs<T extends string>({
 }) {
   const t = useTheme();
   return (
-    <div
-      role="tablist"
-      style={{
-        display: 'flex',
-        gap: t.space[4],
-        borderBottom: `1px solid ${t.color.border}`,
-      }}
-    >
-      {tabs.map((tab) => {
-        const on = tab.id === value;
-        return (
-          <button
-            key={tab.id}
-            role="tab"
-            type="button"
-            aria-selected={on}
-            data-testid={`tab-${tab.id}`}
-            onClick={() => onChange(tab.id)}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              padding: `${t.space[2]} 0`,
-              marginBottom: -1,
-              ...typeStyle('label', t),
-              color: on ? t.color.text : t.color.textMuted,
-              borderBottom: `2px solid ${on ? t.color.primary : 'transparent'}`,
-              transition: `color ${t.motion.fast} ${t.motion.easeOut}`,
-            }}
-          >
-            {tab.label.toLowerCase()}
-          </button>
-        );
-      })}
-    </div>
+    <TabsPrimitive.Root value={value} onValueChange={(v) => onChange(v as T)}>
+      <TabsPrimitive.List
+        style={{
+          display: 'flex',
+          gap: t.space[4],
+          borderBottom: `1px solid ${t.color.border}`,
+        }}
+      >
+        {tabs.map((tab) => {
+          const on = tab.id === value;
+          return (
+            <TabsPrimitive.Trigger
+              key={tab.id}
+              value={tab.id}
+              aria-controls={undefined}
+              data-testid={`tab-${tab.id}`}
+              // Radix selects on mousedown, focus and keys; a synthetic click (assistive tech) selects too.
+              onClick={() => onChange(tab.id)}
+              style={{
+                all: 'unset',
+                cursor: 'pointer',
+                padding: `${t.space[2]} 0`,
+                marginBottom: -1,
+                ...typeStyle('label', t),
+                color: on ? t.color.text : t.color.textMuted,
+                borderBottom: `2px solid ${on ? t.color.primary : 'transparent'}`,
+                transition: `color ${t.motion.fast} ${t.motion.easeOut}`,
+              }}
+            >
+              {tab.label.toLowerCase()}
+            </TabsPrimitive.Trigger>
+          );
+        })}
+      </TabsPrimitive.List>
+    </TabsPrimitive.Root>
   );
 }
 
