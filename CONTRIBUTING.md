@@ -2,30 +2,49 @@
 
 Short, binding practices for everyone (people and automation) working in this repo.
 
-## Landing changes
+## Review and landing
 
-- A change lands once Linux CI is green on the **branch head** and the tech lead has cleared the commit.
-- CI on `main` is a backstop, not the gate.
-- Keep CI light. Don't make CI a blocker for other work.
+Risk-tiered review, approved by Jared on 2026-10-22 (QRT-342). Review effort goes where a
+mistake can't be undone or grants more access than intended; everything else lands fast.
 
-## macOS
+### Low risk: land on green Linux CI, no pre-merge clearance
 
-- Push and PR runs are Linux only. There is no nightly macOS run yet.
-- macOS CI runs on release tags, when `release.yml` calls `ci.yml`, or on a
-  manual run with the `macos` input (`gh workflow run ci.yml --ref <branch> -f macos=true`).
-- If a macOS run on `main` goes red: **revert first, debug after.**
-- An exact-head macOS run is required only for changes to `release.yml`,
-  signing/attestation scripts, and entitlements.
+- Frontend (`packages/ui`, app views, stories), tests, docs, copy, screenshot baselines, and
+  Rust crates that don't touch native code or permissions.
+- Lands once Linux CI is green on the branch head. No clearance request, no re-clearing
+  after a rebase, no hashes posted in the room.
+- Every commit names its Linear ticket. The owner lands their own work.
+- Bozniak may review after landing.
 
-## High-churn paths
+### Gated: Bozniak pre-clears before landing
 
-These need extra care, a narrow diff, and explicit tech-lead review.
-The list is kept in [docs/ci.md](docs/ci.md).
+- Signing, release, and the workflows that run them (`.github/`). Workflow changes also
+  need Jared's review (CODEOWNERS).
+- Entitlements and macOS permissions.
+- Anything that starts a process or decides what it can reach: process spawning,
+  confinement, the module host, updater, downloader, and IPC between processes.
+- Version bumps (only through the release process).
+- Module manifest format changes.
+
+The path list is kept in [docs/ci.md](docs/ci.md#gated-paths-bozniak-pre-clears).
+
+### macOS
+
+- Push and PR runs are Linux only. A nightly macOS run on `main` (3 AM PT) is the safety net;
+  macOS also runs for releases and on demand (`gh workflow run ci.yml --ref <branch> -f macos=true`).
+- An exact-head `macos=true` run is required only for gated native changes.
+- A rebase that only picks up commits touching other files keeps the earlier green run.
+
+### Breakage
+
+- If `main` (Linux or nightly macOS) goes red: fix forward or revert immediately. Revert
+  first if the fix isn't obvious.
+- CI on `main` is a backstop. Keep CI light; don't make it a blocker for other work.
 
 ## Security work
 
 - Post the approach on the ticket **before** writing any code.
-- Changes to root security checks need tech-lead sign-off.
+- Changes to root security checks need Bozniak's sign-off.
 
 ## Modules are self-contained
 
@@ -61,7 +80,9 @@ Guardrails:
 
 ## Hygiene
 
-- Never force-push `main` or a branch the tech lead has cleared.
+- Never force-push. Never move a pushed tag.
+- Never stage `native/qrtz-helper/Package.resolved`.
+- Commits are authored and committed as `Jared Grimes <jlgrimes@users.noreply.github.com>`.
 - Never bump versions outside the release process.
 - Never commit secrets, credentials or personal paths.
 - Don't delete branches or files without explicit approval.

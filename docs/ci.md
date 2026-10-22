@@ -28,10 +28,11 @@ macOS minutes count 10x on a private repo, so the macOS job only does what Linux
 stub sidecar in `src-tauri/binaries/`; the real helper is built only for releases. Caches: cargo
 (`Swatinem/rust-cache`), bun's install cache, SwiftPM `.build`, and the Playwright browsers.
 
-## High-churn paths (Bozniak's personal review)
+## Gated paths (Bozniak pre-clears)
 
-Changes to these paths need Bozniak's review of the exact diff and a macOS run on the exact head before they land
-(QRT-310 rule); batch them where possible and note it on the ticket before pushing:
+Changes to these paths need Bozniak's clearance before they land (QRT-342; see CONTRIBUTING.md "Review and landing").
+Gated native changes also need a `macos=true` run on the exact head; a rebase that only picks up commits touching
+other files keeps the earlier green run. Everything not listed here lands on green Linux CI without clearance.
 
 - `.github/workflows/*`
 - `scripts/release/*`, `scripts/check-*`, `mac-gate.sh`
@@ -40,6 +41,10 @@ Changes to these paths need Bozniak's review of the exact diff and a macOS run o
 - `native/`
 - `apps/desktop/src-tauri/speech.json`: the speech module pins a release bakes in (QRT-306). Exactly `{"speech":"none"}`
   or all five `QRTZ_SPEECH_*` fields; `scripts/release/check-speech.mjs` fails the release build otherwise.
+- macOS permissions (`tcc.rs` and permission plumbing), process spawning and confinement (`confine.rs`, module host),
+  updater, downloader, and IPC between processes
+- version bumps and the module manifest format (`module.json` schema, `Permission` enum)
+- `.github/workflows/*` also need Jared's review
 
 ## `app-release.yml`: qrtz.app releases (ADR 0181)
 
