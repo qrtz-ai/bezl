@@ -1,5 +1,4 @@
 import {
-  Children,
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
@@ -682,25 +681,23 @@ export function MeetingRow(p: {
   );
 }
 
-/** Opts group: a muted heading (and an optional one-line description), then its rows on one rhythm. */
+/**
+ * Opts group: a muted heading (and an optional one-line description), then its rows on one rhythm. One look on
+ * every page: no card or border; sections are told apart by their heading and the page's section gap, and rows
+ * stack without dividers.
+ */
 export function SettingsSection({
   title,
   description,
   children,
-  variant = 'card',
   'data-testid': testId,
 }: {
   title: string;
   description?: ReactNode;
   children: ReactNode;
-  /** "card" (opts): a bordered card, one cell per child. "plain": children stacked under the label, no card. */
-  variant?: 'card' | 'plain';
   'data-testid'?: string;
 }) {
   const t = useTheme();
-  // Each child is one cell of a bordered card, divided by hairlines, so sections read as separate groups
-  // (Apple/Airbnb-style grouped settings). Empty children (null, false) take no cell.
-  const cells = Children.toArray(children);
   return (
     <section
       data-testid={testId}
@@ -708,11 +705,11 @@ export function SettingsSection({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: variant === 'plain' ? t.space[3] : t.space[2],
+        gap: t.settings.headerGap,
         minWidth: 0,
       }}
     >
-      <div style={{ display: 'grid', gap: t.space[1] }}>
+      <div style={{ display: 'grid', gap: t.settings.titleGap }}>
         <Text variant="label" tone="muted">
           {lowerTitle(title)}
         </Text>
@@ -722,42 +719,23 @@ export function SettingsSection({
           </Text>
         ) : null}
       </div>
-      {variant === 'plain' ? (
-        children
-      ) : (
-        <div
-          data-settings-card=""
-          style={{
-            border: `1px solid ${t.color.border}`,
-            borderRadius: t.radius.lg,
-            background: t.color.card,
-            minWidth: 0,
-            overflow: 'hidden',
-            paddingBlock: t.space[2],
-          }}
-        >
-          {cells.map((c, i) => (
-            <div
-              key={i}
-              data-settings-cell=""
-              style={{
-                padding: `${t.space[2]} ${t.space[4]}`,
-                display: 'grid',
-                gap: t.space[2],
-                minWidth: 0,
-              }}
-            >
-              {c}
-            </div>
-          ))}
-        </div>
-      )}
+      <div
+        data-settings-rows=""
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: t.settings.rowGap,
+          minWidth: 0,
+        }}
+      >
+        {children}
+      </div>
     </section>
   );
 }
 
 /** The width of the control column in every opts row, so selects and buttons line up down the page. */
-export const SETTING_CONTROL_WIDTH = 240;
+export const SETTING_CONTROL_WIDTH = tokens.settings.controlWidth;
 
 /**
  * One opt: label (and an optional muted description under it) on the left, control right-aligned in a fixed
@@ -793,8 +771,8 @@ export function SettingRow({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: t.space[4],
-        minHeight: 36,
+        gap: t.settings.labelGap,
+        minHeight: t.settings.rowMinHeight,
         minWidth: 0,
       }}
     >

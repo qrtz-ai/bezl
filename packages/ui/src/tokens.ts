@@ -57,24 +57,27 @@ const lightColor: Record<keyof typeof darkColor, string> = {
   accentText: '#fafafa',
 };
 
+/** The 4px spacing scale; every gap, padding and margin in @qrtz/ui is one of these. */
+const space = {
+  0: '0px',
+  0.5: '2px', // hairline gaps inside a row (title over its caption)
+  1: '4px',
+  2: '8px',
+  3: '12px',
+  4: '16px',
+  5: '20px',
+  6: '24px',
+  8: '32px',
+  12: '48px',
+  16: '64px',
+} as const;
+
 export type ThemeMode = 'dark' | 'light';
 
 export const tokens = {
   mode: 'dark' as ThemeMode,
   color: darkColor as Record<keyof typeof darkColor, string>,
-  space: {
-    0: '0px',
-    0.5: '2px', // hairline gaps inside a row (title over its caption)
-    1: '4px',
-    2: '8px',
-    3: '12px',
-    4: '16px',
-    5: '20px',
-    6: '24px',
-    8: '32px',
-    12: '48px',
-    16: '64px',
-  },
+  space,
   radius: { xs: '2px', sm: '4px', md: '6px', lg: '8px', full: '9999px' },
   /**
    * One family everywhere: Geist Pixel Square, bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
@@ -135,6 +138,18 @@ export const tokens = {
   },
   /** Shared layout geometry (px numbers), used by Page, SideNav and CardGrid. */
   layout: { pageMax: 880, sidenav: 176, cardMin: 220 },
+  /**
+   * The opts grid on every page: label left, control in a fixed right column, one row height, and the gaps
+   * between a section's heading and its rows and between rows (sections themselves are PAGE.gap apart).
+   */
+  settings: {
+    controlWidth: 240,
+    rowMinHeight: 36,
+    titleGap: space[1],
+    headerGap: space[3],
+    rowGap: space[2],
+    labelGap: space[4],
+  },
   z: { base: 0, sticky: 10, overlay: 40, dialog: 50, toast: 60, tooltip: 70 },
 } as const;
 

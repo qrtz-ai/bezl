@@ -658,11 +658,7 @@ export default function MarketplaceView() {
           appVersion={appVersion}
         />
         {isModuleId(item) && hostInstalled(item) ? (
-          <SettingsSection
-            variant="plain"
-            title="on this mac"
-            data-testid="extension-switch"
-          >
+          <SettingsSection title="on this mac" data-testid="extension-switch">
             <SettingRow label={`${item} on`}>
               <Switch
                 label={`${item} on`}
@@ -756,11 +752,7 @@ export default function MarketplaceView() {
       {unavailableBox}
       {errorBox}
       {restartBox}
-      <SettingsSection
-        variant="plain"
-        title="installed"
-        data-testid="qrtz-installed"
-      >
+      <SettingsSection title="installed" data-testid="qrtz-installed">
         {installedNames.length ? (
           <AppList aria-label="installed apps" data-testid="installed-list">
             {installedNames.map((n) => row(n, true))}
@@ -771,11 +763,7 @@ export default function MarketplaceView() {
           </Text>
         )}
       </SettingsSection>
-      <SettingsSection
-        variant="plain"
-        title="available"
-        data-testid="qrtz-available"
-      >
+      <SettingsSection title="available" data-testid="qrtz-available">
         {availableNames.length ? (
           <AppList aria-label="available apps" data-testid="available-list">
             {availableNames.map((n) => row(n, false))}
@@ -811,11 +799,7 @@ export default function MarketplaceView() {
         )}
       </SettingsSection>
       {shared.length || canPrune(state) ? (
-        <SettingsSection
-          variant="plain"
-          title="shared"
-          data-testid="module-shared"
-        >
+        <SettingsSection title="shared" data-testid="module-shared">
           {shared.length ? (
             <IconLines aria-label="shared packages">
               {shared.map((d) => (
@@ -884,11 +868,7 @@ function Detail({
         status={status}
         action={action}
       />
-      <SettingsSection
-        variant="plain"
-        title="about"
-        data-testid="extension-facts"
-      >
+      <SettingsSection title="about" data-testid="extension-facts">
         <FactList
           items={[
             {
@@ -942,11 +922,7 @@ function Detail({
           ]}
         />
       </SettingsSection>
-      <SettingsSection
-        variant="plain"
-        title="permissions"
-        data-testid="extension-permissions"
-      >
+      <SettingsSection title="permissions" data-testid="extension-permissions">
         {entry?.permissions.length ? (
           <IconLines aria-label="permissions">
             {entry.permissions.map((p) => (
@@ -970,11 +946,7 @@ function Detail({
           entry in privacy & security.
         </Text>
       </SettingsSection>
-      <SettingsSection
-        variant="plain"
-        title="dependencies"
-        data-testid="extension-deps"
-      >
+      <SettingsSection title="dependencies" data-testid="extension-deps">
         {entry?.dependencies.length ? (
           <IconLines aria-label="dependencies">
             {entry.dependencies.map((d) => (
@@ -1011,11 +983,7 @@ function Detail({
           twice.
         </Text>
       </SettingsSection>
-      <SettingsSection
-        variant="plain"
-        title="changelog"
-        data-testid="extension-changelog"
-      >
+      <SettingsSection title="changelog" data-testid="extension-changelog">
         {entry?.versions.length ? (
           <IconLines aria-label="versions">
             {entry.versions.map((v) => (
