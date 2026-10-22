@@ -296,6 +296,11 @@ impl ModuleSession {
             Channel::System => self.system.as_ref(),
         }
         .ok_or_else(|| SpeechError::Invalid("channel not in session".into()))?;
+        // Counted up front for the same reason as `push_audio` (QRT-336); a clip that is not fully read
+        // fails the check.
+        self.shared
+            .pushed_ms
+            .fetch_max((pcm.len() / 32) as u64, Ordering::SeqCst);
         let mut off = 0;
         let deadline = Instant::now() + Duration::from_secs(10);
         while off < pcm.len() {
@@ -309,9 +314,6 @@ impl ModuleSession {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
         }
-        self.shared
-            .pushed_ms
-            .fetch_max((pcm.len() / 32) as u64, Ordering::SeqCst);
         Ok(())
     }
 }
@@ -331,9 +333,12 @@ impl SpeechSession for ModuleSession {
         };
         let Some(fd) = fd else { return Ok(()) };
         let ms = (pcm16.len() / 32) as u64;
-        if write_audio_nonblocking(fd, pcm16) {
-            self.shared.pushed_ms.fetch_add(ms, Ordering::SeqCst);
-        } else {
+        // Count the audio before the module can see it (QRT-336): a module that answers before this task
+        // resumes must have its words checked against audio that includes them, or they are dropped as
+        // "ahead of the audio" protocol violations.
+        self.shared.pushed_ms.fetch_add(ms, Ordering::SeqCst);
+        if !write_audio_nonblocking(fd, pcm16) {
+            self.shared.pushed_ms.fetch_sub(ms, Ordering::SeqCst);
             self.shared.dropped_ms.fetch_add(ms, Ordering::SeqCst);
         }
         Ok(())

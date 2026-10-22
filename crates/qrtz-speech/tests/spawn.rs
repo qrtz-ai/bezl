@@ -136,7 +136,6 @@ async fn a_session_transcribes_both_channels_and_finishes() {
     assert_eq!(s.confined, confined());
     s.push_audio(Channel::Mic, &vec![0u8; 2 * SECOND]).await.unwrap();
     s.push_audio(Channel::System, &vec![0u8; SECOND]).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
     s.finish().await.unwrap();
     let evs = collect(&mut s).await;
     let words: Vec<(Channel, String)> = evs
