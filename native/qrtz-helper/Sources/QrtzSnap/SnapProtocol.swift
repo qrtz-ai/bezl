@@ -1,9 +1,11 @@
 // qrtz snap's wire (ADR 0159): newline-delimited JSON on stdio with the host, like ctrl's (ADR 0110).
 //   host → snap: {"type":"snap.configure","shortcuts":{"leftHalf":"alt+cmd+left",…},"disabledApps":[…],"statusItem":true}
+//                  "summon":{"enabled":true,"bundleId":"com.openai.chat","echoKey":"right-command"}
 //                {"type":"snap.act","action":"leftHalf"}      (tests and the status menu's own path)
 //                {"type":"shutdown"}
 //   snap → host: {"type":"hello","features":["module:snap"],…}   first line, so the supervisor counts it running
-//                {"type":"snap.status","axTrusted":…,"registered":{action: binding},"refused":{action: reason}}
+//                {"type":"snap.status","axTrusted":…,"registered":{action: binding},"refused":{action: reason},
+//                 "inputMonitoring":…,"summonActive":…,"apps":[{"bundleId","name"}]}   apps only while summon is on
 //                {"type":"snap.disable-app","bundleId":"…","disabled":true}   the status menu's "disable for <app>"
 //                {"type":"snap.moved","action":"…"} / {"type":"snap.failed","action":"…","reason":"…"}
 // Foundation-only; window titles and app content never leave the helper (only bundle ids the user chose to disable).
@@ -13,6 +15,7 @@ public struct SnapConfig: Equatable {
     public var overrides: [String: String] = [:]
     public var disabledApps: Set<String> = []
     public var statusItem = true
+    public var summon = SnapSummonConfig()
     public init() {}
 
     /// Parses a `snap.configure` line's fields; anything missing keeps its default.
@@ -22,6 +25,7 @@ public struct SnapConfig: Equatable {
         }
         if let d = o["disabledApps"] as? [Any] { disabledApps = Set(d.compactMap { $0 as? String }) }
         if let b = o["statusItem"] as? Bool { statusItem = b }
+        summon = SnapSummonConfig(json: o["summon"] as? [String: Any])
     }
 }
 
@@ -57,12 +61,18 @@ public enum SnapLines {
         encode(["type": "hello", "protocol": 1, "helperVersion": version, "features": ["module:snap"]])
     }
 
-    public static func status(axTrusted: Bool, registered: [SnapAction: SnapShortcut], refused: [SnapAction: String]) -> String {
+    public static func status(axTrusted: Bool, registered: [SnapAction: SnapShortcut], refused: [SnapAction: String],
+                              summon: SnapSummonStatus = SnapSummonStatus()) -> String {
         var r: [String: String] = [:]
         for (a, s) in registered { r[a.rawValue] = s.description }
         var f: [String: String] = [:]
         for (a, why) in refused { f[a.rawValue] = why }
-        return encode(["type": "snap.status", "axTrusted": axTrusted, "registered": r, "refused": f])
+        var o: [String: Any] = ["type": "snap.status", "axTrusted": axTrusted, "registered": r, "refused": f,
+                                "inputMonitoring": summon.inputMonitoring, "summonActive": summon.active]
+        if let apps = summon.apps {
+            o["apps"] = apps.map { ["bundleId": $0.bundleId, "name": $0.name] }
+        }
+        return encode(o)
     }
 
     public static func disableApp(_ bundleId: String, disabled: Bool) -> String {
@@ -77,6 +87,19 @@ public enum SnapLines {
     }
 }
 
+/// Summon's part of `snap.status`.
+public struct SnapSummonStatus: Equatable {
+    /// qrtz has Input Monitoring (the chord's listen-only tap needs it).
+    public var inputMonitoring = false
+    /// The chord tap exists and listens.
+    public var active = false
+    /// Installed apps for the picker; nil while summon is off.
+    public var apps: [SnapApp]?
+    public init(inputMonitoring: Bool = false, active: Bool = false, apps: [SnapApp]? = nil) {
+        self.inputMonitoring = inputMonitoring; self.active = active; self.apps = apps
+    }
+}
+
 /// What the helper's hotkeys and menu drive. The macOS one registers Carbon hotkeys and moves windows through AX.
 public protocol SnapBackend: AnyObject {
     var axTrusted: Bool { get }
@@ -86,6 +109,16 @@ public protocol SnapBackend: AnyObject {
     func perform(_ action: SnapAction) -> SnapOutcome
     func setDisabledApps(_ apps: Set<String>)
     func setStatusItem(_ shown: Bool)
+    /// Summon agent: start or stop the ⌘+⌘ chord tap for this config. Asks for Input Monitoring only when summon
+    /// turns on (`requestAccess`), never on a plain restart.
+    func setSummon(_ c: SnapSummonConfig, requestAccess: Bool)
+    var summonStatus: SnapSummonStatus { get }
+}
+
+/// Backends without summon (tests' fakes, Linux) do nothing.
+public extension SnapBackend {
+    func setSummon(_ c: SnapSummonConfig, requestAccess: Bool) {}
+    var summonStatus: SnapSummonStatus { SnapSummonStatus() }
 }
 
 /// The helper's request loop, platform-free: configure → resolve shortcuts → register → report status.
@@ -94,7 +127,8 @@ public final class SnapServer {
     let write: (String) -> Void
     public private(set) var config = SnapConfig()
     /// The last status sent, so a change of the Accessibility grant re-sends it (nil before the first configure).
-    var last: (axTrusted: Bool, registered: [SnapAction: SnapShortcut], refused: [SnapAction: String])?
+    var last: (axTrusted: Bool, registered: [SnapAction: SnapShortcut], refused: [SnapAction: String],
+               summon: SnapSummonStatus)?
 
     public init(backend: SnapBackend, write: @escaping (String) -> Void) {
         self.backend = backend
@@ -114,7 +148,9 @@ public final class SnapServer {
     }
 
     public func configure(_ c: SnapConfig) {
+        let turningOn = c.summon.enabled && !config.summon.enabled
         config = c
+        backend.setSummon(c.summon, requestAccess: turningOn)
         backend.setDisabledApps(c.disabledApps)
         backend.setStatusItem(c.statusItem)
         let resolved = SnapShortcuts.resolve(overrides: c.overrides)
@@ -124,8 +160,9 @@ public final class SnapServer {
             registered[a] = nil
             refused[a] = why
         }
-        last = (backend.axTrusted, registered, refused)
-        write(SnapLines.status(axTrusted: backend.axTrusted, registered: registered, refused: refused))
+        let summon = backend.summonStatus
+        last = (backend.axTrusted, registered, refused, summon)
+        write(SnapLines.status(axTrusted: backend.axTrusted, registered: registered, refused: refused, summon: summon))
     }
 
     /// Called every second by the helper: when the user switches qrtz on (or off) in System Settings the status
@@ -134,9 +171,10 @@ public final class SnapServer {
     public func refreshTrust() -> Bool {
         guard let l = last else { return false }
         let now = backend.axTrusted
-        guard now != l.axTrusted else { return false }
-        last = (now, l.registered, l.refused)
-        write(SnapLines.status(axTrusted: now, registered: l.registered, refused: l.refused))
+        let summon = backend.summonStatus
+        guard now != l.axTrusted || summon != l.summon else { return false }
+        last = (now, l.registered, l.refused, summon)
+        write(SnapLines.status(axTrusted: now, registered: l.registered, refused: l.refused, summon: summon))
         return true
     }
 }

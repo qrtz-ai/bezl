@@ -21,8 +21,20 @@ pub fn configure_line(cfg: &Value) -> String {
         "shortcuts": s.get("shortcuts").cloned().unwrap_or_else(|| json!({})),
         "disabledApps": s.get("disabledApps").cloned().unwrap_or_else(|| json!([])),
         "statusItem": s.get("statusItem").and_then(Value::as_bool).unwrap_or(true),
+        "summon": summon_section(cfg),
     });
     format!("{line}\n")
+}
+
+/// Summon agent's part of `snap.configure`: the switch, the chosen app, and Echo's push-to-talk key (so snap can say
+/// when right ⌘ is also Echo's).
+fn summon_section(cfg: &Value) -> Value {
+    let s = &cfg["snap"]["summon"];
+    json!({
+        "enabled": s["enabled"].as_bool().unwrap_or(false),
+        "bundleId": s["bundleId"].as_str().unwrap_or(""),
+        "echoKey": cfg["talk"]["pushKey"].as_str().unwrap_or("fn"),
+    })
 }
 
 /// qrtz-snap's spawn: next to the helper binary, same environment plus `QRTZ_MODULE=snap` (no path override, so a
@@ -81,6 +93,25 @@ pub fn disable_app_patch(cfg: &Value, bundle_id: &str, disabled: bool) -> Option
     Some(json!({"snap": {"disabledApps": apps}}))
 }
 
+/// The picker's apps from a `snap.status` (at most 2000, each with a usable bundle id and name).
+fn summon_apps(v: &Value) -> Value {
+    let apps: Vec<Value> = v
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| {
+                    let id = x["bundleId"].as_str()?.trim();
+                    let name = x["name"].as_str()?.trim();
+                    (!id.is_empty() && id.len() <= 255 && !name.is_empty() && name.len() <= 255)
+                        .then(|| json!({"bundleId": id, "name": name}))
+                })
+                .take(2000)
+                .collect()
+        })
+        .unwrap_or_default();
+    Value::Array(apps)
+}
+
 /// qrtz-snap's supervisor and its last report.
 pub struct SnapHost {
     pub sup: Supervisor,
@@ -99,7 +130,8 @@ impl SnapHost {
     }
 
     fn idle() -> Value {
-        json!({"running": false, "axTrusted": false, "registered": {}, "refused": {}})
+        json!({"running": false, "axTrusted": false, "registered": {}, "refused": {}, "inputMonitoring": false,
+               "summonActive": false})
     }
 
     /// `snap:status`.
@@ -166,6 +198,11 @@ impl SnapHost {
                     "axTrusted": v["axTrusted"].as_bool().unwrap_or(false),
                     "registered": obj("registered"),
                     "refused": obj("refused"),
+                    "inputMonitoring": v["inputMonitoring"].as_bool().unwrap_or(false),
+                    "summonActive": v["summonActive"].as_bool().unwrap_or(false),
+                    "apps": summon_apps(&v["apps"]),
+                    // Echo's push-to-talk key is right ⌘, half of summon's chord (the settings warn).
+                    "summonClash": cfg["talk"]["pushKey"].as_str() == Some("right-command"),
                 });
                 SnapLine::Status
             }
@@ -191,7 +228,8 @@ mod tests {
         let l: Value = serde_json::from_str(configure_line(&json!({})).trim()).unwrap();
         assert_eq!(
             l,
-            json!({"type": "snap.configure", "shortcuts": {}, "disabledApps": [], "statusItem": true})
+            json!({"type": "snap.configure", "shortcuts": {}, "disabledApps": [], "statusItem": true,
+                   "summon": {"enabled": false, "bundleId": "", "echoKey": "fn"}})
         );
         let cfg =
             json!({"snap": {"shortcuts": {"center": ""}, "disabledApps": ["com.a"], "statusItem": false}});
@@ -411,5 +449,35 @@ mod tests {
             json!({"modules": {"enabled": true, "snap": {"enabled": false}}, "snap": {"statusItem": false}});
         assert!(h.apply(&off));
         assert_eq!(h.status()["running"], json!(false));
+    }
+
+    #[test]
+    fn configure_carries_summon_and_echos_key() {
+        let l: Value = serde_json::from_str(configure_line(&json!({})).trim()).unwrap();
+        assert_eq!(
+            l["summon"],
+            json!({"enabled": false, "bundleId": "", "echoKey": "fn"})
+        );
+        let cfg = json!({"snap": {"summon": {"enabled": true, "bundleId": "com.openai.chat", "name": "ChatGPT"}},
+                         "talk": {"pushKey": "right-command"}});
+        let l: Value = serde_json::from_str(configure_line(&cfg).trim()).unwrap();
+        assert_eq!(
+            l["summon"],
+            json!({"enabled": true, "bundleId": "com.openai.chat", "echoKey": "right-command"})
+        );
+    }
+
+    #[tokio::test]
+    async fn status_keeps_summon_fields_and_clean_apps() {
+        let h = host();
+        let line = r#"{"type":"snap.status","axTrusted":true,"registered":{},"refused":{},"inputMonitoring":true,"summonActive":true,"apps":[{"bundleId":"a.b","name":"AB"},{"bundleId":"","name":"x"},{"name":"y"}]}"#;
+        assert_eq!(h.on_line(line, &json!({})), SnapLine::Status);
+        let st = h.status();
+        assert_eq!(st["inputMonitoring"], json!(true));
+        assert_eq!(st["summonActive"], json!(true));
+        assert_eq!(st["apps"], json!([{"bundleId": "a.b", "name": "AB"}]));
+        assert_eq!(st["summonClash"], json!(false));
+        h.on_line(line, &json!({"talk": {"pushKey": "right-command"}}));
+        assert_eq!(h.status()["summonClash"], json!(true));
     }
 }

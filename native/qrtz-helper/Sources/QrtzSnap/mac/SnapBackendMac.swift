@@ -94,6 +94,7 @@ public final class MacSnapBackend: NSObject, SnapBackend {
     var handlerInstalled = false
     var statusItem: NSStatusItem?
     var current: [SnapAction: SnapShortcut] = [:]
+    let summon = MacSnapSummon()
     let send: (String) -> Void
 
     /// `send` writes a line to the host (the status menu's "disable for <app>", and move outcomes).
@@ -146,6 +147,12 @@ public final class MacSnapBackend: NSObject, SnapBackend {
         rebuildMenu()
         return failed
     }
+
+    public func setSummon(_ c: SnapSummonConfig, requestAccess: Bool) {
+        summon.apply(c, requestAccess: requestAccess)
+    }
+
+    public var summonStatus: SnapSummonStatus { summon.status }
 
     public func setDisabledApps(_ apps: Set<String>) {
         engine.disabledApps = apps

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Feature: Snap can summon an app. Hold left ⌘ and right ⌘ together to bring it forward, and again to go back (off by default; needs Input Monitoring).
+
 ## 0.3.0 (2026-10-21)
 
 - Breaking: modules now download from GitHub (the `modules-index` release) instead of modules.qrtz.ai, which stays as a fallback for now.

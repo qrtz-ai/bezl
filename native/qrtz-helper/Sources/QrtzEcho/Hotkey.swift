@@ -19,6 +19,8 @@ public struct HotkeyFilter: Equatable, Sendable {
     /// CGEventFlags raw values.
     public static let fnFlag: UInt64 = 0x80_0000, optionFlag: UInt64 = 0x8_0000, commandFlag: UInt64 = 0x10_0000,
         controlFlag: UInt64 = 0x4_0000
+    /// NX_DEVICELCMDKEYMASK: left ⌘ is down (device-dependent bit of CGEventFlags).
+    public static let leftCommandDevice: UInt64 = 0x08
     /// `CGEventSourceStateID.hidSystemState`: an event from real hardware.
     public static let hidSystemState: Int64 = 1
     /// The source user data ctrl's own posted events carry: the one `CtrlEventMarker` in QrtzShared, which
@@ -58,7 +60,10 @@ public struct HotkeyFilter: Equatable, Sendable {
                                 userData: Int64 = 0) -> (action: HotkeyAction?, consume: Bool) {
         var action: HotkeyAction?
         if type == Self.flagsChanged, code == keyCode {
-            let isDown = flags & flag != 0
+            var isDown = flags & flag != 0
+            // Snap's "summon agent" chord is left ⌘ + right ⌘. With right ⌘ as the talk key, a right ⌘ pressed while
+            // left ⌘ is already held is that chord (or a ⌘ shortcut), not push-to-talk: it starts no dictation.
+            if key == "right-command", isDown, !down, flags & Self.leftCommandDevice != 0 { isDown = false }
             if isDown != down {
                 down = isDown
                 action = isDown ? .down : .up
