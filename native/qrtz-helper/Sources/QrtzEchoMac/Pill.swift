@@ -52,6 +52,7 @@ public final class NativePill: PillView, @unchecked Sendable {
         // A window needs the app object; accessory: no Dock icon, no menu bar, never frontmost.
         let app = NSApplication.shared
         if app.activationPolicy() != .accessory { app.setActivationPolicy(.accessory) }
+        app.finishLaunching()  // so AppKit tracks screens (hotplug) once qrtz-echo's main loop is NSApplication.run
         Self.registerFont()
         surface = NotchSurface(fontName: PillFont.postScriptName)
         if let f = themeFile {

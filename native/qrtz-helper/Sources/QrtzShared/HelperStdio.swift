@@ -30,9 +30,10 @@ public enum HelperStdio {
     public static let epochMs: @Sendable () -> Double = { Date().timeIntervalSince1970 * 1000 }
 
     /// Runs a module app's host until the host says shutdown or stdin closes. Never returns.
-    public static func run(_ host: ModuleHost, out: StdoutLines) -> Never {
+    /// `mainLoop`: what drives the main thread (an AppKit app passes `NSApplication.shared.run()`; see `run(out:)`).
+    public static func run(_ host: ModuleHost, out: StdoutLines, mainLoop: () -> Void = { RunLoop.main.run() }) -> Never {
         run(out: out, start: { await host.start() }, handle: { await host.handle($0) },
-            heartbeat: { await host.heartbeat() }, shutdown: { await host.shutdown() })
+            heartbeat: { await host.heartbeat() }, shutdown: { await host.shutdown() }, mainLoop: mainLoop)
     }
 
     /// `divert`: lines another queue takes before the ordered consumer (ctrl's, ADR 0110). Never returns.
@@ -41,7 +42,8 @@ public enum HelperStdio {
                            handle: @escaping @Sendable (HostMessage) async -> Void,
                            heartbeat: @escaping @Sendable () async -> Void,
                            shutdown: @escaping @Sendable () async -> Void,
-                           divert: (@Sendable (String) -> Bool)? = nil) -> Never {
+                           divert: (@Sendable (String) -> Bool)? = nil,
+                           mainLoop: () -> Void = { RunLoop.main.run() }) -> Never {
         signal(SIGPIPE, SIG_IGN)
         let (lines, linesIn) = AsyncStream<String>.makeStream()
         Task {
@@ -80,8 +82,10 @@ public enum HelperStdio {
             linesIn.finish()
         }
         reader.start()
-        // AXObserver callbacks and AVAudioEngine need a running main run loop.
-        RunLoop.main.run()
+        // AXObserver callbacks and AVAudioEngine need a running main run loop. An app with windows passes
+        // NSApplication.run here instead, so AppKit also processes its events (screen changes update NSScreen.screens
+        // and post didChangeScreenParameters only then); it spins the same main run loop and main queue.
+        mainLoop()
         exit(0)
     }
 }

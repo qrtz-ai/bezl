@@ -3,6 +3,7 @@ import QrtzEcho
 import QrtzGateProbe
 import QrtzShared
 #if os(macOS)
+import AppKit
 import QrtzEchoMac
 import QrtzMacShared
 #endif
@@ -41,4 +42,11 @@ let host = ModuleHost(
     deps: HostDeps(permissions: permissions, micHub: micHub, speechFds: SocketFdReceiver.fromEnvironment(),
                    helperVersion: echoAppVersion, os: osName, features: platform.features + ["permissions.watch", "module:echo"], module: "echo"),
     link: link, now: HelperStdio.epochMs, speech: speech, parts: [echo])
+#if os(macOS)
+// The pill's window needs AppKit's event loop, or a screen plugged in after launch is never seen.
+// Accessory before AppKit starts: no Dock icon or menu bar, never frontmost.
+NSApplication.shared.setActivationPolicy(.accessory)
+HelperStdio.run(host, out: out, mainLoop: { NSApplication.shared.run() })
+#else
 HelperStdio.run(host, out: out)
+#endif

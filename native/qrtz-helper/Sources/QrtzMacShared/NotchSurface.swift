@@ -227,7 +227,8 @@ public final class NotchSurface: @unchecked Sendable {
     }
 
     private func screensChanged() {
-        guard panel.isVisible else { return }
+        logErr("notch: screens changed n=\(NSScreen.screens.count)")
+        guard panel.isVisible else { return }  // a hidden panel is placed afresh on its next show
         place()
         stage.snapToCurrentState()
     }

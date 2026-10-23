@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix: the echo bubble follows you onto a screen plugged in after qrtz started.
+
 ## 0.3.4 (2026-10-23)
 
 0.3.3 was tagged but never published (its release failed at the dmg staple step), so this release also carries everything listed under 0.3.3.
