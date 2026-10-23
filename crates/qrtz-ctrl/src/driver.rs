@@ -41,6 +41,8 @@ pub struct Driver<'a> {
     pub labels: &'a mut BTreeMap<String, String>,
     /// The stop button: checked between steps.
     pub stop: &'a AtomicBool,
+    /// The Mac's UI language is English ([`crate::gate::english_ui`]); otherwise presses and combos confirm.
+    pub english_ui: bool,
 }
 
 impl Driver<'_> {
@@ -278,6 +280,7 @@ impl Driver<'_> {
         if let (Some(h), Some(t)) = (a.handle(), st.tree.as_ref()) {
             extra.extend(crate::gate::context_rules(&t.root, h));
         }
+        extra.extend(crate::gate::locale_rules(a, self.english_ui));
         let rules = rules_for(a, node, &app, &extra, exempt);
         if !rules.is_empty() {
             let binding = Self::binding(st, a);

@@ -122,6 +122,9 @@ describe('ctrl components', () => {
       'it changes a system setting',
     );
     expect(ruleLabel('key:quit')).toBe('the shortcut quits');
+    expect(ruleLabel('locale:non_english')).toBe(
+      "ctrl can't read buttons in this Mac's language",
+    );
   });
 
   it('the stop bar says esc stops it and offers a stop button', () => {

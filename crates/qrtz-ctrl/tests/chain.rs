@@ -76,6 +76,7 @@ struct Run {
     goal: String,
     clock: Tick,
     stop: AtomicBool,
+    english_ui: bool,
 }
 
 impl Run {
@@ -92,6 +93,7 @@ impl Run {
             goal: goal.into(),
             clock: Tick(AtomicU64::new(0)),
             stop: AtomicBool::new(false),
+            english_ui: true,
         }
     }
     fn drive_with(&mut self, scorer: &dyn Scorer) -> Step {
@@ -103,6 +105,7 @@ impl Run {
             goal: &self.goal,
             labels: &mut self.labels,
             stop: &self.stop,
+            english_ui: self.english_ui,
         }
         .drive()
     }
@@ -287,6 +290,18 @@ fn notes_new_note_titled_types_the_title() {
     assert_eq!(acts.last().unwrap(), "set_value:e:20:6");
     assert_eq!(r.fake.world().acts.last().unwrap()["text"], "groceries");
     r.finish_checks();
+}
+
+/// The label rules are English: on a Mac in another language a localized label goes unread, so the first press or
+/// menu combo confirms (opening the app doesn't), and nothing is acted on before the answer.
+#[test]
+fn a_non_english_mac_confirms_presses_and_combos() {
+    let mut r = Run::new("create a new note titled groceries", world());
+    r.english_ui = false;
+    assert_eq!(r.drive(), Step::Confirming, "{:#?}", decisions(&r.log));
+    let g = r.log.state().confirm.unwrap();
+    assert_eq!(g.rules, vec![qrtz_ctrl::gate::NON_ENGLISH_RULE.to_string()]);
+    assert_eq!(r.acts(), vec!["open_app:com.apple.Notes"]);
 }
 
 /// ADR 0214 review (b): a move that ran but changed nothing is never backtracked (the action can't be undone by

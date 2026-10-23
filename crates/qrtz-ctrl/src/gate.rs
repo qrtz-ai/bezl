@@ -114,6 +114,30 @@ pub const COMBO_RULES: &[(&str, &str)] = &[
     ("ctrl+cmd+q", "key:lock"),
 ];
 
+/// [`LABEL_RULES`] are English words, so on a Mac whose UI language isn't English a localized label ("Senden",
+/// "Supprimer", "送信") goes unread: every press and menu key combo asks instead (fail closed).
+pub const NON_ENGLISH_RULE: &str = "locale:non_english";
+
+/// The Mac's first preferred language (a BCP 47 tag: `en`, `en-GB`, `de-DE`) is English. Empty (unread) is not.
+pub fn english_ui(lang: &str) -> bool {
+    let l = lang.trim().to_ascii_lowercase();
+    l == "en" || l.starts_with("en-") || l.starts_with("en_")
+}
+
+/// [`NON_ENGLISH_RULE`] for an action whose meaning comes from a label: a press, or a key combo other than Return
+/// (Return is a submit, which has its own rule).
+pub fn locale_rules(action: &Action, english: bool) -> Vec<String> {
+    let labelled = match action {
+        Action::Press { .. } => true,
+        Action::KeyCombo { combo, .. } => normalize_combo(combo) != "return",
+        _ => false,
+    };
+    if english || !labelled {
+        return Vec::new();
+    }
+    vec![NON_ENGLISH_RULE.into()]
+}
+
 fn fold_char(c: char) -> Option<char> {
     let cp = c as u32;
     // Invisible: zero-width, joiners, soft hyphen, BOM, word joiner, variation selectors; combining marks.
@@ -492,6 +516,38 @@ mod tests {
         ] {
             assert!(sensitive_field(l), "{l}");
         }
+    }
+
+    #[test]
+    fn a_non_english_ui_confirms_presses_and_labelled_combos() {
+        for l in ["en", "en-US", "en_GB", " EN-au "] {
+            assert!(english_ui(l), "{l}");
+        }
+        for l in ["de-DE", "fr", "ja", "eng", "", "zh-Hans"] {
+            assert!(!english_ui(l), "{l}");
+        }
+        let press = Action::Press {
+            handle: "e:1:2".into(),
+        };
+        let combo = |c: &str| Action::KeyCombo {
+            app: "com.apple.mail".into(),
+            combo: c.into(),
+        };
+        let rule = vec![NON_ENGLISH_RULE.to_string()];
+        assert_eq!(locale_rules(&press, false), rule);
+        assert_eq!(locale_rules(&combo("cmd+shift+n"), false), rule);
+        assert!(
+            locale_rules(&combo("Return"), false).is_empty(),
+            "a submit has its own rule"
+        );
+        assert!(locale_rules(
+            &Action::OpenApp {
+                app: "com.apple.mail".into()
+            },
+            false
+        )
+        .is_empty());
+        assert!(locale_rules(&press, true).is_empty());
     }
 
     #[test]

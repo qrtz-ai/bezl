@@ -11,6 +11,34 @@ use serde_json::Value;
 use std::time::Duration;
 use tokio::sync::broadcast;
 
+/// The Mac's first preferred language (`de-DE`, `en-GB`), what apps localize their labels to; `""` if unread.
+/// ctrl's gate reads only English labels, so anything else makes every press confirm (`gate::NON_ENGLISH_RULE`).
+#[cfg(target_os = "macos")]
+pub fn ui_language() -> String {
+    use core_foundation::array::{CFArray, CFArrayRef};
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFLocaleCopyPreferredLanguages() -> CFArrayRef;
+    }
+    // SAFETY: CoreFoundation call with no arguments; it returns a +1 array or null.
+    let langs = unsafe { CFLocaleCopyPreferredLanguages() };
+    if langs.is_null() {
+        return String::new();
+    }
+    // SAFETY: a +1 array of CFStrings from a Copy function.
+    let langs: CFArray<CFString> = unsafe { CFArray::wrap_under_create_rule(langs) };
+    langs.get(0).map(|l| l.to_string()).unwrap_or_default()
+}
+
+/// Off macOS ctrl has no helper and never acts; unread, so the gate would fail closed.
+#[cfg(not(target_os = "macos"))]
+pub fn ui_language() -> String {
+    String::new()
+}
+
 pub struct SupervisorWire {
     sup: Supervisor,
     rt: tokio::runtime::Handle,
@@ -79,5 +107,19 @@ impl qrtz_ctrl::helper::Wire for SupervisorWire {
 
     fn up(&self) -> bool {
         self.sup.status().state == HelperState::Running
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    #[test]
+    fn the_ui_language_is_a_language_tag() {
+        let l = super::ui_language();
+        assert!(
+            l.len() >= 2
+                && l.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+            "{l:?}"
+        );
     }
 }

@@ -439,6 +439,8 @@ export function ruleLabel(rule: string): string {
       ? 'it changes a system setting'
       : `it ${w.replace('submit', 'sends')}`;
   if (kind === 'key') return `the shortcut ${w}s`;
+  if (rule === 'locale:non_english')
+    return "ctrl can't read buttons in this Mac's language";
   return w || rule;
 }
 

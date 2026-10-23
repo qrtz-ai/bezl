@@ -96,6 +96,8 @@ pub struct CtrlService {
     stop: AtomicBool,
     /// (do id, run id) of gates that started waiting, for the shell's non-activating notification.
     notices: Mutex<Vec<(String, String)>>,
+    /// See [`CtrlService::with_ui_language`].
+    english_ui: bool,
 }
 
 fn str_field<'a>(p: &'a Value, k: &str) -> Result<&'a str, CtrlError> {
@@ -262,7 +264,15 @@ impl CtrlService {
             active: Mutex::new(None),
             stop: AtomicBool::new(false),
             notices: Mutex::new(Vec::new()),
+            english_ui: true,
         }
+    }
+
+    /// The Mac's first preferred language. Not English (or unread, `""`): every press and menu key combo confirms,
+    /// since the gate's label rules are English ([`crate::gate::NON_ENGLISH_RULE`]).
+    pub fn with_ui_language(mut self, lang: &str) -> Self {
+        self.english_ui = crate::gate::english_ui(lang);
+        self
     }
 
     pub fn with_helper(mut self, helper: Arc<HelperClient>) -> Self {
@@ -357,6 +367,7 @@ impl CtrlService {
             goal,
             labels: &mut labels,
             stop: &self.stop,
+            english_ui: self.english_ui,
         }
         .drive();
         self.labels

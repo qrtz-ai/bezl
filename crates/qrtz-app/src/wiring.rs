@@ -698,7 +698,14 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 tracing::warn!("ctrl.laya: no warm-up thread; the first question loads the model");
             }
         }
-        ctrl = ctrl.with_helper(helper).with_scorer(Box::new(scorer));
+        let lang = crate::ctrl_helper::ui_language();
+        if !qrtz_ctrl::gate::english_ui(&lang) {
+            tracing::info!(lang = %lang, "ctrl: the UI language isn't English; every press and menu combo confirms");
+        }
+        ctrl = ctrl
+            .with_helper(helper)
+            .with_scorer(Box::new(scorer))
+            .with_ui_language(&lang);
     }
     service.set_ctrl(Arc::new(ctrl));
     let _ = voice_ctrl.set(Arc::downgrade(&service));
