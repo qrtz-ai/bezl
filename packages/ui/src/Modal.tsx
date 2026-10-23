@@ -174,7 +174,6 @@ export function Modal({
           </span>
           <IconButton
             icon="close"
-            variant="ghost"
             label={closeLabel}
             onClick={onClose}
             data-testid={testId ? `${testId}-close` : undefined}

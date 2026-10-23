@@ -480,7 +480,6 @@ export function IconButton({
   disabled,
   badge,
   tone = 'default',
-  variant = 'outline',
   ref,
   'data-testid': testId,
   'aria-expanded': expanded,
@@ -494,8 +493,6 @@ export function IconButton({
   disabled?: boolean;
   badge?: boolean;
   tone?: 'default' | 'record' | 'danger';
-  /** `ghost`: no border, muted text (a modal's close). */
-  variant?: 'outline' | 'ghost';
   ref?: Ref<HTMLButtonElement>;
   'data-testid'?: string;
   'aria-expanded'?: boolean;
@@ -516,7 +513,6 @@ export function IconButton({
       disabled={disabled}
       data-testid={testId}
       data-badge={badge ? '' : undefined}
-      data-q-ghost={variant === 'ghost' ? '' : undefined}
       onClick={onClick}
       style={{
         all: 'unset',
@@ -530,16 +526,9 @@ export function IconButton({
         display: 'grid',
         placeItems: 'center',
         borderRadius: t.radius.md,
-        border: `${tokens.border.hairline} solid ${variant === 'ghost' ? 'transparent' : tone === 'danger' ? t.color.danger : t.color.border}`,
+        border: `${tokens.border.hairline} solid transparent`,
         background: pressed ? t.color.accent : 'transparent',
-        color:
-          variant === 'ghost'
-            ? t.color.textMuted
-            : tone === 'record'
-              ? t.color.recording
-              : tone === 'danger'
-                ? t.color.danger
-                : t.color.text,
+        color: tone === 'record' ? t.color.recording : tone === 'danger' ? t.color.danger : t.color.textMuted,
         ...typeStyle('caption', t),
         transition: transition('background', 'hover', t),
       }}
