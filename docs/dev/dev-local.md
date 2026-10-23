@@ -7,8 +7,9 @@ bun run dev:local -- --quit-installed  # quit /Applications/qrtz.app first
 bun run dev:local -- --build-only      # build and check, don't launch
 ```
 
-Plain `bun start` runs only echo from main; nano, snap and ctrl come from the installed packages (`qrtz.lock`), and
-it shares the real data dir. `dev:local` instead:
+`bun start` in apps/desktop runs this too (after building the `qrtz` command), so the checkout's modules always run in
+dev. It used to run only echo from main against the real data dir, with the other modules from the installed
+packages. `dev:local`:
 
 1. `swift build`s `qrtz-nano`, `qrtz-snap`, `qrtz-ctrl` and `qrtz-echo` (native/qrtz-helper, debug) and
    `cargo build`s the app with the non-default `dev-local` feature (debug, the normal `target/`).

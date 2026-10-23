@@ -30,7 +30,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 for w in ${without[@]+"${without[@]}"}; do [[ " ${ids[*]} " == *" $w "* ]] || die "--without $w: not one of ${ids[*]}"; done
-[[ "$(uname -s)" == Darwin ]] || die "macOS only"
+# Off macOS there are no native modules to build: `bun start` falls back to plain tauri dev (the Rust mock helper).
+if [[ "$(uname -s)" != Darwin ]]; then
+  say "not macOS: plain tauri dev, no module overrides"
+  cd "$repo/apps/desktop" && exec bun --bun run tauri:dev
+fi
 
 real="$HOME/Library/Application Support/ai.qrtz.desktop"
 export QRTZ_USER_DATA="${QRTZ_DEV_LOCAL_DATA:-$HOME/Library/Application Support/ai.qrtz.desktop-dev}"

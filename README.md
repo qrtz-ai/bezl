@@ -50,8 +50,8 @@ The dev app runs as a separate app, `ai.qrtz.desktop.dev`, so macOS treats it as
 Microphone grants when asked. Quit the installed qrtz first (or use `--quit-installed`), because both apps grab the fn
 key and dictation breaks while both run. Details: [docs/dev/dev-local.md](docs/dev/dev-local.md).
 
-`bun start` runs `tauri dev` with hot reload; there only echo comes from the checkout, and the other modules come from
-the installed packages.
+`bun start` (`bun run --cwd apps/desktop start`) builds the `qrtz` command and then runs `dev:local`, so every module
+comes from the checkout and hot reload works. Off macOS it runs plain `tauri dev`.
 
 **No Mac?** Everything except real capture runs on Linux with the Rust mock helper:
 
@@ -66,7 +66,7 @@ or summaries. Set `QRTZ_LOG=debug` for more detail.
 
 ```sh
 bun run dev:local      # build and run everything from this checkout (macOS)
-bun run --cwd apps/desktop start  # build:helper + tauri dev
+bun run --cwd apps/desktop start  # build:helper + dev:local (plain tauri dev off macOS)
 bun run --cwd apps/desktop make   # build:helper + tauri build (.app + .dmg on macOS)
 bun run check          # lint + typecheck + vitest
 bun run lint:fix       # oxlint --fix + oxfmt --write

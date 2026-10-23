@@ -13,7 +13,7 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "start": "bun ../../scripts/build-helper.mjs && bun --bun run tauri:dev",
+    "start": "bun ../../scripts/build-helper.mjs && bash ../../scripts/dev/dev-local.sh",
     "make": "bun ../../scripts/build-helper.mjs && bun --bun run tauri:build",
     "e2e": "bun run build-storybook && bun run screenshots && playwright test -c ../../e2e-tauri/playwright.config.ts",
     "typecheck": "tsc -b",
