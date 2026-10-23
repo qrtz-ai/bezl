@@ -638,7 +638,8 @@ impl AppService {
                             // (so the prompt and the list entry are qrtz's), then restarts qrtz-snap once the
                             // grant flips on, since a running tap never sees it. Only the watcher restarts, on the
                             // flip: a fresh qrtz-snap that still reports false would otherwise restart forever.
-                            if s2.summon_waiting_for_grant(&me.config.get()) && !crate::tcc::listen_granted() {
+                            if s2.summon_waiting_for_grant(&me.config.get()) && !crate::tcc::listen_granted()
+                            {
                                 crate::tcc::ask_input_monitoring_once();
                                 me.watch_input_monitoring(s2.clone());
                             }
