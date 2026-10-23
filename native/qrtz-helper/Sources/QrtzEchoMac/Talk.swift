@@ -59,7 +59,10 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
            CFGetTypeID(rangeRef) == AXValueGetTypeID() {
             AXValueGetValue(rangeRef as! AXValue, .cfRange, &range)
         }
-        let ns = cur as NSString
+        // Empty Slate fields read as U+FEFF + placeholder hint (QRT-356): insert into the cleaned text, not the hint.
+        let clean = FieldText.normalize(value: cur, location: range.location, length: range.length)
+        let ns = clean.value as NSString
+        range = CFRange(location: clean.location, length: clean.length)
         guard range.location >= 0, range.location + range.length <= ns.length else { return false }
         let next = ns.replacingCharacters(in: NSRange(location: range.location, length: range.length), with: text)
         guard AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, next as CFString) == .success else { return false }
