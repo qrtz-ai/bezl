@@ -4,7 +4,11 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 it('stapler-retry.test.sh passes', () => {
-  const r = spawnSync('bash', [path.join(import.meta.dirname, 'stapler-retry.test.sh')], { encoding: 'utf8' });
+  const r = spawnSync(
+    'bash',
+    [path.join(import.meta.dirname, 'stapler-retry.test.sh')],
+    { encoding: 'utf8' },
+  );
   expect(r.stdout + r.stderr).toContain(' passed, 0 failed');
   expect(r.status).toBe(0);
 });
