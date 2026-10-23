@@ -729,27 +729,6 @@ export default function MarketplaceView() {
 
   return (
     <Page data-testid="qrtz-page" title="apps">
-      <Toolbar
-        end={
-          <Button
-            size="sm"
-            variant="secondary"
-            icon="refresh"
-            loading={checking}
-            disabled={checking}
-            onClick={check}
-            data-testid="marketplace-check"
-          >
-            check for apps
-          </Button>
-        }
-      >
-        <Text variant="caption" muted data-testid="marketplace-index">
-          {state?.index
-            ? `signed list v${state.index.version} · checked ${new Date(state.index.issuedMs).toLocaleDateString().toLowerCase()}`
-            : 'checking goes online to modules.qrtz.ai for the signed list. opening this page never does.'}
-        </Text>
-      </Toolbar>
       {soonBox}
       {unavailableBox}
       {errorBox}
@@ -766,6 +745,27 @@ export default function MarketplaceView() {
         )}
       </SettingsSection>
       <SettingsSection title="available" data-testid="qrtz-available">
+        <Toolbar
+          end={
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="refresh"
+              loading={checking}
+              disabled={checking}
+              onClick={check}
+              data-testid="marketplace-check"
+            >
+              check for apps
+            </Button>
+          }
+        >
+          <Text variant="caption" muted data-testid="marketplace-index">
+            {state?.index
+              ? `signed list v${state.index.version} · checked ${new Date(state.index.issuedMs).toLocaleDateString().toLowerCase()}`
+              : 'checking goes online to modules.qrtz.ai for the signed list. opening this page never does.'}
+          </Text>
+        </Toolbar>
         {availableNames.length ? (
           <AppList aria-label="available apps" data-testid="available-list">
             {availableNames.map((n) => row(n, false))}

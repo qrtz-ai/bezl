@@ -139,6 +139,15 @@ const weatherEntry = {
 };
 
 describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
+  it('puts the signed list line and "check for apps" at the top of available apps', async () => {
+    const f = fake();
+    await render(f.client);
+    const available = q('qrtz-available')!;
+    expect(available.contains(q('marketplace-index'))).toBe(true);
+    expect(available.contains(q('marketplace-check'))).toBe(true);
+    expect(q('qrtz-installed')!.contains(q('marketplace-index'))).toBe(false);
+  });
+
   it('lists installed apps in short rows under the shared "apps" header, without going online', async () => {
     const f = fake();
     await render(f.client);
