@@ -97,10 +97,12 @@ async function mount(
 }
 
 describe("echo's view offers parakeet in place (ADR 0175)", () => {
-  it('a fresh qrtz has echo on and offers the download without touching the switch', async () => {
+  it('a fresh qrtz has echo on and offers the download', async () => {
     const v = await mount(async () => none);
     expect(v.q('talk')).not.toBeNull();
-    expect(v.q('echo-switch')?.getAttribute('aria-checked')).toBe('true');
+    // On/off lives on the apps page, and dictation starts from the key: no switch or dictate button here.
+    expect(v.q('echo-switch')).toBeNull();
+    expect(v.q('talk-toggle')).toBeNull();
     const offer = v.q('echo-offer');
     expect(offer).not.toBeNull();
     // The standard model view: name, real size, and where it comes from (all lowercase).
@@ -186,12 +188,13 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     v.unmount();
   });
 
-  it('offers nothing while echo is off (the switch asks instead)', async () => {
-    const v = await mount(async () => none);
-    await act(async () => v.q('echo-switch')!.click());
-    await v.settle();
-    expect(v.q('talk-off')).not.toBeNull();
+  it('offers nothing while echo is off, and points to apps', async () => {
+    const v = await mount(async () => none, {
+      modules: { echo: { enabled: false } },
+    });
+    expect(v.q('talk-off')?.textContent).toContain('turn it on in apps');
     expect(v.q('echo-offer')).toBeNull();
+    expect(v.q('echo-switch')).toBeNull();
     v.unmount();
   });
 });
@@ -221,144 +224,20 @@ describe("echo's speech notice checks only echo's models (QRT-277)", () => {
   });
 });
 
-describe('the echo switch waits for the model status (N180)', () => {
-  const deferred = () => {
-    let answer: (s: SpeechSetupStatus) => void = () => {};
-    const pending = new Promise<SpeechSetupStatus>((r) => (answer = r));
-    return { pending, answer: (s: SpeechSetupStatus) => answer(s) };
-  };
-
-  it('is disabled once config loads but before speech:status returns, then enabled', async () => {
-    const d = deferred();
-    const v = await mount(() => d.pending);
-    const sw = () => v.q('echo-switch') as HTMLButtonElement;
-    expect(sw().getAttribute('aria-checked')).toBe('true');
-    expect(sw().disabled).toBe(true);
-    await act(async () => d.answer(none));
-    await v.settle();
-    expect(sw().disabled).toBe(false);
-    v.unmount();
-  });
-
-  it('a click on a switched-off echo in that gap neither turns it on nor downloads', async () => {
-    const d = deferred();
-    const v = await mount(() => d.pending, {
-      modules: { echo: { enabled: false } },
-    });
-    expect(v.q('talk-off')).not.toBeNull();
-    const sw = () => v.q('echo-switch') as HTMLButtonElement;
-    expect(sw().disabled).toBe(true);
-    await act(async () => sw().click());
-    await v.settle();
-    expect(
-      v.calls.some(
-        (c) => c.channel === 'config:set' || c.channel === 'speech:download',
-      ),
-    ).toBe(false);
-    // Once the status is in, the same click asks for consent first.
-    await act(async () => d.answer(none));
-    await v.settle();
-    await act(async () => sw().click());
-    await v.settle();
-    expect(document.body.textContent).toContain('download and turn on');
-    expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
-    v.unmount();
-  });
-});
-
-describe('a failed speech:status (N183)', () => {
-  it('says so with a retry, and leaves the switch usable through the consent dialog', async () => {
-    let fail = true;
-    const v = await mount(
-      () =>
-        fail
-          ? Promise.reject(new Error('E_UNAVAILABLE'))
-          : Promise.resolve(none),
-      { modules: { echo: { enabled: false } } },
-    );
-    const sw = () => v.q('echo-switch') as HTMLButtonElement;
-    expect(v.q('echo-status-error')?.textContent).toContain(
-      "couldn't check speech, retry",
-    );
-    // Not dead: the switch is enabled, and turning echo on asks first (the model's state is unknown).
-    expect(sw().disabled).toBe(false);
-    await act(async () => sw().click());
-    await v.settle();
-    expect(document.body.textContent).toContain('download and turn on');
-    expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
-    // retry reads the status again; once it answers, the error goes away.
-    fail = false;
-    await act(async () => v.q('echo-status-retry')!.click());
-    await v.settle();
-    expect(v.q('echo-status-error')).toBeNull();
-    expect(
-      v.calls.filter(
-        (c) =>
-          c.channel === 'speech:status' &&
-          (c.req as { extensions?: string[] })?.extensions,
-      ).length,
-    ).toBeGreaterThanOrEqual(2);
-    v.unmount();
-  });
-
-  it('on the on page, the error shows above the gate (an unread status is not ready) and the switch still works', async () => {
-    const v = await mount(() => Promise.reject(new Error('E_UNAVAILABLE')));
-    expect(v.q('talk')).not.toBeNull();
-    expect(v.q('echo-status-error')).not.toBeNull();
-    expect(v.q('echo-offer')?.dataset.state).toBe('missing');
-    expect((v.q('echo-switch') as HTMLButtonElement).disabled).toBe(false);
-    v.unmount();
-  });
-});
-
-describe('turning echo on after a failed speech:status (N184)', () => {
-  const echoStatus = (v: { calls: Call[] }) =>
-    v.calls.filter(
-      (c) =>
-        c.channel === 'speech:status' &&
-        (c.req as { extensions?: string[] })?.extensions,
-    ).length;
-
-  it('asks speech:status again first; installed Parakeet turns echo on with no consent and no download', async () => {
-    let fail = true;
-    const v = await mount(
-      () =>
-        fail
-          ? Promise.reject(new Error('E_UNAVAILABLE'))
-          : Promise.resolve(installed),
-      { modules: { echo: { enabled: false } } },
-    );
-    expect(v.q('echo-status-error')).not.toBeNull();
-    const before = echoStatus(v);
-    fail = false;
-    await act(async () => (v.q('echo-switch') as HTMLButtonElement).click());
-    await v.settle();
-    expect(echoStatus(v)).toBeGreaterThan(before);
-    expect(v.calls.find((c) => c.channel === 'config:set')?.req).toEqual({
-      patch: { modules: { echo: { enabled: true } } },
-    });
-    expect(document.body.textContent).not.toContain('download and turn on');
-    expect(v.q('echo-consent')).toBeNull();
-    expect(v.calls.map((c) => c.channel)).not.toContain('speech:download');
-    v.unmount();
-  });
-
-  it('asks for consent when the second answer says parakeet is missing', async () => {
-    let fail = true;
-    const v = await mount(
-      () =>
-        fail
-          ? Promise.reject(new Error('E_UNAVAILABLE'))
-          : Promise.resolve(none),
-      { modules: { echo: { enabled: false } } },
-    );
-    fail = false;
-    await act(async () => (v.q('echo-switch') as HTMLButtonElement).click());
-    await v.settle();
-    expect(document.body.textContent).toContain('download and turn on');
-    expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
-    expect(v.calls.map((c) => c.channel)).not.toContain('speech:download');
-    v.unmount();
+describe("echo's hint names the hold key from its opts", () => {
+  it('says the configured key, and hides when there is none', async () => {
+    for (const [pushKey, hint] of [
+      [undefined, 'hold fn and talk in any app'],
+      ['right-option', 'hold right ⌥ and talk in any app'],
+      ['', null],
+    ] as const) {
+      const v = await mount(
+        async () => installed,
+        pushKey === undefined ? {} : { talk: { pushKey } },
+      );
+      expect(v.q('talk-hint')?.textContent ?? null).toBe(hint);
+      v.unmount();
+    }
   });
 });
 

@@ -11,6 +11,14 @@ import { useModuleSettings } from '@qrtz/core/react';
 import { PillDevOpts } from './PillDevOpts';
 
 /** ADR 0146 M1.4: echo's own settings (the `talk` section, kept in echo's settings file), inside echo's view. */
+/** The hold-to-dictate keys (`talk.pushKey`) as settings and echo's page name them. */
+export const PUSH_KEY_LABELS: Record<string, string> = {
+  fn: 'fn',
+  'right-option': 'right ⌥',
+  'right-command': 'right ⌘',
+  'right-control': 'right ⌃',
+};
+
 export default function TalkSettings() {
   const { settings, patch, error } = useModuleSettings();
   const talk = (settings?.talk ?? {}) as {
@@ -64,10 +72,11 @@ export default function TalkSettings() {
             onChange={(e) => set({ pushKey: e.target.value })}
             data-testid="talk-push-key"
           >
-            <option value="fn">fn</option>
-            <option value="right-option">right ⌥</option>
-            <option value="right-command">right ⌘</option>
-            <option value="right-control">right ⌃</option>
+            {Object.entries(PUSH_KEY_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
             <option value="">off</option>
           </Select>
         </SettingRow>
