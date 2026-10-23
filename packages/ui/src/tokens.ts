@@ -169,7 +169,6 @@ export const tokens = {
     badgeInset: 3,
     iconButton: 26,
     appIcon: { sm: 32, md: 40, lg: 56 },
-    talkInlineMin: 44,
     waveStroke: { main: 2, layer: 1.5 },
     control: { sm: 28, md: 34, lg: 40 },
     row: { sm: 28, md: 32, lg: 52 },

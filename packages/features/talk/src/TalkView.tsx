@@ -10,7 +10,6 @@ import {
   SettingRow,
   Stack,
   TalkHistoryRow,
-  TalkPill,
   TermList,
   Text,
   useToast,
@@ -19,11 +18,7 @@ import {
   SpeechRequired,
   ModuleSettingsModal,
 } from '@qrtz/ui';
-import type {
-  DictionaryEntry,
-  TalkEntry,
-  TalkView as TalkState,
-} from '@qrtz/core';
+import type { DictionaryEntry, TalkEntry } from '@qrtz/core';
 import {
   useQrtz,
   useQrtzEvent,
@@ -134,16 +129,12 @@ function TalkOn({
   const speechSetup = useSpeechSetup({ check: false, extensions: ['echo'] });
   const toast = useToast();
   const { error, fail: failed, clear } = useUserError();
-  const live = useQrtzEvent('talk:state');
   const changed = useQrtzEvent('talk:history-changed');
-  const [initial, setInitial] = useState<TalkState | null>(null);
   const [history, setHistory] = useState<TalkEntry[]>([]);
   const [dict, setDict] = useState<DictionaryEntry[]>([]);
   const [draft, setDraft] = useState('');
-  const state = live ?? initial;
 
   useEffect(() => {
-    void qrtz.invoke('talk:state').then(setInitial, () => {});
     void qrtz.invoke('talk:dictionary').then(setDict, () => {});
   }, [qrtz]);
   useEffect(() => {
@@ -188,16 +179,6 @@ function TalkOn({
         data-testid="echo-offer"
         testIds={{ download: 'echo-download', retry: 'echo-download' }}
       >
-        {state && state.phase !== 'idle' ? (
-          <Stack data-testid="talk-live">
-            <TalkPill
-              inline
-              phase={state.phase}
-              level={state.level}
-              {...(state.error ? { error: state.error } : {})}
-            />
-          </Stack>
-        ) : null}
         <SettingsSection title="history" data-testid="talk-history">
           {history.length ? (
             <PlainList label="dictation history">

@@ -119,4 +119,4 @@ Feather icons only, through `<Icon name size>` (or `icon=` on `Button`/`IconButt
 | `z.toast` | `--q-z-toast` | `60` |
 | `z.tooltip` | `--q-z-tooltip` | `70` |
 
-_179 CSS variables in total._
+_178 CSS variables in total._

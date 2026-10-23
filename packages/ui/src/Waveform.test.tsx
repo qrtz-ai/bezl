@@ -1,6 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { TalkPill } from './Talk';
 import {
   WAVE_IDLE_AMP,
   WAVE_LIVE_FLOOR,
@@ -65,41 +64,5 @@ describe('waveform math', () => {
     const html = renderToStaticMarkup(<Waveform level={0.5} />);
     expect(html).toContain('data-testid="talk-wave"');
     expect(html.match(/<path /g)).toHaveLength(3);
-  });
-});
-
-describe('talk pill', () => {
-  it('listening draws the live wave and no transcript', () => {
-    const html = renderToStaticMarkup(
-      <TalkPill phase="listening" level={0.5} inline />,
-    );
-    expect(html).toContain('data-mode="live"');
-    expect(html).toContain('aria-label="listening"');
-    expect(html).not.toContain('talk-pill-text');
-    expect(html).not.toContain('talk-pill-error');
-  });
-
-  it('processing relaxes the wave to idle', () => {
-    for (const phase of ['finalizing', 'inserting'] as const) {
-      const html = renderToStaticMarkup(
-        <TalkPill phase={phase} level={0.9} inline />,
-      );
-      expect(html).toContain('data-mode="idle"');
-      expect(html).toContain('aria-label="processing"');
-    }
-  });
-
-  it('an error shows the icon and the message, lowercase, without a wave', () => {
-    const html = renderToStaticMarkup(
-      <TalkPill phase="error" level={0} error="Microphone did not start" />,
-    );
-    expect(html).toContain('data-testid="talk-pill-error"');
-    expect(html).toContain('>microphone did not start<');
-    expect(html).not.toContain('talk-wave');
-  });
-
-  it('the pill takes no transcript props', () => {
-    // @ts-expect-error text is gone: the pill never shows the transcript
-    renderToStaticMarkup(<TalkPill phase="listening" level={0} text="x" />);
   });
 });

@@ -7,7 +7,6 @@ import {
   Text,
   TalkHistoryRow,
   ActionMenu,
-  TalkPill,
   TermList,
   Waveform,
   type SpeechSetupView,
@@ -31,68 +30,6 @@ export const Wave: S = {
         <Waveform level={0} mode="idle" />
       </Row>
     </>
-  ),
-};
-
-export const Pill: S = {
-  name: 'talk pill',
-  render: () => (
-    <div style={{ display: 'grid', gap: 12 }}>
-      <TalkPill inline phase="idle" level={0} />
-      <TalkPill inline phase="listening" level={0.5} />
-      <TalkPill inline phase="finalizing" level={0} />
-      <TalkPill inline phase="inserting" level={0} />
-      <TalkPill
-        inline
-        phase="error"
-        level={0}
-        error="microphone did not start"
-      />
-    </div>
-  ),
-};
-
-const HELPER_FAILED =
-  "the capture helper isn't running, so the mic can't open (echo: signature mismatch: the helper isn't signed with qrtz's Developer ID identity)";
-
-/** QRT-291: echo's helper gave up (Failed); the pill says why, in full. */
-export const HelperFailed: S = {
-  name: 'helper failed: reason',
-  render: () => (
-    <TalkPill inline phase="error" level={0} error={HELPER_FAILED} />
-  ),
-};
-
-/** QRT-291: the helper's fixed public reasons (qrtz-app installed::public_refusal), each read in full, no paths. */
-const HELPER_REASONS = [
-  "signature mismatch: the helper isn't signed with qrtz's Developer ID identity",
-  "signing requirement mismatch: the expected requirement isn't qrtz's Developer ID one",
-  'launch refused: a launch check failed (see the log)',
-  "dev stub: the real helper isn't built yet (bun run build:helper)",
-  "missing binary: the helper isn't where qrtz expects it",
-].map(
-  (r) => `the capture helper isn't running, so the mic can't open (echo: ${r})`,
-);
-
-/** QRT-291: every fixed reason, the longest included, still reads in full. */
-export const HelperFailedLong: S = {
-  name: 'helper failed: reasons',
-  render: () => (
-    <div style={{ display: 'grid', gap: 12 }}>
-      {HELPER_REASONS.map((r) => (
-        <TalkPill key={r} inline phase="error" level={0} error={r} />
-      ))}
-    </div>
-  ),
-};
-
-/** QRT-291: in a narrow column the reason wraps onto more lines instead of being cut off. */
-export const HelperFailedWrap: S = {
-  name: 'helper failed: wrapping',
-  render: () => (
-    <div style={{ width: 260 }} data-testid="pill-narrow">
-      <TalkPill inline phase="error" level={0} error={HELPER_FAILED} />
-    </div>
   ),
 };
 
