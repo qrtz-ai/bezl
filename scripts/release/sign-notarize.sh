@@ -42,6 +42,11 @@ run() {
     "$@"
   fi
 }
+# shellcheck source=scripts/release/stapler-retry.sh
+source "$ROOT/scripts/release/stapler-retry.sh"
+staple_validate() { # path (dry run prints the plain command; real runs retry network drops, QRT-354)
+  if [ "$DRY" = 1 ]; then run xcrun stapler validate "$1"; else stapler_retry "$1" validate; fi
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -132,8 +137,8 @@ fi
 if [ "$NOTARIZE" = 1 ]; then
   VERSION="$( [ "$DRY" = 1 ] && echo '<version>' || /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
   DMG="$(dirname "$APP")/qrtz_${VERSION}_aarch64.dmg"
-  run xcrun stapler validate "$APP"
-  run xcrun stapler validate "$DMG"
+  staple_validate "$APP"
+  staple_validate "$DMG"
   run spctl --assess --type execute --verbose=2 "$APP"
   run spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
   # The release gate (scripts/release/verify-bundle.sh): launch requirements, entitlements, notarization, staple.
