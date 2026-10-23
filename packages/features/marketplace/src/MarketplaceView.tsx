@@ -55,7 +55,7 @@ import {
   type PackagesState,
   type SettingsPane,
 } from '@qrtz/core';
-import { useQrtz, useSubAppRoute } from '@qrtz/core/react';
+import { useHiddenModules, useQrtz, useSubAppRoute } from '@qrtz/core/react';
 import {
   KIND_ICON,
   MODEL_APPS,
@@ -131,6 +131,7 @@ const ING: Record<Verb, string> = {
  */
 export default function MarketplaceView() {
   const qrtz = useQrtz();
+  const hidden: readonly string[] = useHiddenModules();
   const toast = useToast();
   const route = useSubAppRoute();
   const at = parseMarketRoute(route.path);
@@ -602,15 +603,16 @@ export default function MarketplaceView() {
       />
     ) : null;
 
+  // A module whose PostHog flag is off isn't listed at all.
   const installedNames = [
     ...new Set([
       ...rows.filter((r) => r.kind === 'extension').map((r) => r.name),
       ...installedIds.filter((n) => !installedRow(n, rows)),
     ]),
-  ];
+  ].filter((n) => !hidden.includes(n));
   const availableNames = listings(available, installedIds)
     .map((l) => l.name)
-    .filter((n) => !installedNames.includes(n));
+    .filter((n) => !installedNames.includes(n) && !hidden.includes(n));
   const shared = rows.filter((r) => r.kind !== 'extension');
   const onIds = MODEL_APPS.filter((id) => hostInstalled(id) && enabled(id));
 

@@ -2,7 +2,8 @@
 
 qrtz is a macOS app (Tauri 2, Rust core, React renderer, Swift helper) built from small modules that run on your Mac.
 Speech recognition and summaries happen on-device: there are no cloud keys and no cloud LLM. The network is used to
-download signed modules and speech models when you ask for them.
+download signed modules and speech models when you ask for them, and to check PostHog feature flags for which apps
+to show (an anonymous random id, no events).
 
 | Live recording                                     | Meeting summary                                                   |
 | -------------------------------------------------- | ----------------------------------------------------------------- |

@@ -7,7 +7,8 @@
 //!    one directly.
 //! 2. Sources: only `qrtz-speech/src/download.rs` names `reqwest`; no Rust source opens a TCP/UDP socket outside
 //!    the speech test kit.
-//! 3. Tauri: the CSP keeps fetch/WebSocket to the app itself and IPC, and the window capability grants no
+//! 3. Tauri: the CSP keeps fetch/WebSocket to the app itself, IPC and PostHog's flags host (`packages/core/src/flags.ts`:
+//!    which apps the packaged app shows), and the window capability grants no
 //!    http/opener/shell/updater/websocket permission.
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
 //! 5. ADR 0157 (tightening ADR 0079 and 0153): the downloader's only callers are qrtz-app's `setup.rs` (the signed
@@ -605,7 +606,7 @@ fn the_downloader_ratchet_refuses_a_fetch_from_local_models() {
 }
 
 #[test]
-fn the_renderer_can_only_reach_the_app_and_ipc() {
+fn the_renderer_can_only_reach_the_app_ipc_and_the_flags_host() {
     let r = root().join("apps/desktop/src-tauri");
     let conf: Value =
         serde_json::from_str(&std::fs::read_to_string(r.join("tauri.conf.json")).unwrap()).unwrap();
@@ -620,7 +621,7 @@ fn the_renderer_can_only_reach_the_app_and_ipc() {
             .collect()
     };
     assert_eq!(directive("default-src"), ["'self'"]);
-    let allowed = ["'self'", "ipc:", "http://ipc.localhost"];
+    let allowed = ["'self'", "ipc:", "http://ipc.localhost", "https://us.i.posthog.com"];
     for src in directive("connect-src") {
         assert!(allowed.contains(&src.as_str()), "connect-src allows {src}");
     }
