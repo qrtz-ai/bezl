@@ -4,7 +4,6 @@ import {
   DictionaryTerm,
   EmptyState,
   Input,
-  Kbd,
   Page,
   PlainList,
   SettingsSection,
@@ -39,7 +38,7 @@ import {
   type Config,
 } from '@qrtz/core';
 import { entryMeta, parseTerm } from './format';
-import TalkSettings, { PUSH_KEY_LABELS } from './TalkSettings';
+import TalkSettings from './TalkSettings';
 
 const CONSENT_NOTE =
   'parakeet downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.';
@@ -75,7 +74,6 @@ function useEcho() {
   return {
     notice,
     on: !!cfg && isModuleOn(cfg, 'echo'),
-    pushKey: cfg?.talk.pushKey ?? 'fn',
     loaded: !!cfg,
     error: (
       <ErrorCallout
@@ -102,7 +100,6 @@ export default function TalkView() {
     );
   return (
     <TalkOn
-      pushKey={echo.pushKey}
       error={echo.error}
       notice={echo.notice}
       onDownload={echo.download}
@@ -112,14 +109,11 @@ export default function TalkView() {
 }
 
 function TalkOn({
-  pushKey,
   error: echoError,
   notice,
   onDownload,
   onCancel,
 }: {
-  /** `talk.pushKey`; '' = no hold key, so no hint. */
-  pushKey: string;
   error: ReactNode;
   notice: ReactNode;
   onDownload: () => void;
@@ -179,18 +173,6 @@ function TalkOn({
   );
   return (
     <Page data-testid="talk">
-      {/* Echo's own row, where the page header was: how to dictate, with the key set in echo's opts. */}
-      {PUSH_KEY_LABELS[pushKey] ? (
-        <SettingRow
-          as="div"
-          description={
-            <>
-              hold <Kbd>{PUSH_KEY_LABELS[pushKey]}</Kbd> and talk in any app
-            </>
-          }
-          descriptionTestId="talk-hint"
-        />
-      ) : null}
       {echoError}
       <ErrorCallout error={error} onDismiss={clear} data-testid="talk-error" />
       {optsModal}

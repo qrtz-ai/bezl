@@ -224,23 +224,6 @@ describe("echo's speech notice checks only echo's models (QRT-277)", () => {
   });
 });
 
-describe("echo's hint names the hold key from its opts", () => {
-  it('says the configured key, and hides when there is none', async () => {
-    for (const [pushKey, hint] of [
-      [undefined, 'hold fn and talk in any app'],
-      ['right-option', 'hold right ⌥ and talk in any app'],
-      ['', null],
-    ] as const) {
-      const v = await mount(
-        async () => installed,
-        pushKey === undefined ? {} : { talk: { pushKey } },
-      );
-      expect(v.q('talk-hint')?.textContent ?? null).toBe(hint);
-      v.unmount();
-    }
-  });
-});
-
 describe('echo on its bundled copy', () => {
   it('shows a small lowercase notice when the host reports the fallback, on and off', async () => {
     for (const enabled of [true, false]) {

@@ -17,7 +17,6 @@ import {
   GridCard,
   Heading,
   Icon,
-  Kbd,
   Label,
   Link,
   LongText,
@@ -74,19 +73,6 @@ export const Badges: S = {
           </Badge>
         ),
       )}
-    </Row>
-  ),
-};
-
-export const Keys: S = {
-  name: 'kbd',
-  render: () => (
-    <Row>
-      <Kbd>⌘</Kbd>
-      <Kbd>K</Kbd>
-      <Kbd>ctrl</Kbd>
-      <Kbd>fn</Kbd>
-      <Kbd>esc</Kbd>
     </Row>
   ),
 };

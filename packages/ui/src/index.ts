@@ -5,7 +5,6 @@ export * from './Text';
 export * from './Heading';
 export * from './Button';
 export * from './Badge';
-export * from './Kbd';
 export * from './Spinner';
 export * from './Card';
 export * from './Input';
