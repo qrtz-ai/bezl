@@ -36,6 +36,13 @@ public protocol InsertionBackend: AnyObject, Sendable {
     /// ADR 0225: the focused element is a password field (`SecureField`), or secure event input is on. Asked right
     /// before every insert step, never cached from the press: focus can move while the user speaks.
     func focusedFieldIsSecure() -> Bool
+    /// QRT-356: the focused element's AX value, to see whether an AX step put the text in although it reported a
+    /// failure (Slate/Safari applies the edit a beat later). nil = unknown, never counted as landed.
+    func focusedValue() -> String?
+}
+
+public extension InsertionBackend {
+    func focusedValue() -> String? { nil }
 }
 
 /// Ring buffer of the last N samples, so the words said just before the key press aren't clipped.
@@ -81,8 +88,20 @@ public final class TextInserter: @unchecked Sendable {
     let restoreDelayNs: UInt64
     private let lock = NSLock()
     private var pendingRestore: Task<Void, Never>?
-    public init(backend: InsertionBackend, restoreDelayMs: Int = 250) {
-        self.backend = backend; self.restoreDelayNs = UInt64(restoreDelayMs) * 1_000_000
+    let settleMs: Int
+    public init(backend: InsertionBackend, restoreDelayMs: Int = 250, settleMs: Int = 150) {
+        self.backend = backend; self.restoreDelayNs = UInt64(restoreDelayMs) * 1_000_000; self.settleMs = max(0, settleMs)
+    }
+
+    /// QRT-356: the field's value moved off `before` within `settleMs` (the AX step's text landed late).
+    private func landed(since before: String?) async -> Bool {
+        guard let before else { return false }
+        var waited = 0
+        while true {
+            if let now = backend.focusedValue(), now != before { return true }
+            if waited >= settleMs { return false }
+            try? await Task.sleep(nanoseconds: 25_000_000); waited += 25
+        }
     }
 
     /// The clipboard restore of the last paste, if one is still waiting (tests, shutdown).
@@ -94,8 +113,13 @@ public final class TextInserter: @unchecked Sendable {
         // ADR 0225: never type into a password field: nothing is inserted and the pasteboard is not touched.
         let refused: (method: InsertMethod, ok: Bool, app: String?, error: String?) = (.none, false, app, SecureField.insertRefused)
         if backend.focusedFieldIsSecure() { return refused }
+        // QRT-356: never paste after a step that already put the text in (Slate in Safari reports the AX write as a
+        // failure, then applies it): re-read the value after each failed step before moving on.
+        let before = backend.focusedValue()
         if backend.axSetSelectedText(text) { return (.axSelectedText, true, app, nil) }
+        if await landed(since: before) { return (.axSelectedText, true, app, nil) }
         if backend.axInsertIntoValue(text) { return (.axValue, true, app, nil) }
+        if await landed(since: before) { return (.axValue, true, app, nil) }
         // The previous paste's restore first: its snapshot is the user's clipboard, not our text.
         await restored()
         // ADR 0225: again right before the pasteboard (the AX tries and the restore wait take time).

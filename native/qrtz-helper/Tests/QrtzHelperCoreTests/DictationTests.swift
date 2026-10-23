@@ -41,8 +41,16 @@ final class FakeInsertion: InsertionBackend, @unchecked Sendable {
         return secureChecks < secure.count ? secure[secureChecks] : last
     }
     func focusedAppName() -> String? { "Notes" }
-    func axSetSelectedText(_ t: String) -> Bool { log.append("sel"); return axSelected }
-    func axInsertIntoValue(_ t: String) -> Bool { log.append("val"); return axValue }
+    /// QRT-356: the field's value (nil = unreadable); `selLands` / `valLands` put the text in even when the step fails.
+    var value: String?
+    var selLands = false, valLands = false
+    func focusedValue() -> String? { value }
+    func axSetSelectedText(_ t: String) -> Bool {
+        log.append("sel"); if axSelected || selLands { value = value.map { $0 + t } }; return axSelected
+    }
+    func axInsertIntoValue(_ t: String) -> Bool {
+        log.append("val"); if axValue || valLands { value = value.map { $0 + t } }; return axValue
+    }
     func pasteboardSnapshot() -> Any? { clipboard }
     func pasteboardSetString(_ t: String) { clipboard = t; changes += 1 }
     func pasteboardRestore(_ s: Any?) { clipboard = s as? String; changes += 1; log.append("restore") }
@@ -98,6 +106,32 @@ final class DictationTests: XCTestCase {
 
     func testPCM16Base64() {
         XCTAssertEqual(PCM16.base64([0, 1, -1]), Data([0, 0, 0xFF, 0x7F, 0x01, 0x80]).base64EncodedString())
+    }
+
+    func testSelectedTextThatReportsFailureButLandsIsNotPastedAgain() async {
+        let be = FakeInsertion(); be.axSelected = false; be.axValue = false; be.selLands = true
+        be.value = "\u{FEFF}\nGuide Devin while it works"
+        let r = await TextInserter(backend: be, restoreDelayMs: 0, settleMs: 0).insert("Hi.", restoreClipboard: true)
+        XCTAssertEqual(r.method, .axSelectedText); XCTAssertTrue(r.ok)
+        XCTAssertEqual(be.log, ["sel"])
+        XCTAssertEqual(be.clipboard, "user clipboard")
+        XCTAssertEqual(be.value, "\u{FEFF}\nGuide Devin while it worksHi.")
+    }
+
+    func testValueStepThatReportsFailureButLandsIsNotPastedAgain() async {
+        let be = FakeInsertion(); be.axSelected = false; be.axValue = false; be.valLands = true; be.value = "abc"
+        let r = await TextInserter(backend: be, restoreDelayMs: 0, settleMs: 0).insert("Hi.", restoreClipboard: true)
+        XCTAssertEqual(r.method, .axValue); XCTAssertTrue(r.ok)
+        XCTAssertEqual(be.log, ["sel", "val"])
+        XCTAssertEqual(be.value, "abcHi.")
+    }
+
+    func testUnchangedValueStillFallsBackToPasteOnce() async {
+        let be = FakeInsertion(); be.axSelected = false; be.axValue = false; be.value = "\u{FEFF}\nreal text"
+        let r = await TextInserter(backend: be, restoreDelayMs: 0, settleMs: 0).insert("Hi.", restoreClipboard: true)
+        XCTAssertTrue(r.ok)
+        XCTAssertEqual(be.log.filter { $0 == "cmd-v" }.count, 1)
+        XCTAssertEqual(be.value, "\u{FEFF}\nreal text")
     }
 
     func testInsertionPrefersAXSelectedText() async {
