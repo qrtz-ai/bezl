@@ -49,6 +49,16 @@ public final class AXSnapWindowSystem: SnapWindowSystem {
         var size = CGSize(width: r.width, height: r.height)
         var point = CGPoint(x: r.x, y: r.y)
         guard let s = AXValueCreate(.cgSize, &size), let p = AXValueCreate(.cgPoint, &point) else { return }
+        // With AXEnhancedUserInterface on (Safari on macOS 27), the app animates the move and the second size write
+        // cancels it midway: switch it off around the writes, as Rectangle does.
+        var pid: pid_t = 0
+        AXUIElementGetPid(e, &pid)
+        let app = AXUIElementCreateApplication(pid)
+        let eui = "AXEnhancedUserInterface" as CFString
+        var ev: CFTypeRef?
+        let enhanced = AXUIElementCopyAttributeValue(app, eui, &ev) == .success && (ev as? Bool) == true
+        if enhanced { AXUIElementSetAttributeValue(app, eui, kCFBooleanFalse) }
+        defer { if enhanced { AXUIElementSetAttributeValue(app, eui, kCFBooleanTrue) } }
         AXUIElementSetAttributeValue(e, kAXSizeAttribute as CFString, s)
         AXUIElementSetAttributeValue(e, kAXPositionAttribute as CFString, p)
         AXUIElementSetAttributeValue(e, kAXSizeAttribute as CFString, s)
