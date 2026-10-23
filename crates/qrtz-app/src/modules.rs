@@ -157,14 +157,23 @@ pub fn check_view_speech_call(
 
 /// Helper events that only a switched-off module reacts to are dropped (meeting detection while nano is off).
 pub fn drops_helper_event(cfg: &Value, ty: &str) -> bool {
-    let g = GlobalSettings::from_config(cfg);
     // echo needs no filter: with echo off its talk config is off, so the helper doesn't dictate, and a dictation
     // already running still gets its end.
-    ty.starts_with("meeting.") && !g.is_on("nano")
+    ty.starts_with("meeting.") && !is_on(cfg, "nano")
+}
+
+/// QRT-352: apps still being built (`EXPERIMENTAL_MODULES` in `packages/core/src/modules.ts`). The host treats them
+/// as off, whatever their own switch says, unless settings → app → experimental apps is on, so a switch left on in
+/// 0.3.2 or earlier (when the renderer still showed it) never starts their helpers or schedulers.
+pub const EXPERIMENTAL_MODULES: &[&str] = &["nano", "ctrl"];
+
+/// Whether `id` is an experimental module held off because `app.experimentalApps` isn't `true` (missing is off).
+pub fn experiment_off(cfg: &Value, id: &str) -> bool {
+    EXPERIMENTAL_MODULES.contains(&id) && cfg["app"]["experimentalApps"].as_bool() != Some(true)
 }
 
 pub fn is_on(cfg: &Value, id: &str) -> bool {
-    GlobalSettings::from_config(cfg).is_on(id)
+    !experiment_off(cfg, id) && GlobalSettings::from_config(cfg).is_on(id)
 }
 
 /// ADR 0217 (M1): `calendar:connect` (the macOS prompt) and `calendar:refresh` (an EventKit read) run only while
@@ -428,7 +437,44 @@ mod tests {
         let cfg = json!({"modules": {"nano": {"enabled": false}}});
         assert!(drops_helper_event(&cfg, "meeting.detected"));
         assert!(!drops_helper_event(&cfg, "dictation.started"));
-        assert!(!drops_helper_event(&json!({}), "meeting.detected"));
+        assert!(!drops_helper_event(
+            &json!({"app": {"experimentalApps": true}}),
+            "meeting.detected"
+        ));
+    }
+
+    #[test]
+    fn experimental_modules_are_off_on_the_host_unless_experimental_apps_is_on() {
+        // QRT-352: ctrl and nano switched on in 0.3.2 or earlier, experimental apps never turned on (or off).
+        let on = json!({"modules": {"ctrl": {"enabled": true}, "nano": {"enabled": true}}});
+        for app in [
+            json!(null),
+            json!({}),
+            json!({"experimentalApps": false}),
+            json!({"experimentalApps": "true"}),
+        ] {
+            let mut cfg = on.clone();
+            if !app.is_null() {
+                cfg["app"] = app.clone();
+            }
+            for m in EXPERIMENTAL_MODULES {
+                assert!(experiment_off(&cfg, m), "{m} {cfg}");
+                assert!(!is_on(&cfg, m), "{m} {cfg}");
+            }
+            assert!(drops_helper_event(&cfg, "meeting.detected"), "{cfg}");
+            assert!(check_calendar_call(&cfg, "calendar:connect").is_err(), "{cfg}");
+            // echo isn't experimental: unchanged.
+            assert!(!experiment_off(&cfg, "echo") && is_on(&cfg, "echo"), "{cfg}");
+        }
+        // Experimental apps on: exactly as before, each module's own switch decides.
+        let mut cfg = on.clone();
+        cfg["app"] = json!({"experimentalApps": true});
+        for m in EXPERIMENTAL_MODULES {
+            assert!(!experiment_off(&cfg, m) && is_on(&cfg, m), "{m}");
+        }
+        assert!(!drops_helper_event(&cfg, "meeting.detected"));
+        cfg["modules"]["ctrl"]["enabled"] = json!(false);
+        assert!(!is_on(&cfg, "ctrl") && is_on(&cfg, "nano"));
     }
 
     #[test]

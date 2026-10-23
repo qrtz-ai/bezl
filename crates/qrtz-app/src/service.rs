@@ -732,11 +732,13 @@ impl AppService {
         let g = qrtz_modules::settings::GlobalSettings::from_config(cfg);
         let mut last = self.helpers_on.lock().unwrap_or_else(|p| p.into_inner());
         for (id, sup) in [("nano", &h.nano), ("echo", &h.echo), ("ctrl", &h.ctrl)] {
-            let on = if id == "ctrl" {
-                g.is_on(id)
-            } else {
-                g.is_installed(id)
-            };
+            // QRT-352: an experimental module's helper never runs while experimental apps is off.
+            let on = !crate::modules::experiment_off(cfg, id)
+                && if id == "ctrl" {
+                    g.is_on(id)
+                } else {
+                    g.is_installed(id)
+                };
             if last.get(id) == Some(&on) {
                 continue;
             }

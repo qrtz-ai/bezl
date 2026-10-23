@@ -76,6 +76,10 @@ fn publish(out: &Path, keys: &Keys, dir: PathBuf) {
 
 fn app(data: &Path, out: &Path, pin: &str) -> BuiltApp {
     std::fs::create_dir_all(data).unwrap();
+    // QRT-352: nano is experimental; its helper runs only with experimental apps on.
+    if !data.join("config.json").exists() {
+        std::fs::write(data.join("config.json"), r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
     let built = build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),

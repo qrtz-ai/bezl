@@ -161,6 +161,8 @@ pub struct Opts {
     pub talk: Option<Arc<dyn TalkPort>>,
     /// ADR 0146 M2.4: the per-module helpers (each a mock helper told its module).
     pub helper_layout: qrtz_app::module_helpers::HelperLayout,
+    /// QRT-352: seed `app.experimentalApps` in a fresh data dir (on by default, so nano and ctrl run as before).
+    pub experimental_apps: bool,
 }
 impl Default for Opts {
     fn default() -> Self {
@@ -171,6 +173,7 @@ impl Default for Opts {
             fault_step: None,
             talk: None,
             helper_layout: Default::default(),
+            experimental_apps: true,
         }
     }
 }
@@ -196,6 +199,11 @@ impl Opts {
         self.helper_layout = qrtz_app::module_helpers::HelperLayout::Split {
             programs: Default::default(),
         };
+        self
+    }
+    /// QRT-352: a fresh data dir without `app.experimentalApps` (as after updating from 0.3.2 or earlier).
+    pub fn no_experimental_apps(mut self) -> Self {
+        self.experimental_apps = false;
         self
     }
     pub fn talk(mut self, t: Arc<dyn TalkPort>) -> Self {
@@ -242,6 +250,10 @@ impl App {
             }
         };
         std::fs::create_dir_all(data).unwrap();
+        let cfg = data.join("config.json");
+        if o.experimental_apps && !cfg.exists() {
+            std::fs::write(&cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+        }
         let app = build_app(AppBuild {
             info: AppInfo {
                 name: "qrtz".into(),

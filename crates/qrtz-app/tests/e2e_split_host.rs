@@ -70,7 +70,7 @@ async fn qrtz_ctrl_runs_only_while_ctrl_is_on_and_quit_reaches_every_process() {
     std::fs::create_dir_all(&data).unwrap();
     std::fs::write(
         data.join("config.json"),
-        r#"{"modules": {"ctrl": {"enabled": false}}}"#,
+        r#"{"modules": {"ctrl": {"enabled": false}}, "app": {"experimentalApps": true}}"#,
     )
     .unwrap();
     let a = App::launch(&data, Opts::default().split_helpers()).await;

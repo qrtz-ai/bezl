@@ -200,7 +200,7 @@ async fn privacy_config_persists_and_excluded_apps_are_not_detected() {
     std::fs::create_dir_all(&ud).unwrap();
     std::fs::write(
         ud.join("config.json"),
-        json!({"privacy": {"excludedApps": ["zoom"]}}).to_string(),
+        json!({"privacy": {"excludedApps": ["zoom"]}, "app": {"experimentalApps": true}}).to_string(),
     )
     .unwrap();
     let b = App::launch(&ud, Opts::default().standup("0.02")).await;
