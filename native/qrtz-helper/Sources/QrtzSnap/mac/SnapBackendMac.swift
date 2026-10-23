@@ -16,7 +16,9 @@ public final class AXSnapWindowSystem: SnapWindowSystem {
     public init() {}
 
     public func frontmost() -> SnapFrontmost<AXUIElement>? {
-        guard let app = NSWorkspace.shared.frontmostApplication, let bundleId = app.bundleIdentifier else { return nil }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        // An unbundled app (a dev qrtz-app in target/debug) has no bundle id: key it by its executable instead.
+        let bundleId = app.bundleIdentifier ?? app.executableURL?.path ?? ""
         let ax = AXUIElementCreateApplication(app.processIdentifier)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(ax, kAXFocusedWindowAttribute as CFString, &value) == .success,
