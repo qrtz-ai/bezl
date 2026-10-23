@@ -2,7 +2,14 @@
 
 ## Unreleased
 
-## 0.3.3 (2026-10-22)
+## 0.3.4 (2026-10-23)
+
+0.3.3 was tagged but never published (its release failed at the dmg staple step), so this release also carries everything listed under 0.3.3.
+
+- Fix: nano and ctrl are off in the backend unless experimental apps is on, so a ctrl or nano you turned on before 0.3.3 stops running while it's hidden.
+- Fix: release stapling retries Apple network drops.
+
+## 0.3.3 (2026-10-22, not published)
 
 - Feature: nano and ctrl are experimental apps, hidden until settings → app → experimental apps is on.
 - Feature: summon toggles on each tap of one ⌘ while the other is held, and snap shortcuts work on apps without a bundle id.
