@@ -636,15 +636,11 @@ impl AppService {
                             }
                             // QRT-337: summon is on and can't listen: qrtz-app asks for Input Monitoring itself
                             // (so the prompt and the list entry are qrtz's), then restarts qrtz-snap once the
-                            // grant flips on, since a running tap never sees it.
-                            if s2.summon_waiting_for_grant(&me.config.get()) {
-                                if crate::tcc::listen_granted() {
-                                    st["inputMonitoring"] = json!(true);
-                                    s2.restart();
-                                } else {
-                                    crate::tcc::ask_input_monitoring_once();
-                                    me.watch_input_monitoring(s2.clone());
-                                }
+                            // grant flips on, since a running tap never sees it. Only the watcher restarts, on the
+                            // flip: a fresh qrtz-snap that still reports false would otherwise restart forever.
+                            if s2.summon_waiting_for_grant(&me.config.get()) && !crate::tcc::listen_granted() {
+                                crate::tcc::ask_input_monitoring_once();
+                                me.watch_input_monitoring(s2.clone());
                             }
                             me.events.emit("snap:changed", st)
                         }
