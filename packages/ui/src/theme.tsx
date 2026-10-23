@@ -66,7 +66,7 @@ export function ThemeProvider({
   return <ThemeContext.Provider value={t}>{children}</ThemeContext.Provider>;
 }
 
-/** Renders children in another palette without touching the page (gallery previews). */
+/** Renders children in another palette without touching the page (theme previews in stories, the notch preview). */
 export function ThemeScope({
   mode,
   children,

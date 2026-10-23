@@ -134,7 +134,7 @@ export const ModuleManifest = z
   .strict();
 export type ModuleManifest = z.infer<typeof ModuleManifest>;
 
-/** The module a view belongs to, or undefined for shell views (settings, gallery). */
+/** The module a view belongs to, or undefined for shell views (settings). */
 export function moduleOfView(view: string): ModuleId | undefined {
   return MODULE_IDS.find((m) => MODULE_VIEWS[m].includes(view));
 }

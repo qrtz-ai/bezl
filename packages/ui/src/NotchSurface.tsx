@@ -8,7 +8,7 @@ import { Waveform } from './Waveform';
  * ADR 0221: the notch surface's web preview, in the native surface's style (native/qrtz-helper/Sources/QrtzMacShared/
  * NotchSurface.swift): a black notch-shaped tab flush with the top edge drops down and out of the notch, its content
  * below the notch, then retracts into it. The shape comes from `notchPath`, the same steps as the Swift
- * `NotchShape.path` (NotchSurface.test.ts pins them). It is a mock for the gallery and Playwright; the real surface
+ * `NotchShape.path` (NotchSurface.test.ts pins them). It is a mock for Storybook and Playwright; the real surface
  * is the helper's native panel. No clickable actions in v1.
  */
 

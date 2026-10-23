@@ -76,7 +76,7 @@ describe('window pages', () => {
         .some((m) => /packages\/features\/note\//.test(m)),
     ).toBe(true);
     // ADR 0093: first paint of the main window is the shell and the note list. The meeting detail, the
-    // palette, settings and the gallery are their own chunks, loaded when needed.
+    // palette and settings are their own chunks, loaded when needed.
     const first = closure(chunks, entry('main'), (c) =>
       c.moduleIds.some((m) =>
         /src\/renderer\.tsx$|note\/src\/NoteView\.tsx$/.test(m),
@@ -84,7 +84,7 @@ describe('window pages', () => {
     ).flatMap((c) => c.moduleIds);
     expect(first.some((m) => m.endsWith('note/src/NoteView.tsx'))).toBe(true);
     const LATER =
-      /note\/src\/(MeetingDetail|Speakers)\.tsx$|shell\/Palette\.tsx$|features\/(settings|gallery|talk)\/src\/\w+View\.tsx$|ui\/src\/gallery\//;
+      /note\/src\/(MeetingDetail|Speakers)\.tsx$|shell\/Palette\.tsx$|features\/(settings|talk)\/src\/\w+View\.tsx$/;
     expect(first.filter((m) => LATER.test(m))).toEqual([]);
     for (const later of ['MeetingDetail', 'Palette'])
       expect(

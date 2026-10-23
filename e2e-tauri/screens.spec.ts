@@ -352,7 +352,7 @@ test('cold start: the note view paints within budget', async ({ page }) => {
   expect(fcp).toBeLessThan(process.env.CI ? 3000 : 1500);
 });
 
-test('palette and gallery', async ({ page }) => {
+test('palette', async ({ page }) => {
   const errors = watch(page);
   await page.goto('/?dev=1&seed=1#/note');
   await expect(tab(page, 'note').locator).toBeVisible();
@@ -382,10 +382,6 @@ test('palette and gallery', async ({ page }) => {
   await expect(page.getByTestId('note-record-manual')).toBeVisible({
     timeout: 10_000,
   });
-  await tab(page, 'gallery').click();
-  await expect(page.getByTestId('gallery-page')).toBeVisible();
-  await clean(page, 'gallery');
-  await shot(page, 'gallery');
   expect(errors).toEqual([]);
 });
 
@@ -420,11 +416,9 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(page.getByText("Let's start.")).toBeVisible();
     await clean(page, `${theme}-note`);
     await shot(page, `${theme}-note`);
-    for (const view of ['talk', 'gallery', 'settings']) {
+    for (const view of ['talk', 'settings']) {
       await tab(page, view).click();
-      await expect(
-        page.getByTestId(view === 'gallery' ? 'gallery-page' : view),
-      ).toBeVisible();
+      await expect(page.getByTestId(view)).toBeVisible();
       await clean(page, `${theme}-${view}`);
       await shot(page, `${theme}-${view}`);
     }
@@ -523,14 +517,7 @@ test('no page scrolls sideways: every page fits its width, at the default and a 
     await page.getByText('Weekly Product Sync').first().click();
     await expect(page.getByText("Let's start.")).toBeVisible();
     expect(await overflow(), `note @${width}`).toEqual([]);
-    for (const view of [
-      'talk',
-      'ctrl',
-      'snap',
-      'marketplace',
-      'gallery',
-      'settings',
-    ]) {
+    for (const view of ['talk', 'ctrl', 'snap', 'marketplace', 'settings']) {
       await tab(page, view).click();
       await expect(
         page.locator(`[data-subapp="${view}"] [data-page]`),

@@ -196,19 +196,6 @@ export const tokens = {
     listRowIntrinsic: 44,
     underlineOffset: '3px',
   },
-  /** The design-system gallery's specimen sizes (px numbers). */
-  gallery: {
-    typeName: 96,
-    typeMeta: 180,
-    swatch: 96,
-    swatchHeight: 40,
-    narrow: 140,
-    control: 160,
-    panel: 320,
-    tile: 40,
-    tileMin: 120,
-    tick: 16,
-  },
   opacity: { disabled: 0.5, muted: 0.6 },
   blur: { overlay: 'blur(2px)', blocked: 'blur(6px)' },
   /**

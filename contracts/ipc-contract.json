@@ -14392,10 +14392,6 @@
       ]
     },
     {
-      "id": "gallery",
-      "capabilities": []
-    },
-    {
       "id": "settings",
       "capabilities": [
         "app.info",

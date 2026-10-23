@@ -31,7 +31,6 @@ describe('palette go-to entries (security review: reserved ids)', () => {
         m('x1', ' Apps '),
         m(' OPTS', 'y'),
         m('y1', 'opts\t'),
-        m('gallery', 'gallery'),
         m('snap', 'snap'),
       ],
       (id) => id !== 'snap',

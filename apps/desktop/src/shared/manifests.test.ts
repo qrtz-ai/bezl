@@ -4,11 +4,10 @@ import { QRTZ_PAGE_PARTS, SIDEBAR_FOOT, sidebarItems } from '../shell/App';
 import { DASH_ENABLED } from '../shell/subapps';
 
 describe('manifests', () => {
-  it('are unique, with no Home dashboard and a capability-free gallery', () => {
+  it('are unique, with no Home dashboard', () => {
     const ids = manifests.map((m) => m.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(manifests.find((m) => m.id === 'home')).toBeUndefined();
-    expect(manifests.find((m) => m.id === 'gallery')?.capabilities).toEqual([]);
   });
 
   it('sort echo first among the apps, then nano, ctrl and snap', () => {
@@ -22,7 +21,7 @@ describe('manifests', () => {
   it('the sidebar is echo, nano, ctrl, snap, then apps (plus icon, last of the list) and qrtz opts pinned to the bottom', () => {
     const sorted = manifests
       // ADR 0228: dash is behind DASH_ENABLED (off) in packaged builds.
-      .filter((m) => m.id !== 'shell' && m.id !== 'gallery')
+      .filter((m) => m.id !== 'shell')
       .filter((m) => m.id !== 'dash' || DASH_ENABLED)
       .toSorted((a, b) => (a.order ?? 100) - (b.order ?? 100))
       .map((manifest) => ({ manifest }));
@@ -42,12 +41,6 @@ describe('manifests', () => {
     expect(items.filter((i) => i.group === 'foot')).toHaveLength(1);
     expect(QRTZ_PAGE_PARTS).toEqual(new Set(['marketplace', 'settings']));
     expect([...SIDEBAR_FOOT]).toEqual([]);
-    const withGallery = sidebarItems(
-      manifests
-        .filter((m) => m.id === 'gallery')
-        .map((manifest) => ({ manifest })),
-    );
-    expect(withGallery.map((i) => i.id)).toEqual(['apps', 'opts']);
   });
 
   it('dash is off by default and holds the dash capabilities alone (ADR 0228)', () => {

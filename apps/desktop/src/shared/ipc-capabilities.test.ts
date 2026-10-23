@@ -26,7 +26,7 @@ describe('sub-app capability matrix', () => {
     ['note', 'note:start', {}, true],
     ['note', 'permissions:request', { permission: 'microphone' }, true],
     ['note', 'config:set', { patch: {} }, false],
-    ['gallery', 'note:list', { query: '' }, false],
+    ['unknown', 'note:list', { query: '' }, false],
     ['settings', 'config:set', { patch: {} }, true],
     ['settings', 'note:delete', { id: 'm' }, false],
     // ADR 0161: the package manager is the marketplace's, not settings'.

@@ -12,8 +12,8 @@
 //   - object properties label/title/placeholder/hint/description (menus, tabs, tray, windows, notifications),
 //     sub-app manifest names and dialog filter names
 //   - the message passed to toast(…) and React state setters (setMsg(…), setExported(…))
-// Shortcut glyphs keep their key (⌘K, ⌘⇧Space). Mark deliberate exceptions (sample user content in the
-// gallery) with a `check-titles-ignore` comment on the line or the line above.
+// Shortcut glyphs keep their key (⌘K, ⌘⇧Space). Mark deliberate exceptions (sample user content in
+// stories) with a `check-titles-ignore` comment on the line or the line above.
 // Usage: bun scripts/check-titles.mjs [--fix]
 import fs from 'node:fs';
 import path from 'node:path';

@@ -57,7 +57,7 @@ test('capability scoping holds through the Tauri transport', async ({
   page,
 }) => {
   await open(page);
-  expect(await invoke(page, 'gallery', 'note:list', {})).toMatchObject({
+  expect(await invoke(page, 'unknown', 'note:list', {})).toMatchObject({
     ok: false,
     error: { code: 'E_FORBIDDEN' },
   });

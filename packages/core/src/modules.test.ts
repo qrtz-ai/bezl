@@ -114,7 +114,7 @@ describe('global module switches', () => {
   it('default to on, so nothing changes until someone turns one off', () => {
     const cfg = defaultConfig();
     for (const id of MODULE_IDS) expect(isModuleOn(cfg, id)).toBe(true);
-    for (const v of ['talk', 'note', 'ctrl', 'settings', 'gallery'])
+    for (const v of ['talk', 'note', 'ctrl', 'settings'])
       expect(isViewOn(cfg, v)).toBe(true);
   });
 

@@ -129,7 +129,7 @@ export function AppFrame({
 }: {
   children: ReactNode;
   sidebar: ReactNode;
-  /** Preview inside another page (gallery): no window drag strip, no main landmark. */
+  /** Preview inside another page (stories): no window drag strip, no main landmark. */
   embedded?: boolean;
 }) {
   const t = useTheme();
@@ -170,7 +170,7 @@ export type SideNavItem = {
   label: string;
   /** Feather icon name; an unknown name renders the label alone. */
   icon?: string;
-  /** `foot` items sit pinned at the bottom of the sidebar (settings, gallery). */
+  /** `foot` items sit pinned at the bottom of the sidebar (settings). */
   group?: 'main' | 'foot';
   /** A small dot after the label (ADR 0181: a qrtz update is ready); `dotLabel` names it for screen readers. */
   dot?: boolean;
@@ -528,7 +528,12 @@ export function IconButton({
         borderRadius: t.radius.md,
         border: `${tokens.border.hairline} solid transparent`,
         background: pressed ? t.color.accent : 'transparent',
-        color: tone === 'record' ? t.color.recording : tone === 'danger' ? t.color.danger : t.color.textMuted,
+        color:
+          tone === 'record'
+            ? t.color.recording
+            : tone === 'danger'
+              ? t.color.danger
+              : t.color.textMuted,
         ...typeStyle('caption', t),
         transition: transition('background', 'hover', t),
       }}

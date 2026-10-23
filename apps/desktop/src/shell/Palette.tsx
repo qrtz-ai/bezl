@@ -14,11 +14,9 @@ import { useModuleSwitches } from './useModuleSwitches';
 import { QRTZ, QRTZ_PARTS, isReservedNav } from './routes';
 
 const QRTZ_PAGE_PARTS = new Set(Object.values(QRTZ_PARTS));
-/** Dev-only sub apps with a route but no palette entry (the gallery). */
-const HIDDEN_FROM_NAV = new Set(['gallery']);
 
 /**
- * The modules that get a "go to" entry: switched on, not a qrtz page part or dev-only, and (security review) not
+ * The modules that get a "go to" entry: switched on, not a qrtz page part, and (security review) not
  * posing as the shell's apps or opts entries by id or display name, any case or padding.
  */
 export function paletteNavModules<M extends { id: string; name: string }>(
@@ -29,7 +27,6 @@ export function paletteNavModules<M extends { id: string; name: string }>(
     (m) =>
       isOn(m.id) &&
       !QRTZ_PAGE_PARTS.has(m.id) &&
-      !HIDDEN_FROM_NAV.has(m.id) &&
       !isReservedNav(m.id) &&
       !isReservedNav(m.name),
   );
