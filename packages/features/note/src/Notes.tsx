@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
-  Chip,
   ConfirmDialog,
   NotesApp,
-  Select,
   Stack,
   Text,
   userError,
@@ -41,12 +39,9 @@ const isConflict = (e: unknown) =>
 export function Notes({
   meetingId,
   compact,
-  linkable,
 }: {
   meetingId?: string;
   compact?: boolean;
-  /** Show 'link meeting' on the open note (the standalone notes page). */
-  linkable?: boolean;
 }) {
   const qrtz = useQrtz();
   const changed = useQrtzEvent('doc:changed');
@@ -59,7 +54,6 @@ export function Notes({
   const [status, setStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
   const [confirm, setConfirm] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const [meetings, setMeetings] = useState<{ id: string; title: string }[]>([]);
 
   // Saves run one at a time; `cur` is the note being edited (id + the hash its text is based on).
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -218,34 +212,6 @@ export function Notes({
     if (c) void qrtz.invoke('doc:get', { id: c.id }).then(show);
   };
 
-  useEffect(() => {
-    if (!linkable) return;
-    qrtz.invoke('note:list', { limit: 30 }).then(
-      (r) =>
-        setMeetings(
-          r.map((i) => ({ id: i.meeting.id, title: i.meeting.title })),
-        ),
-      () => {},
-    );
-  }, [qrtz, linkable]);
-  const link = (mid: string, on: boolean) => {
-    const c = cur.current;
-    if (!c) return;
-    flush();
-    void queue.current.then(() =>
-      qrtz
-        .invoke(on ? 'doc:link-meeting' : 'doc:unlink-meeting', {
-          id: c.id,
-          meetingId: mid,
-        })
-        .then(show, (e: unknown) =>
-          setError(
-            userError(e, on ? 'link the meeting' : 'unlink the meeting'),
-          ),
-        ),
-    );
-  };
-
   const items = useMemo(
     () =>
       notes.map((n) => ({
@@ -256,8 +222,6 @@ export function Notes({
     [notes],
   );
   const selectedId = isNew ? 'new' : (open?.id ?? null);
-  const title = (id: string) =>
-    meetings.find((m) => m.id === id)?.title ?? 'meeting';
 
   return (
     <>
@@ -293,37 +257,6 @@ export function Notes({
                 use theirs
               </Button>
             </Stack>
-          ) : undefined
-        }
-        tools={
-          linkable && open ? (
-            <>
-              {open.meetings.map((m) => (
-                <Chip
-                  key={m}
-                  onClick={() => link(m, false)}
-                  aria-label={`unlink ${title(m)}`}
-                  data-testid="note-meeting"
-                >
-                  {title(m)}
-                </Chip>
-              ))}
-              <Select
-                aria-label="link meeting"
-                data-testid="note-link-meeting"
-                value=""
-                onChange={(e) => e.target.value && link(e.target.value, true)}
-              >
-                <option value="">link meeting</option>
-                {meetings
-                  .filter((m) => !open.meetings.includes(m.id))
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.title}
-                    </option>
-                  ))}
-              </Select>
-            </>
           ) : undefined
         }
         {...(compact ? { compact } : {})}

@@ -36,7 +36,6 @@ export function NotesApp({
   editorLabel = 'note',
   emptyTitle = 'no notes yet',
   banner,
-  tools,
   readOnly,
 }: {
   notes: NotesAppItem[];
@@ -58,8 +57,6 @@ export function NotesApp({
   emptyTitle?: string;
   /** Above the editor (e.g. "changed outside qrtz" with its choices). */
   banner?: ReactNode;
-  /** In the editor's footer, before delete (e.g. the note's meeting links). */
-  tools?: ReactNode;
   /** Shown but not editable (a file qrtz won't change). */
   readOnly?: boolean;
 }) {
@@ -220,16 +217,6 @@ export function NotesApp({
                   {status}
                 </Text>
               )}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: t.space[1],
-                  minWidth: 0,
-                }}
-              >
-                {tools}
-              </div>
               <IconButton
                 icon="trash"
                 label="delete note"
