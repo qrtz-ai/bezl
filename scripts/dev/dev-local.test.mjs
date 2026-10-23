@@ -37,15 +37,16 @@ describe('dev-local.sh', () => {
   });
 
   it('gets past flag parsing with no --without (bash 3.2 on macOS: an empty array under set -u)', () => {
+    // Off macOS no args would exec plain tauri dev, so only --build-only runs there.
     for (const args of [
-      [],
+      ...(process.platform === 'darwin' ? [[]] : []),
       ['--build-only'],
       ['--without', 'ctrl', '--build-only'],
     ]) {
       const r = run(...args);
       expect(r.stderr).not.toContain('unbound variable');
       if (process.platform !== 'darwin')
-        expect(r.stderr).toContain('macOS only');
+        expect(r.stderr).toContain('not macOS');
     }
   });
 

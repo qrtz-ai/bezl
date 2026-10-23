@@ -33,6 +33,7 @@ for w in ${without[@]+"${without[@]}"}; do [[ " ${ids[*]} " == *" $w "* ]] || di
 # Off macOS there are no native modules to build: `bun start` falls back to plain tauri dev (the Rust mock helper).
 if [[ "$(uname -s)" != Darwin ]]; then
   say "not macOS: plain tauri dev, no module overrides"
+  [[ $build_only == 1 ]] && exit 0
   cd "$repo/apps/desktop" && exec bun --bun run tauri:dev
 fi
 
