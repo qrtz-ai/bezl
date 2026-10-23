@@ -1,10 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { useState } from 'react';
 import {
   AppList,
   AppRow,
   Button,
-  ExtensionCard,
   ExtensionGlyph,
   ExtensionHeader,
   ExtensionStatusBadge,
@@ -12,7 +10,6 @@ import {
   IconLine,
   IconLines,
   InstallProgress,
-  ModuleRow,
   RowProgress,
   type ExtensionStatus,
 } from '../src';
@@ -44,36 +41,6 @@ export const Status: S = {
         ))}
       </Row>
     </>
-  ),
-};
-
-export const Cards: S = {
-  name: 'app card',
-  render: () => (
-    <Row>
-      {STATUSES.map((s) => (
-        <Width key={s} w={240}>
-          <ExtensionCard
-            name="nano"
-            icon="edit-3"
-            description="meeting notes, on your mac"
-            meta="v0.3.0 · 628 mb with dependencies"
-            status={s}
-            progress={s === 'working' ? 0.4 : null}
-            action={
-              <Button size="sm" variant="secondary" block>
-                {s === 'available'
-                  ? 'install'
-                  : s === 'update'
-                    ? 'update'
-                    : 'open'}
-              </Button>
-            }
-            onOpen={noop}
-          />
-        </Width>
-      ))}
-    </Row>
   ),
 };
 
@@ -111,7 +78,6 @@ export const Detail: S = {
 };
 
 function ListDemo() {
-  const [on, setOn] = useState(true);
   return (
     <>
       <AppList aria-label="apps">
@@ -161,31 +127,10 @@ function ListDemo() {
           <RowProgress value={0.6} label="downloading nano" />
         </Width>
       </Row>
-      <Row label="module row">
-        <div style={{ width: '100%' }}>
-          <ModuleRow
-            name="nano"
-            icon="edit-3"
-            meta="v0.3.0"
-            status="installed"
-            enabled={on}
-            onToggle={setOn}
-          />
-          <ModuleRow
-            name="echo"
-            icon="mic"
-            meta="v0.2.0"
-            status="built-in"
-            enabled
-            toggleDisabled
-            onToggle={noop}
-          />
-        </div>
-      </Row>
     </>
   );
 }
 export const List: S = {
-  name: 'app list, module row',
+  name: 'app list',
   render: () => <ListDemo />,
 };

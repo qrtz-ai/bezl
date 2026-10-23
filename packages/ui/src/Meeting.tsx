@@ -11,7 +11,6 @@ import { Text } from './Text';
 import { Icon, type IconName } from './Icon';
 import { Button } from './Button';
 import { Callout } from './Callout';
-import { Input } from './Input';
 import { Dialog } from './Overlay';
 import { IconButton } from './Layout';
 import { transition, typeStyle, tokens } from './tokens';
@@ -80,133 +79,6 @@ export function TranscriptList({ children }: { children: ReactNode }) {
       style={{ display: 'grid', gap: tokens.space[0.5] }}
     >
       {children}
-    </div>
-  );
-}
-
-export interface NoteItem {
-  id: string;
-  time: string;
-  text: string;
-}
-
-/**
- * Granola-style notes editor: one input, timestamped lines below. Enter adds; click a note to edit,
- * empty it to delete. Pure UI: the caller persists through onAdd/onUpdate.
- */
-export function NotesEditor({
-  notes,
-  onAdd,
-  onUpdate,
-  compact,
-  placeholder = 'Note…',
-  error,
-}: {
-  notes: NoteItem[];
-  onAdd: (text: string) => void;
-  onUpdate: (id: string, text: string) => void;
-  compact?: boolean;
-  placeholder?: string;
-  error?: string | null;
-}) {
-  const t = useTheme();
-  const [draft, setDraft] = useState('');
-  const [editing, setEditing] = useState<{ id: string; text: string } | null>(
-    null,
-  );
-  const save = () => {
-    if (!editing) return;
-    onUpdate(editing.id, editing.text.trim());
-    setEditing(null);
-  };
-  return (
-    <div data-testid="notes" style={{ display: 'grid', gap: t.space[2] }}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = draft.trim();
-          if (!text) return;
-          setDraft('');
-          onAdd(text);
-        }}
-        style={{ display: 'flex', gap: t.space[2] }}
-      >
-        <Input
-          aria-label="add a note"
-          placeholder={placeholder}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          data-testid="note-input"
-          maxLength={4000}
-        />
-        <Button
-          type="submit"
-          size="sm"
-          variant="secondary"
-          data-testid="note-add"
-        >
-          add
-        </Button>
-      </form>
-      {error ? (
-        <Text variant="bodySm" tone="danger" role="alert">
-          {error}
-        </Text>
-      ) : null}
-      <ul
-        aria-label="notes"
-        style={{
-          listStyle: 'none',
-          margin: 0,
-          padding: 0,
-          display: 'grid',
-          gap: t.space[1],
-          ...(compact
-            ? { maxHeight: tokens.layout.compactListMax, overflow: 'auto' }
-            : {}),
-        }}
-      >
-        {notes.map((n) => (
-          <li
-            key={n.id}
-            data-testid="note"
-            style={{ display: 'flex', gap: t.space[2], alignItems: 'baseline' }}
-          >
-            <Text variant="mono" muted data-testid="note-time">
-              {n.time}
-            </Text>
-            {editing?.id === n.id ? (
-              <Input
-                autoFocus
-                aria-label="edit note"
-                value={editing.text}
-                onChange={(e) => setEditing({ id: n.id, text: e.target.value })}
-                onBlur={save}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') save();
-                  if (e.key === 'Escape') setEditing(null);
-                }}
-                data-testid="note-edit"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditing({ id: n.id, text: n.text })}
-                aria-label={`${n.text} (edit note)`}
-                style={{
-                  all: 'unset',
-                  cursor: 'text',
-                  flex: 1,
-                  ...typeStyle('body', t),
-                  color: t.color.text,
-                }}
-              >
-                {n.text}
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -281,57 +153,6 @@ export function SummaryBlock({
         </Text>
       ) : null}
     </div>
-  );
-}
-
-/** One-line input + submit button. */
-export function Composer({
-  value,
-  onChange,
-  onSubmit,
-  placeholder,
-  label,
-  busy,
-  submitLabel = 'Ask',
-  inputTestId,
-  submitTestId,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSubmit: () => void;
-  placeholder: string;
-  label: string;
-  busy?: boolean;
-  submitLabel?: string;
-  inputTestId?: string;
-  submitTestId?: string;
-}) {
-  const t = useTheme();
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit();
-      }}
-      style={{ display: 'flex', gap: t.space[2] }}
-    >
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label={label}
-        data-testid={inputTestId}
-        maxLength={2000}
-      />
-      <Button
-        variant="primary"
-        type="submit"
-        disabled={busy || !value.trim()}
-        data-testid={submitTestId}
-      >
-        {submitLabel}
-      </Button>
-    </form>
   );
 }
 

@@ -8,14 +8,12 @@ import {
   CaptureNotice,
   CaptureStatus,
   CommandPalette,
-  Composer,
   ConfirmDialog,
   IconButton,
   LevelMeter,
   MiniHudFrame,
   NoDrag,
   NotesApp,
-  NotesEditor,
   PermissionList,
   PipelineSteps,
   RecordDot,
@@ -27,7 +25,6 @@ import {
   Text,
   TranscriptList,
   TranscriptRow,
-  type NoteItem,
   type SpeechSetupView,
 } from '../src';
 import { Frame, Row, Width, noop } from './_util';
@@ -50,32 +47,6 @@ export const Summary: S = {
     />
   ),
 };
-
-function NotesDemo() {
-  const [notes, setNotes] = useState<NoteItem[]>([
-    { id: 'a', time: '00:41', text: 'Ship the beta Friday' },
-    { id: 'b', time: '03:12', text: 'Ask Grace about pricing' },
-  ]);
-  return (
-    <NotesEditor
-      notes={notes}
-      onAdd={(text) =>
-        setNotes((n) => [
-          ...n,
-          { id: String(n.length + 1), time: '05:00', text },
-        ])
-      }
-      onUpdate={(id, text) =>
-        setNotes((n) =>
-          text
-            ? n.map((x) => (x.id === id ? { ...x, text } : x))
-            : n.filter((x) => x.id !== id),
-        )
-      }
-    />
-  );
-}
-export const Notes: S = { name: 'notes editor', render: () => <NotesDemo /> };
 
 export const Transcript: S = {
   name: 'transcript',
@@ -230,24 +201,12 @@ export const Capture: S = {
 };
 
 function InteractDemo() {
-  const [ask, setAsk] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [palette, setPalette] = useState(false);
   const [q, setQ] = useState('');
   const [i, setI] = useState(0);
   return (
     <>
-      <Row label="composer">
-        <div style={{ width: '100%' }}>
-          <Composer
-            value={ask}
-            onChange={setAsk}
-            onSubmit={() => setAsk('')}
-            placeholder="ask"
-            label="ask about this meeting"
-          />
-        </div>
-      </Row>
       <Row label="action menu, confirm, palette">
         <MoreMenu
           label="more actions"
@@ -298,7 +257,7 @@ function InteractDemo() {
   );
 }
 export const Interact: S = {
-  name: 'composer, menus, palette, permissions',
+  name: 'menus, palette, permissions',
   render: () => <InteractDemo />,
 };
 

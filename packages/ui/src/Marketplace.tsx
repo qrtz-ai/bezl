@@ -3,10 +3,8 @@ import { useTheme } from './theme';
 import { transition, tokens } from './tokens';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
-import { GridCard } from './Card';
 import { Icon, type IconName } from './Icon';
 import { Progress } from './Progress';
-import { Switch } from './Overlay';
 import { lowerTitle } from './case';
 
 /**
@@ -74,86 +72,6 @@ export function ExtensionGlyph({
         size={size === 'lg' ? 'xl' : size === 'sm' ? 'md' : 'lg'}
       />
     </div>
-  );
-}
-
-/** One extension in the marketplace (a CardGrid cell): glyph, name, one line, the version line, and the button,
- * pinned to the card's bottom so every card's button lines up. */
-export function ExtensionCard({
-  name,
-  icon,
-  description,
-  meta,
-  status,
-  action,
-  progress,
-  onOpen,
-}: {
-  name: string;
-  icon: IconName;
-  description: string;
-  /** Already formatted (`v0.3.0 · 628 mb with dependencies`, `v0.2.0 · built in`). */
-  meta: string;
-  status: ExtensionStatus;
-  /** The card's button (install / open / update), from the feature; give it `block`. */
-  action?: ReactNode;
-  /** 0..1 while installing. */
-  progress?: number | null;
-  onOpen: () => void;
-}) {
-  const t = useTheme();
-  return (
-    <GridCard
-      data-testid={`extension-card-${name}`}
-      footer={
-        typeof progress === 'number' || action ? (
-          <>
-            {typeof progress === 'number' ? (
-              <Progress
-                value={progress}
-                label={`installing ${name}`}
-                data-testid={`extension-progress-${name}`}
-              />
-            ) : null}
-            {action}
-          </>
-        ) : null
-      }
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        data-testid={`extension-open-${name}`}
-        style={{
-          all: 'unset',
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: t.space[3],
-          minWidth: 0,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <ExtensionGlyph icon={icon} />
-          <ExtensionStatusBadge status={status} />
-        </div>
-        <div style={{ display: 'grid', gap: tokens.space[0.5] }}>
-          <Text variant="h3">{lowerTitle(name)}</Text>
-          <Text variant="caption" muted>
-            {description.toLowerCase()}
-          </Text>
-        </div>
-        <Text variant="caption" muted data-testid="extension-size">
-          {meta.toLowerCase()}
-        </Text>
-      </button>
-    </GridCard>
   );
 }
 
@@ -309,81 +227,6 @@ export function InstallProgress({
         {detail.toLowerCase()}
       </Text>
     </div>
-  );
-}
-
-/** One installed extension in the module manager (a CardGrid cell): switch, name, meta, and its actions at the bottom. */
-export function ModuleRow({
-  name,
-  icon,
-  meta,
-  status,
-  enabled,
-  onToggle,
-  toggleDisabled,
-  actions,
-  children,
-}: {
-  name: string;
-  icon: IconName;
-  meta: string;
-  status: ExtensionStatus;
-  enabled: boolean;
-  onToggle: (on: boolean) => void;
-  toggleDisabled?: boolean;
-  actions?: ReactNode;
-  /** Expanded details (dependencies). */
-  children?: ReactNode;
-}) {
-  const t = useTheme();
-  return (
-    <GridCard
-      data-testid={`module-row-${name}`}
-      footer={
-        actions ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
-            {actions}
-          </div>
-        ) : null
-      }
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[3] }}>
-        <ExtensionGlyph icon={icon} />
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: 'grid',
-            gap: tokens.space[0.5],
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: t.space[2],
-              minWidth: 0,
-            }}
-          >
-            <Text variant="h3" truncate>
-              {lowerTitle(name)}
-            </Text>
-            <ExtensionStatusBadge status={status} />
-          </div>
-          <Text variant="caption" muted truncate>
-            {meta.toLowerCase()}
-          </Text>
-        </div>
-        <Switch
-          label={`${name} on`}
-          checked={enabled}
-          onChange={onToggle}
-          disabled={toggleDisabled}
-          data-testid={`module-enabled-${name}`}
-        />
-      </div>
-      {children}
-    </GridCard>
   );
 }
 

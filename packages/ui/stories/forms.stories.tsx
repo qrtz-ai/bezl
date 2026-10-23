@@ -117,12 +117,6 @@ function OverlaysDemo() {
         <Button variant="secondary" onClick={() => toast('copied')}>
           info toast
         </Button>
-        <Button
-          variant="secondary"
-          onClick={() => toast("couldn't save", 'error')}
-        >
-          error toast
-        </Button>
       </Row>
       <Row label="menu">
         <Menu

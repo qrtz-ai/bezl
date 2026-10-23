@@ -3,10 +3,8 @@ import {
   DictionaryTerm,
   ModelsPanel,
   PlainList,
-  SpeechNotice,
   SpeechRequired,
   Text,
-  SpeechSetupPanel,
   TalkHistoryRow,
   ActionMenu,
   TalkPill,
@@ -157,23 +155,9 @@ const STATES: [string, SpeechSetupView][] = [
 ];
 
 export const Speech: S = {
-  name: 'speech setup',
+  name: 'speech required',
   render: () => (
     <>
-      {STATES.map(([label, v]) => (
-        <Row key={label} label={label}>
-          <Width w={360}>
-            <SpeechSetupPanel
-              status={v}
-              manage
-              onDownload={noop}
-              onPause={noop}
-              onResume={noop}
-              onDelete={noop}
-            />
-          </Width>
-        </Row>
-      ))}
       {STATES.map(([label, v]) => (
         <Row key={`required-${label}`} label={`required · ${label}`}>
           <Width w={560}>
@@ -185,13 +169,6 @@ export const Speech: S = {
             >
               <Text>echo&apos;s page</Text>
             </SpeechRequired>
-          </Width>
-        </Row>
-      ))}
-      {STATES.map(([label, v]) => (
-        <Row key={`notice-${label}`} label={`notice · ${label}`}>
-          <Width w={360}>
-            <SpeechNotice status={v} onOpen={noop} />
           </Width>
         </Row>
       ))}
