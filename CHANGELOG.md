@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.2 (2026-10-22)
+
+- Feature: qrtz asks for Input Monitoring itself and restarts Snap when you grant it, so summon works without a manual restart.
+- Feature: Snap opens on its keybinds and summon page; its options hold the menu bar and the apps Snap leaves alone.
+- Fix: fast speech modules no longer drop words.
+- Fix: the daily module index refresh now sets up its GitHub release when it's missing.
+
 ## 0.3.1 (2026-10-21)
 
 - Feature: Snap can summon an app. Hold left ⌘ and right ⌘ together to bring it forward, and again to go back (off by default; needs Input Monitoring).
