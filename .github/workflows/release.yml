@@ -115,6 +115,7 @@ jobs:
           AC_ISSUER_ID: ${{ secrets.AC_ISSUER_ID }}
         run: bash scripts/ci/macos-signing.sh setup-identity
       - name: sign, notarize (App Store Connect API key), staple, verify-bundle
+        timeout-minutes: 45 # QRT-354: outer backstop for the stapler retry loop
         run: |
           ditto -x -k "$RUNNER_TEMP/in/qrtz-unsigned.zip" "$RUNNER_TEMP/app"
           bash scripts/release/sign-notarize.sh --app "$RUNNER_TEMP/app/qrtz.app"
