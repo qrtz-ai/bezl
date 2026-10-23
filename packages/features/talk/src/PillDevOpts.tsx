@@ -9,8 +9,9 @@ import { useEffect, useState } from 'react';
 
 /**
  * ADR 0221, TEMPORARY for tuning: the echo pill's springs, fades and corners as live sliders, collapsed at the
- * bottom of echo's page, in every build for now. Writes `talk.pillMotion` (always the whole object) when a drag
- * ends; the host forwards it to the helper, which uses it from the next expand on. reset: the snappy defaults.
+ * bottom of echo's page, in dev builds only (TalkSettings checks `import.meta.env.DEV`). Writes `talk.pillMotion`
+ * (always the whole object) when a drag ends; the host forwards it to the helper, which uses it from the next expand
+ * on. reset: the snappy defaults.
  */
 export function PillDevOpts({
   value,

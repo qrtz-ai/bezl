@@ -132,10 +132,13 @@ export default function TalkSettings() {
           (v) => set({ saveHistory: v }),
         )}
       </SettingsSection>
-      <PillDevOpts
-        value={talk.pillMotion}
-        onCommit={(m) => set({ pillMotion: m })}
-      />
+      {/* Dev builds only: a release `vite build` sets DEV false and drops the sliders. */}
+      {import.meta.env.DEV ? (
+        <PillDevOpts
+          value={talk.pillMotion}
+          onCommit={(m) => set({ pillMotion: m })}
+        />
+      ) : null}
     </>
   );
 }
