@@ -51,6 +51,9 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
 
     public func axInsertIntoValue(_ text: String) -> Bool {
         guard let el = focused(), !isSecure(el), !IsSecureEventInputEnabled(), let cur = value(el) else { return false }
+        // QRT-356: Slate's U+FEFF markers make an empty-with-hint box and a real doc indistinguishable here; never rewrite
+        // the whole value then (it could wipe the doc). Fall through to paste at the caret instead.
+        guard FieldText.classify(value: cur, placeholder: nil).canOverwriteValue else { return false }
         var settable: DarwinBoolean = false
         guard AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable) == .success, settable.boolValue else { return false }
         var rangeRef: CFTypeRef?
