@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.3.3 (2026-10-22)
+
+- Feature: nano and ctrl are experimental apps, hidden until settings → app → experimental apps is on.
+- Feature: summon toggles on each tap of one ⌘ while the other is held, and snap shortcuts work on apps without a bundle id.
+- Feature: summon and snap's permission banners open the right settings pane and blur what they block.
+- Feature: cleaner pages: no title row (an app's opts open from its sidebar ⋯), a simpler echo page and snap page, no standalone nano notes page.
+- Fix: ctrl asks to confirm every press and menu key combo on a Mac whose language isn't English (stricter than before).
+- Fix: only the Input Monitoring watcher restarts qrtz-snap, so it can't restart in a loop.
+
 ## 0.3.2 (2026-10-22)
 
 - Feature: qrtz asks for Input Monitoring itself and restarts Snap when you grant it, so summon works without a manual restart.
