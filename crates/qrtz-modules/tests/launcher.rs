@@ -41,7 +41,15 @@ fn world() -> World {
     }
 }
 
-fn run(w: &World, cfg: serde_json::Value, policy: Policy) -> qrtz_modules::launcher::Plan {
+/// With experimental apps on (QRT-352) unless `cfg` says otherwise: the other tests are about the other checks.
+fn run(w: &World, mut cfg: serde_json::Value, policy: Policy) -> qrtz_modules::launcher::Plan {
+    if cfg["app"].get("experimentalApps").is_none() {
+        cfg["app"]["experimentalApps"] = json!(true);
+    }
+    run_raw(w, cfg, policy)
+}
+
+fn run_raw(w: &World, cfg: serde_json::Value, policy: Policy) -> qrtz_modules::launcher::Plan {
     plan(
         &GlobalSettings::from_config(&cfg),
         &w.lock,
@@ -97,6 +105,40 @@ fn the_global_switches_control_every_module() {
     assert_eq!(p.launch.len(), 2);
     let p = run(&w, json!({"modules": {"enabled": false}}), Policy::Release);
     assert!(p.launch.is_empty());
+}
+
+#[test]
+fn experimental_modules_never_launch_unless_experimental_apps_is_true() {
+    // QRT-352: nano and ctrl switched on (0.3.2 or earlier), experimental apps missing, false or not a bool.
+    let w = world();
+    let on = json!({"modules": {"ctrl": {"enabled": true}, "nano": {"enabled": true}}});
+    for app in [
+        None,
+        Some(json!({})),
+        Some(json!({"experimentalApps": false})),
+        Some(json!({"experimentalApps": "true"})),
+        Some(json!({"experimentalApps": 1})),
+    ] {
+        let mut cfg = on.clone();
+        if let Some(a) = app {
+            cfg["app"] = a;
+        }
+        let p = run_raw(&w, cfg.clone(), Policy::Release);
+        assert_eq!(skipped(&p, "ctrl"), Some(Skip::SwitchedOff), "{cfg}");
+        assert_eq!(skipped(&p, "nano"), Some(Skip::SwitchedOff), "{cfg}");
+        assert_eq!(
+            p.launch.iter().map(|s| s.module.as_str()).collect::<Vec<_>>(),
+            ["echo"],
+            "{cfg}"
+        );
+    }
+    let mut cfg = on.clone();
+    cfg["app"] = json!({"experimentalApps": true});
+    let p = run_raw(&w, cfg, Policy::Release);
+    assert_eq!(
+        p.launch.iter().map(|s| s.module.as_str()).collect::<Vec<_>>(),
+        ["echo", "nano", "ctrl"]
+    );
 }
 
 #[test]

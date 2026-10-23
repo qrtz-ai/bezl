@@ -22,6 +22,16 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// QRT-352: nano and ctrl are experimental apps; these tests run them, so experimental apps is on (if unset).
+fn experimental_apps_on(cfg: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let cfg = cfg.as_ref();
+    if !cfg.exists() {
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
+    cfg.to_path_buf()
+}
+
 struct Shell;
 impl ShellHooks for Shell {
     fn set_hud_expanded(&self, e: bool) -> bool {
@@ -171,6 +181,7 @@ fn views(data: &Path) -> LocalModels {
 
 fn app(data: &Path, out: &Path, pin: &str) -> BuiltApp {
     std::fs::create_dir_all(data).unwrap();
+    experimental_apps_on((data.to_path_buf()).join("config.json"));
     let built = build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),

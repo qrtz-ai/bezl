@@ -11,6 +11,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 
+/// QRT-352: nano and ctrl are experimental apps; these tests run them, so experimental apps is on (if unset).
+fn experimental_apps_on(cfg: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let cfg = cfg.as_ref();
+    if !cfg.exists() {
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
+    cfg.to_path_buf()
+}
+
 fn info() -> AppInfo {
     AppInfo {
         name: "qrtz".into(),
@@ -55,7 +65,7 @@ fn app(cfg: &Path, helper: Option<Supervisor>) -> (Arc<AppService>, Router<Share
     let hud = Arc::new(Hud(AtomicBool::new(false)));
     let svc = AppService::new(AppDeps {
         info: info(),
-        config: ConfigStore::open(cfg).into(),
+        config: ConfigStore::open(experimental_apps_on(cfg)).into(),
         runtime: Arc::new(StubRuntime::default()),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),
@@ -289,6 +299,7 @@ async fn only_the_host_writes_onboarding_done() {
 async fn config_defaults_validation_persistence_and_events() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("config.json");
+    std::fs::write(&file, "{}").unwrap(); // the real defaults, not the experimental-apps seed (QRT-352)
     let (svc, r, _) = app(&file, None);
     let mut ev = svc.events.subscribe();
     let cfg = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
@@ -352,7 +363,7 @@ async fn config_defaults_validation_persistence_and_events() {
         true
     );
     // persisted + reloaded
-    let reloaded = ConfigStore::open(&file);
+    let reloaded = ConfigStore::open(experimental_apps_on(&file));
     assert_eq!(reloaded.get()["theme"], "light");
     assert!(reloaded.bool_at(&["note", "autoRecord"]));
     #[cfg(unix)]
@@ -374,7 +385,7 @@ fn config_load_falls_back_per_field_and_migrates_memo() {
         r#"{"theme":"neon","logLevel":"debug","memo":{"autoRecord":true},"note":{"floatingHud":false}}"#,
     )
     .unwrap();
-    let c = ConfigStore::open(&file);
+    let c = ConfigStore::open(experimental_apps_on(&file));
     assert_eq!(c.get()["theme"], "dark", "invalid key → its default only");
     assert_eq!(c.get()["logLevel"], "debug", "valid siblings survive");
     assert!(c.bool_at(&["note", "autoRecord"]), "memo.* migrated to note.*");
@@ -384,7 +395,7 @@ fn config_load_falls_back_per_field_and_migrates_memo() {
     // ADR 0146 M1.2: note.* now lives in nano's own file; a corrupt config.json resets the global settings only.
     assert!(on_disk.get("note").is_none());
     std::fs::write(&file, "{garbage").unwrap();
-    let c = ConfigStore::open(&file);
+    let c = ConfigStore::open(experimental_apps_on(&file));
     assert_eq!(c.get()["theme"], contract().config_defaults["theme"]);
     assert_eq!(c.get()["logLevel"], contract().config_defaults["logLevel"]);
     assert!(
@@ -393,7 +404,10 @@ fn config_load_falls_back_per_field_and_migrates_memo() {
     );
     std::fs::remove_dir_all(dir.path().join("modules")).unwrap();
     std::fs::write(&file, "{garbage").unwrap();
-    assert_eq!(ConfigStore::open(&file).get(), &contract().config_defaults);
+    assert_eq!(
+        ConfigStore::open(experimental_apps_on(&file)).get(),
+        &contract().config_defaults
+    );
 }
 
 async fn next_event(
@@ -523,7 +537,7 @@ fn hello_and_helper_status_reach_talk() {
     let dir = tempfile::tempdir().unwrap();
     let svc = AppService::new(AppDeps {
         info: info(),
-        config: ConfigStore::open(dir.path().join("config.json")).into(),
+        config: ConfigStore::open(experimental_apps_on(dir.path().join("config.json"))).into(),
         runtime: Arc::new(Runtime(rt.clone())),
         storage: Arc::new(StubStorage),
         talk: Arc::new(Talk(talk.clone())),

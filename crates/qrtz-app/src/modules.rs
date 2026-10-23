@@ -162,18 +162,15 @@ pub fn drops_helper_event(cfg: &Value, ty: &str) -> bool {
     ty.starts_with("meeting.") && !is_on(cfg, "nano")
 }
 
-/// QRT-352: apps still being built (`EXPERIMENTAL_MODULES` in `packages/core/src/modules.ts`). The host treats them
-/// as off, whatever their own switch says, unless settings → app → experimental apps is on, so a switch left on in
-/// 0.3.2 or earlier (when the renderer still showed it) never starts their helpers or schedulers.
-pub const EXPERIMENTAL_MODULES: &[&str] = &["nano", "ctrl"];
+pub use qrtz_modules::settings::EXPERIMENTAL_MODULES;
 
-/// Whether `id` is an experimental module held off because `app.experimentalApps` isn't `true` (missing is off).
+/// QRT-352: whether `id` is an experimental module held off (see [`GlobalSettings::experiment_off`]).
 pub fn experiment_off(cfg: &Value, id: &str) -> bool {
-    EXPERIMENTAL_MODULES.contains(&id) && cfg["app"]["experimentalApps"].as_bool() != Some(true)
+    GlobalSettings::from_config(cfg).experiment_off(id)
 }
 
 pub fn is_on(cfg: &Value, id: &str) -> bool {
-    !experiment_off(cfg, id) && GlobalSettings::from_config(cfg).is_on(id)
+    GlobalSettings::from_config(cfg).is_on(id)
 }
 
 /// ADR 0217 (M1): `calendar:connect` (the macOS prompt) and `calendar:refresh` (an EventKit read) run only while
@@ -287,7 +284,7 @@ mod tests {
 
     #[test]
     fn everything_passes_with_the_default_config() {
-        let cfg = json!({});
+        let cfg = json!({"app": {"experimentalApps": true}});
         for (app, ch) in [
             ("talk", "talk:state"),
             ("note", "note:list"),
@@ -300,7 +297,7 @@ mod tests {
 
     #[test]
     fn a_switched_off_module_is_refused_but_config_stays_reachable() {
-        let cfg = json!({"modules": {"echo": {"enabled": false}}});
+        let cfg = json!({"app": {"experimentalApps": true}, "modules": {"echo": {"enabled": false}}});
         let e = gate(&cfg, "talk", "talk:state").unwrap_err();
         assert_eq!(e.code, ErrorCode::Unavailable);
         assert!(gate(&cfg, "talk", "config:get").is_ok());
@@ -473,6 +470,30 @@ mod tests {
             assert!(!experiment_off(&cfg, m) && is_on(&cfg, m), "{m}");
         }
         assert!(!drops_helper_event(&cfg, "meeting.detected"));
+        // QRT-352 (Bozniak): the view/IPC gate follows the same check.
+        let hidden = json!({"modules": {"ctrl": {"enabled": true}, "nano": {"enabled": true}}});
+        assert!(gate(&hidden, "shell", "calendar:status").is_err());
+        assert!(gate(&cfg, "shell", "calendar:status").is_ok());
+        let mut seen = 0;
+        for m in bundled()
+            .manifests
+            .iter()
+            .filter(|m| EXPERIMENTAL_MODULES.contains(&m.id.as_str()))
+        {
+            for v in &m.views {
+                seen += 1;
+                let e = gate(&hidden, v, "note:session").unwrap_err();
+                assert!(e.message.contains(m.id.as_str()), "{v}: {}", e.message);
+                assert!(
+                    gate(&cfg, v, "note:session")
+                        .map_err(|e| e.message)
+                        .err()
+                        .is_none_or(|e| !e.contains("switched off")),
+                    "{v}"
+                );
+            }
+        }
+        assert!(seen > 0, "nano/ctrl have views");
         cfg["modules"]["ctrl"]["enabled"] = json!(false);
         assert!(!is_on(&cfg, "ctrl") && is_on(&cfg, "nano"));
     }

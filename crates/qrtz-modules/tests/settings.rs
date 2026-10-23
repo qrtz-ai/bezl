@@ -5,9 +5,14 @@ use serde_json::json;
 
 #[test]
 fn missing_switches_default_to_on_so_m0_changes_nothing() {
+    // QRT-352: nano and ctrl also need experimental apps on (fail-closed: missing is off).
     let g = GlobalSettings::from_config(&json!({}));
+    assert!(g.is_on("echo") && !g.is_on("nano") && !g.is_on("ctrl"));
+    let g = GlobalSettings::from_config(&json!({"app": {"experimentalApps": true}}));
     assert!(["echo", "nano", "ctrl"].iter().all(|m| g.is_on(m)));
-    let g = GlobalSettings::from_config(&json!({"modules": {"nano": {"enabled": false}}}));
+    let g = GlobalSettings::from_config(
+        &json!({"app": {"experimentalApps": true}, "modules": {"nano": {"enabled": false}}}),
+    );
     assert!(g.is_on("echo") && !g.is_on("nano"));
     let g = GlobalSettings::from_config(&json!({"modules": {"enabled": false, "echo": {"enabled": true}}}));
     assert!(!g.is_on("echo"), "the all-modules switch wins");

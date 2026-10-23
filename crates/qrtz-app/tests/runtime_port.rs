@@ -11,6 +11,16 @@ use qrtz_storage::Db;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+/// QRT-352: nano and ctrl are experimental apps; these tests run them, so experimental apps is on (if unset).
+fn experimental_apps_on(cfg: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let cfg = cfg.as_ref();
+    if !cfg.exists() {
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
+    cfg.to_path_buf()
+}
+
 /// A scripted helper: every command goes to the test, which answers like the mock helper.
 struct Helper(tokio::sync::mpsc::UnboundedSender<HelperCommand>);
 impl HelperPort for Helper {
@@ -41,7 +51,7 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
     let (tx, mut cmds) = tokio::sync::mpsc::unbounded_channel::<HelperCommand>();
     std::fs::create_dir_all(&rec).unwrap();
     let events = Events::new();
-    let cfg: SharedConfig = ConfigStore::open(dir.path().join("c.json")).into();
+    let cfg: SharedConfig = ConfigStore::open(experimental_apps_on(dir.path().join("c.json"))).into();
     let db = InlineDb::new(Db::open(dir.path().join("qrtz.db")).unwrap());
     let rt = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(InlineDb(db.0.clone()))),

@@ -16,6 +16,16 @@ use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+/// QRT-352: nano and ctrl are experimental apps; these tests run them, so experimental apps is on (if unset).
+fn experimental_apps_on(cfg: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let cfg = cfg.as_ref();
+    if !cfg.exists() {
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
+    cfg.to_path_buf()
+}
+
 fn body() -> Vec<u8> {
     (0..300_000).map(|i| (i % 251) as u8).collect()
 }
@@ -456,7 +466,7 @@ mod router {
                 arch: "x64".into(),
                 shell: "tauri test".into(),
             },
-            config: ConfigStore::open(d.path().join("config.json")).into(),
+            config: ConfigStore::open(super::experimental_apps_on(d.path().join("config.json"))).into(),
             runtime: Arc::new(StubRuntime::default()),
             storage: Arc::new(StubStorage),
             talk: Arc::new(StubTalk),

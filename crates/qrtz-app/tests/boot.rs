@@ -12,6 +12,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// QRT-352: nano and ctrl are experimental apps; these tests run them, so experimental apps is on (if unset).
+fn experimental_apps_on(cfg: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let cfg = cfg.as_ref();
+    if !cfg.exists() {
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
+    cfg.to_path_buf()
+}
+
 #[derive(Default)]
 struct Shell(Mutex<Vec<Notice>>);
 impl ShellHooks for Shell {
@@ -55,6 +65,7 @@ fn app_with(
 ) -> BuiltApp {
     let mut spawn = ProcessSpawn::helper(mock_helper_bin());
     spawn.env = env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    experimental_apps_on((dir.to_path_buf()).join("config.json"));
     build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),

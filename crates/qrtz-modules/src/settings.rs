@@ -52,7 +52,14 @@ pub struct GlobalSettings {
     /// extension the lock resolves is installed). Missing means installed, so a config the host never synced (tests,
     /// the simulated helper) keeps every module, as before.
     pub installed: BTreeMap<String, bool>,
+    /// QRT-352: `app.experimentalApps`. Only JSON `true` turns it on (fail-closed); while off, the
+    /// [`EXPERIMENTAL_MODULES`] are off whatever their own switch says.
+    pub experimental_apps: bool,
 }
+
+/// QRT-352: apps still being built (`EXPERIMENTAL_MODULES` in `packages/core/src/modules.ts`), off everywhere unless
+/// settings → app → experimental apps is on, so a switch left on in 0.3.2 or earlier never starts them.
+pub const EXPERIMENTAL_MODULES: &[&str] = &["nano", "ctrl"];
 
 impl GlobalSettings {
     /// From config.json (missing keys default to on, so M0 changes nothing).
@@ -68,11 +75,19 @@ impl GlobalSettings {
                 .iter()
                 .map(|id| ((*id).to_owned(), m[*id]["installed"].as_bool().unwrap_or(true)))
                 .collect(),
+            experimental_apps: cfg["app"]["experimentalApps"].as_bool() == Some(true),
         }
     }
-    /// Installed (ADR 0169), switched on, and not under the "all off" switch.
+    /// QRT-352: `id` is experimental and experimental apps is off, so it counts as off.
+    pub fn experiment_off(&self, id: &str) -> bool {
+        !self.experimental_apps && EXPERIMENTAL_MODULES.contains(&id)
+    }
+    /// Installed (ADR 0169), switched on, not under the "all off" switch, and not an experiment held off (QRT-352).
     pub fn is_on(&self, id: &str) -> bool {
-        self.all_enabled && self.is_installed(id) && self.enabled.get(id).copied().unwrap_or(false)
+        !self.experiment_off(id)
+            && self.all_enabled
+            && self.is_installed(id)
+            && self.enabled.get(id).copied().unwrap_or(false)
     }
     pub fn is_installed(&self, id: &str) -> bool {
         self.installed.get(id).copied().unwrap_or(false)
@@ -270,6 +285,35 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), ModuleError> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_module_is_told_it_is_off_while_it_is_a_hidden_experiment() {
+        // QRT-352: the `enabled` a module sees follows the same fail-closed check as the launcher.
+        let dir = tempfile::tempdir().unwrap();
+        let store = ModuleSettingsStore::new(dir.path());
+        let on = json!({"modules": {"ctrl": {"enabled": true}, "nano": {"enabled": true}}});
+        let mut tru = on.clone();
+        tru["app"] = json!({"experimentalApps": true});
+        for id in EXPERIMENTAL_MODULES {
+            for cfg in [
+                on.clone(),
+                json!({"app": {"experimentalApps": false}, "modules": on["modules"].clone()}),
+            ] {
+                assert_eq!(
+                    store.effective(id, &cfg).unwrap()["global"]["enabled"],
+                    false,
+                    "{id} {cfg}"
+                );
+                assert!(!GlobalSettings::from_config(&cfg).is_on(id));
+            }
+            assert_eq!(
+                store.effective(id, &tru).unwrap()["global"]["enabled"],
+                true,
+                "{id}"
+            );
+        }
+        assert_eq!(store.effective("echo", &on).unwrap()["global"]["enabled"], true);
+    }
 
     #[test]
     fn a_sections_global_keys_split_into_the_global_part() {

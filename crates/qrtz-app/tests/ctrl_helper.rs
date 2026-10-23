@@ -15,6 +15,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
+/// QRT-352: nano and ctrl are experimental apps; these tests run them, so experimental apps is on (if unset).
+fn experimental_apps_on(cfg: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let cfg = cfg.as_ref();
+    if !cfg.exists() {
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(cfg, r#"{"app":{"experimentalApps":true}}"#).unwrap();
+    }
+    cfg.to_path_buf()
+}
+
 /// A helper child: `answer_ctrl = false` is an older helper that ignores ctrl lines.
 struct FakeChild {
     fake: Arc<FakeHelper>,
@@ -77,7 +87,7 @@ fn service(dir: &std::path::Path, sup: Option<Supervisor>, wire: Option<Supervis
             arch: "arm64".into(),
             shell: "tauri test".into(),
         },
-        config: ConfigStore::open(dir.join("config.json")).into(),
+        config: ConfigStore::open(experimental_apps_on(dir.join("config.json"))).into(),
         runtime: Arc::new(StubRuntime::default()),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),
