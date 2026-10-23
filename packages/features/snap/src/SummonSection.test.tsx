@@ -37,7 +37,12 @@ function render(
   act(() =>
     root!.render(
       <ThemeProvider mode="light">
-        <SummonSection summon={summon} status={status} onChange={onChange} />
+        <SummonSection
+          summon={summon}
+          status={status}
+          onChange={onChange}
+          onOpenInputMonitoring={() => {}}
+        />
       </ThemeProvider>,
     ),
   );
@@ -72,7 +77,8 @@ describe('summon agent settings', () => {
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(seen).toEqual([{ bundleId: 'com.openai.chat', name: 'ChatGPT' }]);
-    expect(q('snap-summon-ready')).not.toBeNull();
+    // Healthy status stays quiet (QRT-303): no "input monitoring is on" line.
+    expect(el.textContent).not.toContain('input monitoring is on');
     expect(q('snap-summon-no-im')).toBeNull();
   });
 

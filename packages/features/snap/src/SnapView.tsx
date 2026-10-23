@@ -63,7 +63,7 @@ export default function SnapView() {
   }, [needsAx, load]);
   const askAx = () => {
     setWaiting(true);
-    void qrtz.invoke('snap:request-access').then(load, () => {});
+    void qrtz.invoke('snap:request-access', undefined).then(load, () => {});
   };
   // qrtz-app watches the Input Monitoring grant and restarts qrtz-snap when it flips, which reaches us as
   // snap:changed: no poll here.

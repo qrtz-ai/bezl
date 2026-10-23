@@ -12,11 +12,15 @@ import SnapView from './SnapView';
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** snap:status answers from `trusted`, as qrtz-app's live read does. */
-function fake(state: { trusted: boolean }) {
+function fake(
+  state: { trusted: boolean },
+  shortcuts: Record<string, string> = {},
+) {
   const calls: string[] = [];
+  const saved: unknown[] = [];
   const client = {
     subApp: 'snap',
-    invoke: async (channel: string) => {
+    invoke: async (channel: string, payload?: unknown) => {
       calls.push(channel);
       if (channel === 'snap:status')
         return {
@@ -27,15 +31,18 @@ function fake(state: { trusted: boolean }) {
           inputMonitoring: false,
         };
       if (channel === 'module:get-settings')
-        return { snap: { shortcuts: {}, summon: { enabled: true } } };
-      if (channel === 'module:set-settings') return {};
+        return { snap: { shortcuts, summon: { enabled: true } } };
+      if (channel === 'module:set-settings') {
+        saved.push(payload);
+        return {};
+      }
       if (channel === 'snap:request-access')
         return { opened: true, axTrusted: state.trusted };
       return undefined;
     },
     on: () => () => {},
   } as unknown as QrtzClient;
-  return { client, calls };
+  return { client, calls, saved };
 }
 
 let root: Root | null = null;
@@ -101,18 +108,34 @@ describe('snap view: accessibility from inside qrtz', () => {
 });
 
 describe('snap view: shortcuts and summon are the main page', () => {
-  it('shows summon with its permission state and every shortcut editor, not in opts', async () => {
+  it('shows summon with its permission state and every shortcut editor, nothing else per row', async () => {
     const f = fake({ trusted: true });
     await render(f.client);
     expect(q('snap-settings-summon')).not.toBeNull();
     expect(q('snap-summon-no-im')?.textContent).toContain(
       'summon needs input monitoring',
     );
-    expect(q('snap-settings-shortcuts')).not.toBeNull();
-    expect(q('snap-shortcut-leftHalf')).not.toBeNull();
-    expect(q('snap-clear-leftHalf')).not.toBeNull();
-    expect(q('snap-default-leftHalf')).not.toBeNull();
-    expect(q('snap-restore-all')).not.toBeNull();
     expect(q('snap-group-0')).not.toBeNull();
+    expect(q('snap-shortcut-leftHalf')).not.toBeNull();
+    // A row at its default is just the field; restore all lives in snap's opts.
+    expect(q('snap-default-leftHalf')).toBeNull();
+    expect(q('snap-restore-all')).toBeNull();
+  });
+
+  it('a changed shortcut gets a reset; a bare ⌫ while recording clears it', async () => {
+    const f = fake({ trusted: true }, { leftHalf: 'ctrl+alt+left' });
+    await render(f.client);
+    expect(q('snap-default-leftHalf')).not.toBeNull();
+    expect(q('snap-default-rightHalf')).toBeNull();
+    const field = q('snap-shortcut-rightHalf') as HTMLInputElement;
+    await act(async () => field.focus());
+    expect(field.value).toContain('⌫ clears');
+    await act(async () =>
+      field.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }),
+      ),
+    );
+    await wait(10);
+    expect(JSON.stringify(f.saved.at(-1))).toContain('"rightHalf":""');
   });
 });
