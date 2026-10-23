@@ -138,6 +138,7 @@ export default function SettingsView() {
   const appCfg = (cfg?.app ?? {}) as {
     menuBarIcon?: boolean;
     launchAtLogin?: boolean;
+    experimentalApps?: boolean;
   };
   const patchApp = (p: Record<string, unknown>) => {
     setCfg((prev) =>
@@ -213,6 +214,17 @@ export default function SettingsView() {
           false,
           (v) => void patchApp({ launchAtLogin: v }),
         )}
+        <SettingRow
+          label="experimental apps"
+          description="show apps that are still being built: nano and ctrl"
+        >
+          <Switch
+            label="experimental apps"
+            checked={appCfg.experimentalApps ?? false}
+            onChange={(v) => void patchApp({ experimentalApps: v })}
+            data-testid="experimental-apps"
+          />
+        </SettingRow>
         {toggle(
           'update speech automatically',
           'speech-auto-update',

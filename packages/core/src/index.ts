@@ -17,7 +17,6 @@ export * from './packages/contract';
 export * from './app-update/contract';
 export * from './config';
 export * from './modules';
-export * from './flags';
 export * from './db/migrate';
 export * from './note/types';
 export * from './note/transcript';

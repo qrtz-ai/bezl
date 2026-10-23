@@ -14415,7 +14415,8 @@
       "logLevel": "info",
       "app": {
         "menuBarIcon": true,
-        "launchAtLogin": false
+        "launchAtLogin": false,
+        "experimentalApps": false
       },
       "note": {
         "autoDetectMeetings": true,
@@ -14538,11 +14539,16 @@
             "launchAtLogin": {
               "default": false,
               "type": "boolean"
+            },
+            "experimentalApps": {
+              "default": false,
+              "type": "boolean"
             }
           },
           "required": [
             "menuBarIcon",
-            "launchAtLogin"
+            "launchAtLogin",
+            "experimentalApps"
           ],
           "additionalProperties": false
         },

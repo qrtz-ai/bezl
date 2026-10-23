@@ -178,6 +178,19 @@ export function isBundledModule(id: string): boolean {
   return (BUNDLED_MODULES as readonly string[]).includes(id);
 }
 
+/** Apps still being built: hidden from the sidebar and the apps page until settings → app → experimental apps is on. */
+export const EXPERIMENTAL_MODULES: readonly ModuleId[] = ['nano', 'ctrl'];
+
+export function isHiddenExperiment(
+  cfg: Pick<Config, 'app'>,
+  id: string,
+): boolean {
+  return (
+    !cfg.app.experimentalApps &&
+    (EXPERIMENTAL_MODULES as readonly string[]).includes(id)
+  );
+}
+
 /**
  * Whether a view is shown: shell views always; a bundled module's view always (its switch is in it, ADR 0174);
  * other module views only while their module is on.

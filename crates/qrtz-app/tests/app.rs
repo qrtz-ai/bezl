@@ -330,10 +330,11 @@ async fn config_defaults_validation_persistence_and_events() {
         &r,
         "settings",
         "config:set",
-        json!({"patch": {"theme": "light", "app": {"launchAtLogin": true}, "bogus": 1}}),
+        json!({"patch": {"theme": "light", "app": {"launchAtLogin": true, "experimentalApps": true}, "bogus": 1}}),
     )
     .await;
     assert_eq!(ok["data"]["theme"], "light");
+    assert_eq!(ok["data"]["app"]["experimentalApps"], true, "{ok}");
     assert_eq!(
         ok["data"]["app"]["menuBarIcon"], true,
         "deep merge keeps siblings"

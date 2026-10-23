@@ -11,6 +11,7 @@ import {
   pickModuleSettings,
   isViewOn,
   isBundledModule,
+  isHiddenExperiment,
   BUNDLED_MODULES,
   MODULE_IDS,
   MODULE_PERMISSIONS,
@@ -30,6 +31,16 @@ const bundled = MODULE_IDS.map(
 );
 
 describe('module manifests (ADR 0146)', () => {
+  it('hides nano and ctrl, and only them, until experimental apps is on', () => {
+    const off = defaultConfig();
+    const on = ConfigSchema.parse({ app: { experimentalApps: true } });
+    expect(MODULE_IDS.filter((id) => isHiddenExperiment(off, id))).toEqual([
+      'nano',
+      'ctrl',
+    ]);
+    expect(MODULE_IDS.filter((id) => isHiddenExperiment(on, id))).toEqual([]);
+  });
+
   it('parses every bundled manifest and agrees on its views', () => {
     for (const [id, raw] of bundled) {
       const m = ModuleManifest.parse(raw);

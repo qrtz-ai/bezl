@@ -39,6 +39,8 @@ import {
 } from '@qrtz/ui';
 import {
   MODULE_IDS,
+  defaultConfig,
+  isHiddenExperiment,
   isModuleInstalled,
   isModuleOn,
   isBundledModule,
@@ -55,7 +57,7 @@ import {
   type PackagesState,
   type SettingsPane,
 } from '@qrtz/core';
-import { useHiddenModules, useQrtz, useSubAppRoute } from '@qrtz/core/react';
+import { useQrtz, useSubAppRoute } from '@qrtz/core/react';
 import {
   KIND_ICON,
   MODEL_APPS,
@@ -131,7 +133,6 @@ const ING: Record<Verb, string> = {
  */
 export default function MarketplaceView() {
   const qrtz = useQrtz();
-  const hidden: readonly string[] = useHiddenModules();
   const toast = useToast();
   const route = useSubAppRoute();
   const at = parseMarketRoute(route.path);
@@ -140,7 +141,7 @@ export default function MarketplaceView() {
     [route],
   );
   const [state, setState] = useState<PackagesState | null>(null);
-  const [cfg, setCfg] = useState<Pick<Config, 'modules'> | null>(null);
+  const [cfg, setCfg] = useState<Pick<Config, 'modules' | 'app'> | null>(null);
   const [error, setError] = useState<UserError | null>(null);
   const [checking, setChecking] = useState(false);
   const [pending, setPending] = useState<{
@@ -603,16 +604,17 @@ export default function MarketplaceView() {
       />
     ) : null;
 
-  // A module whose PostHog flag is off isn't listed at all.
+  // An experimental app isn't listed until settings → app → experimental apps is on.
+  const hidden = (n: string) => isHiddenExperiment(cfg ?? defaultConfig(), n);
   const installedNames = [
     ...new Set([
       ...rows.filter((r) => r.kind === 'extension').map((r) => r.name),
       ...installedIds.filter((n) => !installedRow(n, rows)),
     ]),
-  ].filter((n) => !hidden.includes(n));
+  ].filter((n) => !hidden(n));
   const availableNames = listings(available, installedIds)
     .map((l) => l.name)
-    .filter((n) => !installedNames.includes(n) && !hidden.includes(n));
+    .filter((n) => !installedNames.includes(n) && !hidden(n));
   const shared = rows.filter((r) => r.kind !== 'extension');
   const onIds = MODEL_APPS.filter((id) => hostInstalled(id) && enabled(id));
 

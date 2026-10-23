@@ -156,6 +156,8 @@ export function createMockBridge(): TauriBridge {
   // ADR 0184: e2e runs start past the permissions onboarding unless they ask for a first run.
   if (params.get('onboarding') !== '1')
     config = applyConfigPatch(config, { onboarding: { done: true } });
+  // The experimental apps (nano, ctrl) are on here, so dev:mock and e2e reach them.
+  config = applyConfigPatch(config, { app: { experimentalApps: true } });
   // ADR 0184 amendment: what the host writes from qrtz.lock when nano isn't installed.
   if (params.get('mockNano') === 'missing')
     config = applyConfigPatch(config, {

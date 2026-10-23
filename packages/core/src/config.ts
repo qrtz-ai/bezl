@@ -36,6 +36,8 @@ export const ConfigSchema = z.object({
       menuBarIcon: z.boolean().default(true),
       /** Open qrtz when you log in (macOS/Windows login item). */
       launchAtLogin: z.boolean().default(false),
+      /** Show the experimental apps (`EXPERIMENTAL_MODULES`: nano, ctrl) in the sidebar and on the apps page. */
+      experimentalApps: z.boolean().default(false),
     })
     .prefault({}),
   note: z

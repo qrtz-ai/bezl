@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
+  applyConfigPatch,
   defaultConfig,
   onNavigateRequest,
   type NavRequest,
@@ -24,7 +25,9 @@ type Call = { channel: string; payload: unknown };
 function fake(overrides: Record<string, (p: unknown) => unknown> = {}) {
   const calls: Call[] = [];
   const listeners = new Map<string, Set<(p: unknown) => void>>();
-  let config = defaultConfig();
+  let config = applyConfigPatch(defaultConfig(), {
+    app: { experimentalApps: true },
+  });
   const client = {
     subApp: 'marketplace',
     invoke: async (channel: string, payload?: unknown) => {
@@ -173,6 +176,13 @@ describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
     expect(document.querySelector('[data-grid-card]')).toBeNull();
     expect(f.calls.map((c) => c.channel)).not.toContain('packages:refresh');
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
+  });
+
+  it('lists no experimental app (nano, ctrl) until settings → app → experimental apps is on', async () => {
+    await render(fake({ 'config:get': () => defaultConfig() }).client);
+    expect(q('app-row-echo')).not.toBeNull();
+    expect(q('app-row-nano')).toBeNull();
+    expect(q('app-row-ctrl')).toBeNull();
   });
 
   it('checks for apps only when asked', async () => {

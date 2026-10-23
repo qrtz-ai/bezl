@@ -10,8 +10,6 @@ import {
 import type { QrtzClient } from './ipc/client';
 import type { EventName, EventPayload } from './ipc/events';
 import type { SpeechSetupStatus } from './speech/setup';
-import type { ModuleId } from './modules';
-import { hiddenModules, loadHiddenModules } from './flags';
 
 const ClientContext = createContext<QrtzClient | null>(null);
 
@@ -223,17 +221,4 @@ export function useModuleSettings() {
     [client],
   );
   return { settings, patch, error };
-}
-
-/** The modules whose PostHog flag is off (flags.ts): the last answer at once, then this launch's. */
-export function useHiddenModules(): readonly ModuleId[] {
-  const [hidden, setHidden] = useState(hiddenModules);
-  useEffect(() => {
-    let live = true;
-    void loadHiddenModules().then((h) => live && setHidden(h));
-    return () => {
-      live = false;
-    };
-  }, []);
-  return hidden;
 }
