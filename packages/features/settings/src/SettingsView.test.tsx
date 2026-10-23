@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
@@ -12,6 +12,10 @@ import SettingsView from './SettingsView';
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+// These cover a release build's settings (its update row); vitest runs as DEV.
+beforeAll(() => vi.stubEnv('DEV', false));
+afterAll(() => vi.unstubAllEnvs());
 
 describe('global settings (ADR 0146 M1.4)', () => {
   it('keep only the global sections: no module switches and no module settings (ADR 0161)', async () => {

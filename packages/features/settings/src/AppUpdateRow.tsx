@@ -101,6 +101,23 @@ function FailedUpdate({ s }: { s: AppUpdateStatus }) {
  * launch and every 6 hours; this row follows `app-update:state`.
  */
 export default function AppUpdateRow() {
+  return import.meta.env.DEV ? <DevVersionRow /> : <UpdateRow />;
+}
+
+/** A dev build checks nothing (the host has no updater in a debug build): it says it's dev, at which commit. */
+function DevVersionRow() {
+  const commit = import.meta.env.VITE_QRTZ_COMMIT || 'unknown';
+  return (
+    <SettingRow
+      as="div"
+      label="version"
+      description={`qrtz dev · ${commit}`}
+      data-testid="app-update-dev"
+    />
+  );
+}
+
+function UpdateRow() {
   const qrtz = useQrtz();
   const [status, setStatus] = useState<AppUpdateStatus | null>(null);
   const live = useQrtzEvent('app-update:state');

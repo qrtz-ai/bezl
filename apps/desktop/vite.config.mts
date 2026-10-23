@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { defineConfig } from 'vite';
@@ -10,10 +11,23 @@ const routerProd = join(
   'dist/production/index.mjs',
 );
 
+// A dev build's settings say "qrtz dev · <commit>" instead of a version (AppUpdateRow): the commit at dev-server start.
+function devCommit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
 // Same renderer as apps/desktop (workspace packages ship TS source; Vite compiles them directly).
 // Port 1420 is what src-tauri/tauri.conf.json's devUrl points at.
 export default defineConfig(({ command }) => ({
   plugins: [react()],
+  define:
+    command === 'serve'
+      ? { 'import.meta.env.VITE_QRTZ_COMMIT': JSON.stringify(devCommit()) }
+      : {},
   resolve: {
     alias:
       command === 'build'

@@ -384,6 +384,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     use crate::runtime_port::{HelperAvailability, NoteRuntimePort};
     let dirs = AppDirs::prepare(&b.data_dir)?;
     let app_version = b.info.version.clone();
+    #[cfg(not(debug_assertions))]
     let service_version = b.info.version.clone();
     let config: SharedConfig = crate::ConfigStore::open(dirs.data.join("config.json")).into();
     let events = Events::new();
@@ -597,7 +598,8 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         ));
     }
     // ADR 0181, QRT-313: qrtz's own updater, from its GitHub releases; quiet checks start with the app
-    // (`start_app_update_checks`).
+    // (`start_app_update_checks`). A debug (dev) build never checks: without it app-update:* answer not-set-up.
+    #[cfg(not(debug_assertions))]
     service.set_self_update(
         crate::self_update::SelfUpdate::new(
             service_version.clone(),

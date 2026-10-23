@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AppUpdateStatus, QrtzClient } from '@qrtz/core';
@@ -15,6 +15,10 @@ import AppUpdateRow, {
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The update row is what a release build shows; vitest runs as DEV.
+beforeAll(() => vi.stubEnv('DEV', false));
+afterAll(() => vi.unstubAllEnvs());
 
 const base: AppUpdateStatus = {
   current: '0.2.0',
@@ -221,5 +225,17 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     );
     expect(m.q('app-update-download')).not.toBeNull();
     m.done();
+  });
+});
+
+describe('a dev build', () => {
+  it('says dev and the commit, and never asks the host about updates', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_QRTZ_COMMIT', 'abc1234');
+    const { q, calls } = await mount(st({ state: 'up-to-date' }));
+    expect(q('app-update-dev')?.textContent).toContain('qrtz dev · abc1234');
+    expect(q('update-check')).toBeNull();
+    expect(calls).toEqual([]);
+    vi.stubEnv('DEV', false);
   });
 });
