@@ -6,6 +6,7 @@ import {
   ModuleSettingsModal,
   OnboardingFrame,
   PermissionPrompt,
+  PermissionRequired,
   PermissionSetupList,
   PermissionSetupRow,
   SettingRow,
@@ -104,6 +105,18 @@ export const Prompt: S = {
             waiting
             onRestart={noop}
           />
+        </Width>
+      </Row>
+      <Row label="gate">
+        <Width w={480}>
+          <PermissionRequired
+            granted={false}
+            title="summon needs input monitoring"
+            pane="input monitoring"
+            onOpen={noop}
+          >
+            <Text muted>the page behind it, blurred until qrtz is on.</Text>
+          </PermissionRequired>
         </Width>
       </Row>
     </>

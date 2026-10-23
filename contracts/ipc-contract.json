@@ -11192,7 +11192,22 @@
       "version": 1,
       "capability": "snap.read",
       "request": {
-        "void": true
+        "optional": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "pane": {
+              "type": "string",
+              "enum": [
+                "accessibility",
+                "input-monitoring"
+              ]
+            }
+          },
+          "required": [
+            "pane"
+          ]
+        }
       },
       "response": {
         "type": "object",

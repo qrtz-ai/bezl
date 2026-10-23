@@ -346,23 +346,37 @@ export function ModelRequired({ children, ...p }: ModelRequiredProps) {
       style={{ display: 'grid', gap: t.space[6], minWidth: 0, width: '100%' }}
     >
       <ModelRequirement {...p} layout="banner" data-testid={testId} />
-      <div
-        inert
-        aria-hidden
-        data-testid={`${testId}-blocked`}
-        style={{
-          filter: tokens.blur.blocked,
-          opacity: tokens.opacity.muted,
-          pointerEvents: 'none',
-          userSelect: 'none',
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: t.space[6],
-        }}
-      >
-        {children}
-      </div>
+      <Blocked data-testid={`${testId}-blocked`}>{children}</Blocked>
+    </div>
+  );
+}
+
+/** What a required-thing banner sits over: blurred, inert and hidden from assistive tech until it's ready. */
+export function Blocked({
+  children,
+  'data-testid': testId,
+}: {
+  children?: ReactNode;
+  'data-testid'?: string;
+}) {
+  const t = useTheme();
+  return (
+    <div
+      inert
+      aria-hidden
+      data-testid={testId}
+      style={{
+        filter: tokens.blur.blocked,
+        opacity: tokens.opacity.muted,
+        pointerEvents: 'none',
+        userSelect: 'none',
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: t.space[6],
+      }}
+    >
+      {children}
     </div>
   );
 }

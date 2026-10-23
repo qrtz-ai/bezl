@@ -1316,8 +1316,14 @@ impl Handler for AppService {
             Some("snap") => {
                 if channel == "snap:request-access" {
                     // The banner's button: qrtz-app asks (macOS adds qrtz to the list and prompts) and opens the
-                    // Accessibility pane; snap's view polls snap:status until it's on.
-                    let opened = crate::tcc::request("accessibility");
+                    // Accessibility pane; snap's view polls snap:status until it's on. Summon's gate asks for the
+                    // Input Monitoring pane (QRT-337; the watcher restarts qrtz-snap when it flips).
+                    let pane = match payload["pane"].as_str() {
+                        None | Some("accessibility") => "accessibility",
+                        Some("input-monitoring") => "input-monitoring",
+                        Some(_) => return Err(AppError::new(ErrorCode::Validation, "unknown settings pane")),
+                    };
+                    let opened = crate::tcc::request(pane);
                     return Ok(json!({"opened": opened, "axTrusted": crate::tcc::ax_trusted()}));
                 }
                 let mut st = self.snap.get().map_or_else(
@@ -1328,6 +1334,10 @@ impl Handler for AppService {
                 // process), so the live read here wins over a report from before the user switched qrtz on.
                 if st["running"].as_bool() == Some(true) && crate::tcc::ax_trusted() {
                     st["axTrusted"] = json!(true);
+                }
+                // Same for Input Monitoring (QRT-337); an older qrtz-snap doesn't report it at all.
+                if st["running"].as_bool() == Some(true) && crate::tcc::listen_granted() {
+                    st["inputMonitoring"] = json!(true);
                 }
                 Ok(st)
             }

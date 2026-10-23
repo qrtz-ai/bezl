@@ -9,6 +9,8 @@ const NOT_IN_STORIES: Record<string, string> = {
   ToastProvider: 'wraps every story in .storybook/preview.tsx',
   DragStrip: 'an invisible window drag region (aria-hidden), nothing to show',
   MenuEntry: 'one item of Menu and ActionMenu, shown in their stories',
+  Blocked:
+    'the blurred body of ModelRequired and PermissionRequired, shown in their stories',
 };
 
 const isComponent = (k: string, v: unknown) =>

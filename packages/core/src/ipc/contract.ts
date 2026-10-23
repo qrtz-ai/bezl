@@ -777,7 +777,10 @@ export const ipcContract = {
   'snap:request-access': defineChannel({
     version: 1,
     capability: 'snap.read',
-    request: z.void(),
+    /** No pane: accessibility. `input-monitoring`: summon's gate opens that pane (QRT-337). */
+    request: z
+      .object({ pane: z.enum(['accessibility', 'input-monitoring']) })
+      .optional(),
     response: z.object({ opened: z.boolean(), axTrusted: z.boolean() }),
   }),
   /**

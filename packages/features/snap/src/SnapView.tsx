@@ -4,7 +4,7 @@ import {
   ModuleSettingsButton,
   ModuleSettingsModal,
   Page,
-  PermissionPrompt,
+  PermissionRequired,
   Text,
 } from '@qrtz/ui';
 import { type SnapStatus } from '@qrtz/core';
@@ -65,6 +65,15 @@ export default function SnapView() {
     setWaiting(true);
     void qrtz.invoke('snap:request-access').then(load, () => {});
   };
+  // qrtz-app watches the Input Monitoring grant and restarts qrtz-snap when it flips, which reaches us as
+  // snap:changed: no poll here.
+  const [imWaiting, setImWaiting] = useState(false);
+  const askIm = () => {
+    setImWaiting(true);
+    void qrtz
+      .invoke('snap:request-access', { pane: 'input-monitoring' })
+      .then(load, () => setImWaiting(false));
+  };
 
   const optsModal = (
     <ModuleSettingsModal
@@ -105,15 +114,6 @@ export default function SnapView() {
           it starts when snap is on and qrtz is open.
         </Callout>
       ) : null}
-      {needsAx ? (
-        <PermissionPrompt
-          title="snap needs accessibility access"
-          pane="accessibility"
-          onOpen={askAx}
-          waiting={waiting}
-          data-testid="snap-no-ax"
-        />
-      ) : null}
       {settingsError ? (
         <Callout
           tone="danger"
@@ -122,18 +122,29 @@ export default function SnapView() {
         />
       ) : null}
       {settings ? (
-        <>
+        // Nothing in snap works without accessibility: its banner sits over the page, the rest blurred (like echo's
+        // speech model).
+        <PermissionRequired
+          granted={!needsAx}
+          title="snap needs accessibility access"
+          pane="accessibility"
+          onOpen={askAx}
+          waiting={waiting}
+          data-testid="snap-no-ax"
+        >
           <SummonSection
             summon={snap.summon ?? {}}
             status={status}
             onChange={(p) => set({ summon: { ...snap.summon, ...p } })}
+            onOpenInputMonitoring={askIm}
+            waiting={imWaiting && !status?.inputMonitoring}
           />
           <ShortcutSections
             shortcuts={snap.shortcuts}
             status={status}
             onChange={(shortcuts) => set({ shortcuts })}
           />
-        </>
+        </PermissionRequired>
       ) : null}
     </Page>
   );

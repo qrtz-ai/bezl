@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Button } from './Button';
 import { Callout } from './Callout';
+import { Blocked } from './ModelRequirement';
 import { Spinner } from './Spinner';
 import { useTheme } from './theme';
 
@@ -84,5 +85,29 @@ export function PermissionPrompt({
       </span>
       {children}
     </Callout>
+  );
+}
+
+/**
+ * ModelRequired's gate for a permission: until `granted`, the PermissionPrompt banner (its button opens the pane)
+ * sits over the children, blurred and inert.
+ */
+export function PermissionRequired({
+  granted,
+  children,
+  ...prompt
+}: Parameters<typeof PermissionPrompt>[0] & { granted: boolean }) {
+  const t = useTheme();
+  if (granted) return <>{children}</>;
+  const testId = prompt['data-testid'];
+  return (
+    <div
+      style={{ display: 'grid', gap: t.space[6], minWidth: 0, width: '100%' }}
+    >
+      <PermissionPrompt {...prompt} />
+      <Blocked data-testid={testId ? `${testId}-blocked` : undefined}>
+        {children}
+      </Blocked>
+    </div>
   );
 }

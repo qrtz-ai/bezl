@@ -79,7 +79,7 @@ pub fn ax_trusted() -> bool {
 }
 
 /// Ask for `pane` the way macOS wants it asked: the system prompt (which also adds qrtz to the list) for
-/// accessibility and screen recording, then the exact settings pane if it still isn't on. Returns whether the
+/// accessibility, screen recording and input monitoring, then the exact settings pane if it still isn't on. Returns whether the
 /// settings pane was opened. Off macOS nothing happens.
 pub fn request(pane: &str) -> bool {
     #[cfg(target_os = "macos")]
@@ -87,6 +87,8 @@ pub fn request(pane: &str) -> bool {
         let granted = match pane {
             "accessibility" => mac::ax_prompt(),
             "screen-recording" => mac::screen_request(),
+            // Re-adds qrtz to the list after the user removed it (opening the pane alone never does).
+            "input-monitoring" => mac::listen_request(),
             _ => false,
         };
         if granted {
