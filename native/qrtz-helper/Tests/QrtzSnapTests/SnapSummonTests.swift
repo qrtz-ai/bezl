@@ -25,14 +25,20 @@ final class SnapSummonTests: XCTestCase {
         XCTAssertFalse(flags(&f, 55, 0))
     }
 
-    func testDoesNotRefireWhileHeld() {
+    func testTappingOneCommandWhileTheOtherIsHeldToggles() {
         var f = F()
         _ = flags(&f, 55, l); _ = flags(&f, 54, both)
         XCTAssertTrue(flags(&f, 54, l))
-        // Right ⌘ again while left is still held: same chord, no second summon.
+        // Right ⌘ again while left is still held: a new chord, a second summon (back again).
+        XCTAssertFalse(flags(&f, 54, both))
+        XCTAssertTrue(flags(&f, 54, l))
+        XCTAssertFalse(flags(&f, 55, 0), "letting go of the held ⌘ fires nothing")
+        // A spoiled chord stays spoiled until both are up.
+        _ = flags(&f, 55, l); _ = flags(&f, 54, both)
+        _ = f.handle(type: F.keyDown, keyCode: 8, flags: both)
+        XCTAssertFalse(flags(&f, 54, l))
         XCTAssertFalse(flags(&f, 54, both))
         XCTAssertFalse(flags(&f, 54, l))
-        XCTAssertFalse(flags(&f, 55, 0))
     }
 
     func testSingleCommandNeverFires() {

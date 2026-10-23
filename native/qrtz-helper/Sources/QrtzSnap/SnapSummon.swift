@@ -47,10 +47,10 @@ public struct SummonChordFilter: Equatable, Sendable {
         if left && right { armed = true }
         var fire = false
         if armed, !(left && right) {
-            // The first ⌘ let go: the chord is over. Fire once; the other ⌘ still held can't refire.
+            // The first ⌘ let go: the chord is over. Fire once; pressing it again while the other ⌘ is still held
+            // is a new chord, so tapping one ⌘ toggles back and forth.
             fire = !spoiled
             armed = false
-            spoiled = true
         }
         if !left && !right {
             spoiled = false
