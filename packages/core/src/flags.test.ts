@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe('module flags', () => {
-  it('outside the packaged app: hides nothing and never calls PostHog', async () => {
+  it('outside a Tauri window: hides nothing and never calls PostHog', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const f = await flags();
@@ -19,9 +19,9 @@ describe('module flags', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('in the packaged app: hides every flagged module until PostHog answers, then only the ones off', async () => {
+  it('in a Tauri window: hides every flagged module until PostHog answers, then only the ones off', async () => {
     const store = new Map<string, string>();
-    vi.stubGlobal('location', { protocol: 'tauri:' });
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => store.get(k) ?? null,
       setItem: (k: string, v: string) => store.set(k, v),

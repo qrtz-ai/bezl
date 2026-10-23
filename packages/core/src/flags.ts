@@ -1,8 +1,8 @@
 import type { ModuleId } from './modules';
 
 /**
- * PostHog flags that show a module's app in the packaged app (sidebar, apps page); a flag that is off hides it.
- * Everything else (dev, the mock, tests, Storybook) shows every app and never calls PostHog.
+ * PostHog flags that show a module's app in the qrtz app, dev builds included (sidebar, apps page); a flag that is
+ * off hides it. The browser mock, tests and Storybook show every app and never call PostHog.
  */
 export const MODULE_FLAGS: Readonly<Partial<Record<ModuleId, string>>> = {
   nano: 'app-nano',
@@ -15,9 +15,9 @@ const PROJECT_KEY = 'phc_yMoAAa3n6T9tWaDSzjqWexpP7gQqKo3fxTe7XS9TD2CT';
 const ON_KEY = 'qrtz.flagsOn';
 const ID_KEY = 'qrtz.flagsId';
 
-// Only the packaged app loads from tauri://localhost.
+// Any real qrtz window, dev included; the browser mock, Storybook and tests have no Tauri runtime.
 const applies = () =>
-  typeof location !== 'undefined' && location.protocol === 'tauri:';
+  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 function read(key: string): string | null {
   try {
