@@ -8,7 +8,6 @@ import {
   DecisionModelCard,
   EmptyState,
   Input,
-  ModuleSettingsButton,
   ModuleSettingsModal,
   Page,
   RunHistory,
@@ -16,7 +15,6 @@ import {
   SettingsSection,
   Stack,
   StopBar,
-  Text,
   useUserError,
   ErrorCallout,
 } from '@qrtz/ui';
@@ -217,22 +215,7 @@ export default function CtrlView() {
     </>
   );
   return (
-    <Page
-      data-testid="ctrl"
-      title="ctrl"
-      actions={
-        <>
-          <Text variant="caption" muted truncate>
-            does it on your screen · esc stops it
-          </Text>
-          <ModuleSettingsButton
-            module="ctrl"
-            onClick={() => setSettingsOpen(true)}
-            data-testid="ctrl-settings-open"
-          />
-        </>
-      }
-    >
+    <Page data-testid="ctrl">
       <ErrorCallout error={error} onDismiss={clear} data-testid="ctrl-error" />
       {optsModal}
       {model ? (

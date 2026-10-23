@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { AppFrame, Page, SideNav, ThemeProvider } from './index';
 
 describe('window drag regions (tauri)', () => {
-  it('the frame has an invisible fixed drag strip; the empty sidebar and header drag; rows never do', async () => {
+  it('the frame has an invisible fixed drag strip; the empty sidebar drags; rows never do', async () => {
     const el = document.createElement('div');
     document.body.appendChild(el);
     const root = createRoot(el);
@@ -21,7 +21,7 @@ describe('window drag regions (tauri)', () => {
               />
             }
           >
-            <Page title="apps">x</Page>
+            <Page>x</Page>
           </AppFrame>
         </ThemeProvider>,
       ),
@@ -34,11 +34,8 @@ describe('window drag regions (tauri)', () => {
     expect(
       el.querySelector('nav')!.getAttribute('data-tauri-drag-region'),
     ).toBe('');
-    expect(
-      el
-        .querySelector('[data-page-header]')!
-        .getAttribute('data-tauri-drag-region'),
-    ).toBe('');
+    // Pages have no header row of their own.
+    expect(el.querySelector('[data-page-header]')).toBeNull();
     expect(
       el
         .querySelector('[data-testid="nav-apps"]')!

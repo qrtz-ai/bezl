@@ -462,9 +462,9 @@ test("talk: echo's own settings have a toggle for every automatic behaviour; eac
   page,
 }) => {
   await page.goto('/?dev=1');
-  // ADR 0146 M1.4: echo's settings live in echo's view, behind the gear.
+  // ADR 0146 M1.4: echo's settings are echo's own, behind its sidebar row's ⋯.
   await tab(page, 'talk').click();
-  await page.getByTestId('talk-settings-open').click();
+  await page.getByTestId('nav-talk-opts').click();
   const keys: [string, string][] = [
     ['talk-enabled', 'enabled'],
     ['talk-warm-mic', 'warmMic'],

@@ -37,13 +37,13 @@ test('connect calendar, see upcoming, pick calendars, turn it off', async ({
   if (test.info().project.name === 'chromium')
     expect(await axe(page, 'tauri-nano-upcoming')).toEqual([]);
 
-  await page.getByTestId('note-settings-open').click();
+  await page.getByTestId('nav-note-opts').click();
   const cal = page.getByTestId('note-settings-calendar');
   await expect(cal).toBeVisible();
   await cal.getByTestId('calendar-pick-cal-home').click();
   await page.getByTestId('note-settings-close').click();
   await expect(page.getByTestId('upcoming-event')).toHaveCount(1);
-  await page.getByTestId('note-settings-open').click();
+  await page.getByTestId('nav-note-opts').click();
   await page.getByTestId('calendar-enabled').click();
   await page.getByTestId('note-settings-close').click();
   await expect(page.getByTestId('upcoming-event')).toHaveCount(0);

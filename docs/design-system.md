@@ -77,5 +77,7 @@ always carries an accessible `label`. `Button icon=`, `IconButton icon=`, `Empty
 
 All main navigation lives in a left sidebar (`SideNav` in `AppFrame`): one icon + lowercase label row
 per view (the modules, then marketplace), with `settings` pinned to the
-sidebar's foot. There is no bottom bar. Content fills the rest of the window. Note is two panes: the meeting list (Record button, search toggle) on the left, the selected meeting on the right
+sidebar's foot. There is no bottom bar. Content fills the rest of the window. Pages have no title or header
+row: the first section starts at the top. An app's opts open from the ⋯ at the end of its sidebar row (shown on
+hover, on focus and on the active row); echo's dictate button and on/off switch are its first row. Note is two panes: the meeting list (Record button, search toggle) on the left, the selected meeting on the right
 (summary first, then notes and transcript one tab away). No explanatory copy: labels, glyphs and layout carry the UI.

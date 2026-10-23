@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Callout,
-  ModuleSettingsButton,
   ModuleSettingsModal,
   Page,
   PermissionRequired,
-  Text,
 } from '@qrtz/ui';
 import { type SnapStatus } from '@qrtz/core';
 import {
@@ -23,7 +21,7 @@ import SnapSettings, {
 
 /**
  * qrtz snap (ADR 0159): the summon agent and every Spectacle action with its editable shortcut are the main page.
- * Snap's opts modal (the gear) keeps only the menu bar item and the apps snap leaves alone. One settings read serves
+ * Snap's opts modal (its sidebar row's ⋯) keeps only the menu bar item and the apps snap leaves alone. One settings read serves
  * both, so a change on either side shows on the other.
  */
 export default function SnapView() {
@@ -88,22 +86,7 @@ export default function SnapView() {
     </ModuleSettingsModal>
   );
   return (
-    <Page
-      data-testid="snap"
-      title="snap"
-      actions={
-        <>
-          <Text variant="caption" muted truncate>
-            move and resize windows from the keyboard
-          </Text>
-          <ModuleSettingsButton
-            module="snap"
-            onClick={() => setSettingsOpen(true)}
-            data-testid="snap-settings-open"
-          />
-        </>
-      }
-    >
+    <Page data-testid="snap">
       {optsModal}
       {status && !status.running ? (
         <Callout

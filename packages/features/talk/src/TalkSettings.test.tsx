@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { act } from 'react';
+import { act, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
-import { QrtzClientProvider } from '@qrtz/core/react';
+import { QrtzClientProvider, SubAppRouteProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
 import { ThemeProvider } from '@qrtz/ui';
 import TalkView from './TalkView';
@@ -12,8 +12,20 @@ import TalkView from './TalkView';
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** The shell's route for this view: the sidebar ⋯ → opts puts it at `settings`. */
+let go: (path: string) => void = () => {};
+function Routed({ children }: { children: ReactNode }) {
+  const [path, setPath] = useState('');
+  go = setPath;
+  return (
+    <SubAppRouteProvider route={{ active: true, path, navigate: setPath }}>
+      {children}
+    </SubAppRouteProvider>
+  );
+}
+
 describe("echo's own settings (ADR 0146 M1.4)", () => {
-  it('open from the gear in echo, write only the talk section through module:set-settings, and close', async () => {
+  it('open from the sidebar ⋯ (the settings route), write only the talk section through module:set-settings, and close', async () => {
     const calls: { channel: string; req: unknown }[] = [];
     let talk: Record<string, unknown> = { showPill: true, pushKey: 'fn' };
     const client = {
@@ -40,7 +52,9 @@ describe("echo's own settings (ADR 0146 M1.4)", () => {
       root.render(
         <ThemeProvider mode="light">
           <QrtzClientProvider client={client}>
-            <TalkView />
+            <Routed>
+              <TalkView />
+            </Routed>
           </QrtzClientProvider>
         </ThemeProvider>,
       ),
@@ -54,7 +68,7 @@ describe("echo's own settings (ADR 0146 M1.4)", () => {
     await settle();
     expect(q('talk-settings')).toBeNull();
     expect(calls.some((c) => c.channel === 'module:get-settings')).toBe(false);
-    await act(async () => q('talk-settings-open')!.click());
+    await act(async () => go('settings'));
     await settle();
     expect(q('talk-settings')?.textContent).toContain('echo opts');
     expect(q('talk-show-pill')?.getAttribute('aria-checked')).toBe('true');

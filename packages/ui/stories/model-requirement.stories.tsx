@@ -166,7 +166,7 @@ const REQUIRED: [string, ModelRequiredProps][] = [
 
 function RequiredPage({ p }: { p: ModelRequiredProps }) {
   return (
-    <Page title={p.app}>
+    <Page>
       <ModelRequired {...p}>
         <FakeBody />
       </ModelRequired>

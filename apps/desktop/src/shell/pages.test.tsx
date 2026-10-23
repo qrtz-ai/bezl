@@ -48,22 +48,14 @@ describe('page layout', () => {
           await new Promise((r) => setTimeout(r, 20));
         });
       const pages = host()!.querySelectorAll('[data-page]');
-      // Exactly one page container per view, with its 40px header row first; nothing else sets page padding.
+      // Exactly one page container per view, with no title or header row; nothing else sets page padding.
       expect(pages).toHaveLength(1);
       const page = pages[0] as HTMLElement;
-      expect(page.firstElementChild?.hasAttribute('data-page-header')).toBe(
-        true,
-      );
+      expect(page.querySelector('[data-page-header]')).toBeNull();
+      expect(page.querySelector('h1')).toBeNull();
       expect(page.style.maxWidth).toBe('944px');
       expect(page.style.padding).toBe('40px 32px 48px');
       expect(page.style.overflowX).toBe('hidden');
-      const header = page.firstElementChild as HTMLElement;
-      expect(header.style.height).toBe('40px');
-      expect(header.querySelector('h1')).not.toBeNull();
-      // The qrtz page's two halves: "apps" and "qrtz" (opts), plain titles with no header actions.
-      if (path === '/qrtz') expect(header.textContent).toBe('apps');
-      if (path === '/qrtz/settings')
-        expect(header.querySelector('h1')?.textContent).toBe('qrtz');
       // The main area scrolls vertically only and never bounces.
       const main = el.querySelector<HTMLElement>('[data-scroll-root]')!;
       expect(main.style.overflowX).toBe('hidden');

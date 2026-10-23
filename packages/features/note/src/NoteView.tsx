@@ -13,7 +13,6 @@ import {
   Stack,
   useToast,
   SpeechRequired,
-  ModuleSettingsButton,
   ModuleSettingsModal,
   ErrorCallout,
   userError,
@@ -182,50 +181,7 @@ export default function NoteView() {
     session.phase === 'stopping' ||
     session.phase === 'processing';
   return (
-    <Page
-      data-testid="note-app"
-      title="nano"
-      actions={
-        <>
-          <Button
-            size="sm"
-            variant={notesPage ? 'primary' : 'ghost'}
-            onClick={() => navigate(notesPage ? '' : 'notes')}
-            data-testid="note-notes-toggle"
-            icon="edit"
-          >
-            {notesPage ? 'meetings' : 'notes'}
-          </Button>
-          {busy ? null : (
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!speechReady}
-              onClick={() => void act(qrtz.invoke('note:start', {}))}
-              data-testid="note-record-manual"
-              icon="circle"
-            >
-              record
-            </Button>
-          )}
-          <IconButton
-            icon="search"
-            label="search meetings"
-            pressed={searching}
-            data-testid="note-search-toggle"
-            onClick={() => {
-              if (searching) setQuery('');
-              setSearching(!searching);
-            }}
-          />
-          <ModuleSettingsButton
-            module="nano"
-            onClick={() => setSettingsOpen(true)}
-            data-testid="note-settings-open"
-          />
-        </>
-      }
-    >
+    <Page data-testid="note-app">
       {optsModal}
       <SpeechRequired
         app="nano"
@@ -240,6 +196,30 @@ export default function NoteView() {
           <SplitView
             sidebar={
               <>
+                <Stack dir="row" gap={1} align="center">
+                  {busy ? null : (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!speechReady}
+                      onClick={() => void act(qrtz.invoke('note:start', {}))}
+                      data-testid="note-record-manual"
+                      icon="circle"
+                    >
+                      record
+                    </Button>
+                  )}
+                  <IconButton
+                    icon="search"
+                    label="search meetings"
+                    pressed={searching}
+                    data-testid="note-search-toggle"
+                    onClick={() => {
+                      if (searching) setQuery('');
+                      setSearching(!searching);
+                    }}
+                  />
+                </Stack>
                 {searching ? (
                   <Input
                     autoFocus

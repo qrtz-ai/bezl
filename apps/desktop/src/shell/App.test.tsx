@@ -57,6 +57,12 @@ vi.mock('./subapps', async () => {
   };
 });
 
+// Routing only: every app switched on, experimental ones included (App.modules.test covers the switches).
+vi.mock('./useModuleSwitches', async () => {
+  const { defaultConfig } = await import('@qrtz/core');
+  return { useModuleSwitches: () => ({ modules: defaultConfig().modules }) };
+});
+
 const { routes } = await import('./App');
 
 async function boot(entry: string) {
@@ -152,12 +158,24 @@ describe('shell routing (ADR 0091)', () => {
     act(() => root.unmount());
   });
 
+  it("an app row's ⋯ opens that app's opts (its settings route)", async () => {
+    const { router, root, click } = await boot('/note');
+    await click('nav-talk-opts');
+    expect(router.state.location.pathname).toBe('/talk/settings');
+    act(() => root.unmount());
+  });
+
   it('the sidebar is the apps, then apps (a plus) as the last row of the list, and qrtz opts pinned to the bottom', async () => {
     const { el, root, q } = await boot('/');
-    const rows = [...el.querySelectorAll('nav [data-testid^="nav-"]')].map(
-      (b) => b.getAttribute('data-testid'),
-    );
+    const rows = [...el.querySelectorAll('nav [data-testid^="nav-"]')]
+      .map((b) => b.getAttribute('data-testid'))
+      .filter((id) => !/^nav-.+-opts$/.test(id ?? ''));
     expect(rows).toEqual(['nav-note', 'nav-talk', 'nav-apps', 'nav-opts']);
+    // Each app row has a ⋯ for its opts; apps and qrtz have none.
+    expect(q('nav-note-opts')).not.toBeNull();
+    expect(q('nav-talk-opts')).not.toBeNull();
+    expect(q('nav-apps-opts')).toBeNull();
+    expect(q('nav-opts-opts')).toBeNull();
     expect(q('nav-apps')!.textContent).toBe('apps');
     expect(q('nav-apps')!.querySelector('svg')).not.toBeNull();
     expect(q('nav-opts')!.textContent).toBe('qrtz');

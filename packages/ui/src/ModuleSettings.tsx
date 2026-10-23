@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { IconButton } from './Layout';
 import { Modal } from './Modal';
 import { Text } from './Text';
 import { useTheme } from './theme';
@@ -45,26 +44,6 @@ export function ModuleSettingsModal({
         {children}
       </div>
     </Modal>
-  );
-}
-
-/** The gear that opens a module's opts modal from its view. */
-export function ModuleSettingsButton({
-  module,
-  onClick,
-  'data-testid': testId,
-}: {
-  module: string;
-  onClick: () => void;
-  'data-testid'?: string;
-}) {
-  return (
-    <IconButton
-      icon="settings"
-      label={`${module} opts`}
-      onClick={onClick}
-      data-testid={testId}
-    />
   );
 }
 

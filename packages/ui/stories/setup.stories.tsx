@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   Button,
-  ModuleSettingsButton,
   ModuleSettingsEmpty,
   ModuleSettingsModal,
   OnboardingFrame,
@@ -127,9 +126,6 @@ export const ModuleOpts: S = {
   name: 'module opts',
   render: () => (
     <>
-      <Row label="button">
-        <ModuleSettingsButton module="echo" onClick={noop} />
-      </Row>
       <Frame height={360}>
         <ModuleSettingsModal module="echo" open onClose={noop}>
           <SettingRow label="add a space after">
@@ -150,7 +146,9 @@ function OptsModalDemo() {
   return (
     <Frame height={360}>
       <div style={{ padding: 24 }}>
-        <ModuleSettingsButton module="echo" onClick={() => setOpen(true)} />
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          open echo opts
+        </Button>
       </div>
       <ModuleSettingsModal
         module="echo"
@@ -190,7 +188,7 @@ function OptsModalDemo() {
   );
 }
 
-/** Click the gear: the opts modal opens over the view; esc, the scrim or the close button closes it. */
+/** Open it (in the app, the sidebar row's ⋯): the opts modal opens over the view; esc, the scrim or the close button closes it. */
 export const ModuleOptsModalDark: S = {
   name: 'module opts modal, dark',
   globals: { theme: 'dark' },

@@ -1,4 +1,5 @@
 import {
+  useState,
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
@@ -8,7 +9,6 @@ import {
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
-import { Heading } from './Heading';
 import { Icon, isIconName, type IconName } from './Icon';
 import { transition, typeStyle, type Tokens, tokens } from './tokens';
 import { lowerTitle } from './case';
@@ -175,6 +175,9 @@ export type SideNavItem = {
   /** A small dot after the label (ADR 0181: a qrtz update is ready); `dotLabel` names it for screen readers. */
   dot?: boolean;
   dotLabel?: string;
+  /** The app has opts: the ⋯ at the row's end opens them (SideNav `onOpts`), shown on hover, on focus and on the
+   * active row. */
+  opts?: boolean;
 };
 
 /**
@@ -191,10 +194,13 @@ export function SideNav({
   testIdPrefix = 'nav',
   embedded,
   width = SIDENAV_WIDTH,
+  onOpts,
 }: {
   items: SideNavItem[];
   active: string;
   onSelect: (id: string) => void;
+  /** Opens an `opts` row's opts (its ⋯). */
+  onOpts?: (id: string) => void;
   label?: string;
   testIdPrefix?: string;
   /** Inside a preview frame: no room left for the window controls. */
@@ -203,9 +209,12 @@ export function SideNav({
   width?: number;
 }) {
   const t = useTheme();
+  // The row the pointer or keyboard focus is in: its ⋯ shows (the active row's always does).
+  const [near, setNear] = useState<string | null>(null);
   const row = (it: SideNavItem) => {
     const on = it.id === active;
-    return (
+    const opts = it.opts && onOpts;
+    const button = (
       <button
         key={it.id}
         type="button"
@@ -222,7 +231,8 @@ export function SideNav({
           width: '100%',
           padding: `${t.space[1]} ${t.space[2]}`,
           borderRadius: t.radius.md,
-          background: on ? t.color.accent : 'transparent',
+          // An opts row draws its highlight on the wrapper, behind the ⋯ too.
+          background: on && !opts ? t.color.accent : 'transparent',
           color: on ? t.color.text : t.color.textMuted,
           transition: transition('background', 'hover', t),
         }}
@@ -247,6 +257,49 @@ export function SideNav({
           />
         ) : null}
       </button>
+    );
+    if (!opts) return button;
+    return (
+      <div
+        key={it.id}
+        onMouseEnter={() => setNear(it.id)}
+        onMouseLeave={() => setNear((n) => (n === it.id ? null : n))}
+        onFocus={() => setNear(it.id)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+            setNear((n) => (n === it.id ? null : n));
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          borderRadius: t.radius.md,
+          background: on ? t.color.accent : 'transparent',
+          transition: transition('background', 'hover', t),
+        }}
+      >
+        {button}
+        <button
+          type="button"
+          aria-label={`${it.label.toLowerCase()} opts`}
+          data-testid={`${testIdPrefix}-${it.id}-opts`}
+          onClick={() => onOpts(it.id)}
+          style={{
+            all: 'unset',
+            boxSizing: 'border-box',
+            cursor: 'pointer',
+            display: 'grid',
+            placeItems: 'center',
+            alignSelf: 'stretch',
+            padding: `0 ${t.space[2]}`,
+            borderRadius: t.radius.md,
+            color: t.color.textMuted,
+            opacity: on || near === it.id ? 1 : 0,
+            transition: transition('opacity', 'hover', t),
+          }}
+        >
+          <Icon name="more" size="sm" />
+        </button>
+      </div>
     );
   };
   const main = items.filter((i) => i.group !== 'foot');
@@ -290,103 +343,47 @@ export function SideNav({
 /**
  * The one page geometry every routed view shares, so nothing moves when you switch pages in the sidebar:
  * content column max 880px, centered in the main area; 40px top (level with the sidebar's first row), 32px
- * gutters, 48px bottom; a 40px header row (title left, actions right); 24px between sections. Pages never
- * scroll sideways (the AppFrame main scrolls vertically only and always reserves its scrollbar track, so a page
- * that overflows and one that doesn't have the same column).
+ * gutters, 48px bottom; 24px between sections. Pages have no title or header row: the first section starts at
+ * the top, and an app's opts are its sidebar row's ⋯. Pages never scroll sideways (the AppFrame main scrolls
+ * vertically only and always reserves its scrollbar track, so a page that overflows and one that doesn't have the
+ * same column).
  */
 export const PAGE = {
   maxWidth: tokens.layout.pageMax,
   padTop: tokens.layout.pagePadTop,
   gutter: tokens.layout.pageGutter,
   padBottom: tokens.layout.pagePadBottom,
-  headerHeight: tokens.layout.pageHeader,
   gap: tokens.space[6],
 } as const;
 
 /**
- * The shared page container. `title` is the page's h1 (lowercased; `preserveCase` for user content), `leading`
- * sits before it (a back button), `actions` on the right of the header row. Children are the page's sections.
- * Marks itself `data-page` (and its header `data-page-header`) so tests can check every route uses it.
+ * The shared page container. Children are the page's sections. Marks itself `data-page` so tests can check every
+ * route uses it.
  */
 export function Page({
   children,
-  title,
-  leading,
-  actions,
-  preserveCase,
-  inset,
   'data-testid': testId,
 }: {
   children?: ReactNode;
-  /** A page shown inside another page's column (nano's settings in its detail pane): same header row and
-   * section spacing, no outer padding or width of its own. */
-  inset?: boolean;
-  title: ReactNode;
-  leading?: ReactNode;
-  actions?: ReactNode;
-  preserveCase?: boolean;
   'data-testid'?: string;
 }) {
   return (
     <div
       data-testid={testId}
-      {...(inset ? { 'data-page-inset': '' } : { 'data-page': '' })}
+      data-page=""
       style={{
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         gap: PAGE.gap,
         width: '100%',
-        maxWidth: inset ? '100%' : PAGE.maxWidth + 2 * PAGE.gutter,
+        maxWidth: PAGE.maxWidth + 2 * PAGE.gutter,
         minWidth: 0,
-        margin: inset ? 0 : '0 auto',
-        padding: inset
-          ? 0
-          : `${PAGE.padTop}px ${PAGE.gutter}px ${PAGE.padBottom}px`,
+        margin: '0 auto',
+        padding: `${PAGE.padTop}px ${PAGE.gutter}px ${PAGE.padBottom}px`,
         overflowX: 'hidden',
       }}
     >
-      <header
-        data-page-header=""
-        // The empty part of the 40px header row drags the window like a title bar (title and actions don't).
-        {...(inset ? {} : { 'data-tauri-drag-region': '' })}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: tokens.space[2],
-          height: PAGE.headerHeight,
-          minHeight: PAGE.headerHeight,
-          flex: '0 0 auto',
-          minWidth: 0,
-        }}
-      >
-        {leading}
-        <Heading
-          {...(preserveCase ? { preserveCase } : {})}
-          style={{
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {title}
-        </Heading>
-        {actions ? (
-          <div
-            style={{
-              marginLeft: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: tokens.space[2],
-              minWidth: 0,
-              flex: '0 1 auto',
-            }}
-          >
-            {actions}
-          </div>
-        ) : null}
-      </header>
       {children}
     </div>
   );

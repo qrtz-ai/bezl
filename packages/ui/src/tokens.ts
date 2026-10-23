@@ -146,7 +146,6 @@ export const tokens = {
     pagePadTop: 40,
     pageGutter: 32,
     pagePadBottom: 48,
-    pageHeader: 40,
     splitSidebar: 240,
     notesSidebar: 200,
     notesMinHeight: 420,

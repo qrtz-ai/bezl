@@ -10,7 +10,6 @@ const PAGE = {
   maxWidth: 880,
   padTop: 40,
   gutter: 32,
-  headerHeight: 40,
   gap: 24,
 };
 
@@ -29,19 +28,19 @@ type Geo = {
   width: number;
   pageX: number;
   pageTop: number;
-  headerTop: number;
-  headerHeight: number;
+  firstTop: number;
   firstGap: number | null;
   scrollWidth: number;
   scrolls: boolean;
 };
 
-/** The content column of the visible page (its header row spans it) and the frame around it. */
+/** The content column of the visible page (its first section spans it; pages have no header row) and the frame
+ * around it. */
 const measure = (page: Page, root: string) =>
   page.evaluate((root): Geo => {
     const p = document.querySelector<HTMLElement>(root)!;
     const sr = p.closest<HTMLElement>('[data-scroll-root]')!;
-    const h = p.querySelector<HTMLElement>(':scope > [data-page-header]')!;
+    const h = p.firstElementChild as HTMLElement;
     const hr = h.getBoundingClientRect();
     const pr = p.getBoundingClientRect();
     const next = h.nextElementSibling?.getBoundingClientRect();
@@ -50,8 +49,7 @@ const measure = (page: Page, root: string) =>
       width: hr.width,
       pageX: pr.x,
       pageTop: pr.y + sr.scrollTop,
-      headerTop: hr.y + sr.scrollTop,
-      headerHeight: hr.height,
+      firstTop: hr.y + sr.scrollTop,
       firstGap: next ? next.y - hr.bottom : null,
       scrollWidth: sr.clientWidth,
       scrolls: sr.scrollHeight > sr.clientHeight,
@@ -85,8 +83,7 @@ async function both(page: Page, root: string, name: string) {
 }
 
 function shape(g: Geo, name: string) {
-  expect(g.headerHeight, `${name} header row`).toBe(PAGE.headerHeight);
-  expect(g.headerTop - g.pageTop, `${name} top padding`).toBe(PAGE.padTop);
+  expect(g.firstTop - g.pageTop, `${name} top padding`).toBe(PAGE.padTop);
   expect(g.x - g.pageX, `${name} gutter`).toBe(PAGE.gutter);
   expect(g.width, `${name} column`).toBe(
     Math.min(PAGE.maxWidth, g.scrollWidth - 2 * PAGE.gutter),

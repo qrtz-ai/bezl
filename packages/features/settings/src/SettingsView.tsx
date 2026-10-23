@@ -166,7 +166,7 @@ export default function SettingsView() {
   );
   return (
     // The opts page: qrtz's own opts, pinned to the bottom of the sidebar under apps.
-    <Page title="qrtz" data-testid="settings">
+    <Page data-testid="settings">
       {error ? (
         <ErrorCallout
           error={error}

@@ -119,40 +119,35 @@ export default function DashView() {
   const pending = view?.agents.filter((a) => a.status === 'pending') ?? [];
   const live = view?.agents.filter((a) => a.status === 'approved') ?? [];
   return (
-    <Page
-      data-testid="dash"
-      title="dash"
-      actions={
-        <>
-          <Text variant="caption" muted truncate>
-            what your agents are doing, read-only
-          </Text>
-          {view && !view.deleted ? (
-            <>
-              {offline ? (
-                <Text variant="caption" muted data-testid="dash-not-connected">
-                  agents can't enroll until a server is connected
-                </Text>
-              ) : copied ? (
-                <Text variant="caption" muted data-testid="dash-copied">
-                  copied
-                </Text>
-              ) : null}
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="copy"
-                onClick={copyPrompt}
-                disabled={offline}
-                data-testid="dash-copy-prompt"
-              >
-                copy prompt
-              </Button>
-            </>
-          ) : null}
-        </>
-      }
-    >
+    <Page data-testid="dash">
+      <Stack dir="row" gap={2} align="center">
+        <Text variant="caption" muted truncate>
+          what your agents are doing, read-only
+        </Text>
+        {view && !view.deleted ? (
+          <>
+            {offline ? (
+              <Text variant="caption" muted data-testid="dash-not-connected">
+                agents can't enroll until a server is connected
+              </Text>
+            ) : copied ? (
+              <Text variant="caption" muted data-testid="dash-copied">
+                copied
+              </Text>
+            ) : null}
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="copy"
+              onClick={copyPrompt}
+              disabled={offline}
+              data-testid="dash-copy-prompt"
+            >
+              copy prompt
+            </Button>
+          </>
+        ) : null}
+      </Stack>
       {view?.deleted ? (
         <Callout tone="info" title="this dashboard was deleted">
           agents writing to it are told to stop.

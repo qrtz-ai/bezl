@@ -260,13 +260,13 @@ export const PageLayout: S = {
     return (
       <>
         <Text muted>
-          every page: a {PAGE.maxWidth}px column, a {PAGE.headerHeight}px header
-          row, {PAGE.gutter}px gutters, {PAGE.padTop}px top padding and{' '}
-          {PAGE.gap}px between sections.
+          every page: a {PAGE.maxWidth}px column, no title row, {PAGE.gutter}px
+          gutters, {PAGE.padTop}px top padding and {PAGE.gap}px between
+          sections.
         </Text>
         <div style={{ height: 16 }} />
         <Frame height={420}>
-          <Page title="page title">
+          <Page>
             <div style={{ outline: guide, padding: 12 }}>
               <Text>section one</Text>
             </div>

@@ -21,7 +21,12 @@ import {
   ToastProvider,
   type SideNavItem,
 } from '@qrtz/ui';
-import { isViewOn, onNavigateRequest } from '@qrtz/core';
+import {
+  SETTINGS_PATH,
+  isViewOn,
+  moduleOfView,
+  onNavigateRequest,
+} from '@qrtz/core';
 import type { SubAppRoute } from '@qrtz/core/react';
 import { registry } from './subapps';
 import { APPS, OPTS, isReservedNav } from './routes';
@@ -61,7 +66,8 @@ export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
 
 /**
  * The sidebar: the apps in registry order (echo, nano, ctrl, snap) at the top, then "apps" (the app manager at
- * /qrtz, a plus icon); pinned to the bottom "qrtz" (qrtz's own opts at /qrtz/settings, plain text).
+ * /qrtz, a plus icon); pinned to the bottom "qrtz" (qrtz's own opts at /qrtz/settings, plain text). An app
+ * row's ⋯ opens that app's opts (its view at `settings`); apps have no header row of their own.
  */
 export function sidebarItems(
   visible: readonly { manifest: { id: string; name: string; icon?: string } }[],
@@ -78,6 +84,7 @@ export function sidebarItems(
       id: manifest.id,
       label: manifest.name,
       ...(manifest.icon ? { icon: manifest.icon } : {}),
+      ...(moduleOfView(manifest.id) ? { opts: true } : {}),
       group: SIDEBAR_FOOT.has(manifest.id)
         ? ('foot' as const)
         : ('main' as const),
@@ -266,6 +273,7 @@ export function Shell() {
               items={sidebarItems(visible, updateDot)}
               active={sidebarActive(page, pageSub)}
               onSelect={selectApp}
+              onOpts={(id) => void navigate(joinRoute(id, SETTINGS_PATH))}
             />
           }
         >

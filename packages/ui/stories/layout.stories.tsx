@@ -36,10 +36,10 @@ function ShellDemo() {
             embedded
             label="apps"
             items={[
-              { id: 'echo', label: 'echo', icon: 'mic' },
-              { id: 'nano', label: 'nano', icon: 'edit-3' },
-              { id: 'ctrl', label: 'ctrl', icon: 'command' },
-              { id: 'snap', label: 'snap', icon: 'layout' },
+              { id: 'echo', label: 'echo', icon: 'mic', opts: true },
+              { id: 'nano', label: 'nano', icon: 'edit-3', opts: true },
+              { id: 'ctrl', label: 'ctrl', icon: 'command', opts: true },
+              { id: 'snap', label: 'snap', icon: 'layout', opts: true },
               { id: 'apps', label: 'apps', group: 'foot' },
               {
                 id: 'opts',
@@ -51,13 +51,15 @@ function ShellDemo() {
             ]}
             active={bar}
             onSelect={setBar}
+            onOpts={() => {}}
           />
         }
       >
-        <Page title={bar}>
+        <Page>
           <Text muted>
-            the {bar} page, in the shared page layout. the side nav is{' '}
-            {SIDENAV_WIDTH}px wide.
+            the {bar} page, in the shared page layout: no title row, its opts
+            are the sidebar row&apos;s ⋯. the side nav is {SIDENAV_WIDTH}px
+            wide.
           </Text>
         </Page>
       </AppFrame>
@@ -73,16 +75,8 @@ export const PageStory: S = {
   name: 'page',
   render: () => (
     <Frame height={300}>
-      <Page
-        title="meetings"
-        leading={<IconButton icon="back" label="back" onClick={() => {}} />}
-        actions={
-          <Button size="sm" icon="circle">
-            record
-          </Button>
-        }
-      >
-        <Text>sections sit 24px apart.</Text>
+      <Page>
+        <Text>sections sit 24px apart, the first at the top.</Text>
         <Text muted>a second section.</Text>
       </Page>
     </Frame>

@@ -131,7 +131,7 @@ export function ShortcutSections({
 }
 
 /**
- * ADR 0159: snap's opts modal (the gear): the menu bar item, the apps snap leaves alone and restore all. The
+ * ADR 0159: snap's opts modal (its sidebar row's ⋯): the menu bar item, the apps snap leaves alone and restore all. The
  * shortcuts and summon live on snap's main page.
  */
 export default function SnapSettings({

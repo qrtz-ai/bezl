@@ -148,12 +148,13 @@ describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
     expect(q('qrtz-installed')!.contains(q('marketplace-index'))).toBe(false);
   });
 
-  it('lists installed apps in short rows under the shared "apps" header, without going online', async () => {
+  it('lists installed apps in short rows, without going online', async () => {
     const f = fake();
     await render(f.client);
     expect(primaryButtons(document.body)).toBeLessThanOrEqual(1);
     const page = q('qrtz-page')!;
-    expect(page.querySelector('h1')?.textContent).toBe('apps');
+    // Pages have no title row: the sidebar's "apps" row names it.
+    expect(page.querySelector('h1')).toBeNull();
     // opts is its own sidebar row now: no gear on the apps page.
     expect(q('qrtz-settings-open')).toBeNull();
     for (const n of ['echo', 'nano', 'ctrl'])

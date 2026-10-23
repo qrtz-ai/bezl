@@ -728,7 +728,7 @@ export default function MarketplaceView() {
   ) : null;
 
   return (
-    <Page data-testid="qrtz-page" title="apps">
+    <Page data-testid="qrtz-page">
       {soonBox}
       {unavailableBox}
       {errorBox}

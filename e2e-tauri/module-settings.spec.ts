@@ -39,7 +39,7 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   // echo
   await page.getByTestId('nav-talk').click();
   const echo = page.locator('[data-subapp="talk"]');
-  await echo.getByTestId('talk-settings-open').click();
+  await page.getByTestId('nav-talk-opts').click();
   const echoPage = echo.getByTestId('talk-settings');
   await expect(echoPage.getByText('echo opts')).toBeVisible();
   await expect(echoPage.getByTestId('auto-record')).toHaveCount(0);
@@ -50,12 +50,12 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
     expect(await axe(page, 'tauri-echo-settings')).toEqual([]);
   await echoPage.getByTestId('talk-settings-close').click();
   await expect(echo.getByTestId('talk-settings')).toHaveCount(0);
-  await expect(echo.getByTestId('talk-toggle')).toBeVisible();
+  await expect(echo.getByTestId('talk')).toBeVisible();
 
   // nano: opts open in a modal over the view (QRT-267); the meeting list and record stay underneath.
   await page.getByTestId('nav-note').click();
   const nano = page.locator('[data-subapp="note"]');
-  await nano.getByTestId('note-settings-open').click();
+  await page.getByTestId('nav-note-opts').click();
   const nanoPage = nano.getByTestId('note-settings');
   await expect(nanoPage.getByText('nano opts')).toBeVisible();
   await expect(nanoPage).toHaveAttribute('role', 'dialog');
@@ -78,7 +78,7 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   // ctrl
   await page.getByTestId('nav-ctrl').click();
   const ctrl = page.locator('[data-subapp="ctrl"]');
-  await ctrl.getByTestId('ctrl-settings-open').click();
+  await page.getByTestId('nav-ctrl-opts').click();
   await expect(
     ctrl.getByTestId('ctrl-settings').getByTestId('module-settings-empty'),
   ).toBeVisible();

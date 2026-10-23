@@ -2,10 +2,10 @@
 // nano's opts take over the whole page, like echo's and ctrl's (ADR 0146 M1.4; Jared, 0.2.4): the meeting list,
 // the hud and the record prompt are gone while they're open and back on close.
 import { describe, expect, it } from 'vitest';
-import { act } from 'react';
+import { act, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
-import { QrtzClientProvider } from '@qrtz/core/react';
+import { QrtzClientProvider, SubAppRouteProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
 import { primaryButtons, ThemeProvider } from '@qrtz/ui';
 import NoteView from './NoteView';
@@ -13,6 +13,18 @@ import NoteView from './NoteView';
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** The shell's route for this view: the sidebar ⋯ → opts puts it at `settings`. */
+let go: (path: string) => void = () => {};
+function Routed({ children }: { children: ReactNode }) {
+  const [path, setPath] = useState('');
+  go = setPath;
+  return (
+    <SubAppRouteProvider route={{ active: true, path, navigate: setPath }}>
+      {children}
+    </SubAppRouteProvider>
+  );
+}
 
 async function mount(calls: { channel: string; req: unknown }[] = []) {
   const client = {
@@ -31,7 +43,9 @@ async function mount(calls: { channel: string; req: unknown }[] = []) {
     root.render(
       <ThemeProvider mode="light">
         <QrtzClientProvider client={client}>
-          <NoteView />
+          <Routed>
+            <NoteView />
+          </Routed>
         </QrtzClientProvider>
       </ThemeProvider>,
     ),
@@ -51,7 +65,7 @@ describe("nano's opts", () => {
   it('open in a modal over the view and close on the button, esc and the scrim', async () => {
     const v = await mount();
     expect(v.q('note-app')).not.toBeNull();
-    await act(async () => v.q('note-settings-open')!.click());
+    await act(async () => go('settings'));
     await v.settle();
     const dialog = v.q('note-settings')!;
     expect(dialog).not.toBeNull();
@@ -65,7 +79,7 @@ describe("nano's opts", () => {
     await v.settle();
     expect(v.q('note-settings')).toBeNull();
 
-    await act(async () => v.q('note-settings-open')!.click());
+    await act(async () => go('settings'));
     await v.settle();
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -73,7 +87,7 @@ describe("nano's opts", () => {
     await v.settle();
     expect(v.q('note-settings')).toBeNull();
 
-    await act(async () => v.q('note-settings-open')!.click());
+    await act(async () => go('settings'));
     await v.settle();
     const scrim = v.q('note-settings-scrim')!;
     await act(async () => {

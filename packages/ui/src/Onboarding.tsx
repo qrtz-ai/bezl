@@ -4,13 +4,15 @@ import { Badge, type BadgeTone } from './Badge';
 import { Button } from './Button';
 import { Icon, type IconName } from './Icon';
 import { DragStrip, Page } from './Layout';
+import { Heading } from './Heading';
 import { Text } from './Text';
 import { useTheme } from './theme';
 
 /**
  * ADR 0184: the first-run permissions onboarding's window. It takes the whole window (no sidebar: it shows before
- * the qrtz page), keeps the window drag strip, and holds one shared-geometry `Page` (880px column, 40px header row,
- * 32px gutters, 40px top, 24px between sections). It scrolls vertically only.
+ * the qrtz page), keeps the window drag strip, and holds one shared-geometry `Page` (880px column, 32px gutters,
+ * 40px top, 24px between sections) whose first row is the step's heading and its actions. It scrolls vertically
+ * only.
  */
 export function OnboardingFrame({
   title,
@@ -19,7 +21,7 @@ export function OnboardingFrame({
   'data-testid': testId,
 }: {
   title: string;
-  /** Right of the header row (skip). */
+  /** Right of the heading (skip). */
   actions?: ReactNode;
   children: ReactNode;
   'data-testid'?: string;
@@ -47,7 +49,29 @@ export function OnboardingFrame({
           scrollbarGutter: 'stable',
         }}
       >
-        <Page title={title} actions={actions}>
+        <Page>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: t.space[2],
+              minWidth: 0,
+            }}
+          >
+            <Heading>{title}</Heading>
+            {actions ? (
+              <div
+                style={{
+                  marginLeft: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: t.space[2],
+                }}
+              >
+                {actions}
+              </div>
+            ) : null}
+          </div>
           {children}
         </Page>
       </main>
