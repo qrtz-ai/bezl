@@ -45,7 +45,7 @@ run() {
 # shellcheck source=scripts/release/stapler-retry.sh
 source "$ROOT/scripts/release/stapler-retry.sh"
 staple_validate() { # path (dry run prints the plain command; real runs retry network drops, QRT-354)
-  if [ "$DRY" = 1 ]; then run xcrun stapler validate "$1"; else stapler_retry validate "$1"; fi
+  if [ "$DRY" = 1 ]; then run xcrun stapler validate "$1"; else stapler_retry "$1" validate; fi
 }
 
 while [ $# -gt 0 ]; do

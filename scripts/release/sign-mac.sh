@@ -104,7 +104,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 ditto -c -k --keepParent --sequesterRsrc "$app" "$work/qrtz.zip"
 bash "$repo/scripts/release/notarize.sh" "$work/qrtz.zip" "$profile"
-stapler_retry staple "$app"
+stapler_retry "$app" staple validate
 spctl --assess --type execute --verbose=2 "$app"
 
 echo "== the .dmg"
@@ -115,8 +115,8 @@ mkdir "$work/dmg" && ditto "$app" "$work/dmg/qrtz.app" && ln -s /Applications "$
 hdiutil create -volname qrtz -srcfolder "$work/dmg" -ov -format UDZO "$dmg" >/dev/null
 codesign --force --timestamp --sign "$identity" "$dmg"
 bash "$repo/scripts/release/notarize.sh" "$dmg" "$profile"
-stapler_retry staple "$dmg"
-stapler_retry validate "$app" && stapler_retry validate "$dmg"
+stapler_retry "$dmg" staple validate
+stapler_retry "$app" validate && stapler_retry "$dmg" validate
 spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
 "$macos/qrtz" --help >/dev/null && echo "  qrtz --help: ok"
 echo "done: $app and $dmg"
