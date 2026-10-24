@@ -11,12 +11,18 @@
     "designatedRequirement": "identifier \"ai.qrtz.ctrl\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"MR26CCZ496\""
   },
   "launch": {
-    "kind": "package",
-    "entry": "bin/qrtz-ctrl",
+    "kind": "bundled-helper",
+    "entry": "qrtz-ctrl",
     "channels": ["ctrl.*"]
   },
   "views": ["ctrl"],
-  "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
+  "capabilities": [
+    "ctrl.read",
+    "ctrl.write",
+    "config.read",
+    "config.write",
+    "module.settings"
+  ],
   "permissions": ["accessibility"],
   "entitlements": [],
   "settings": {

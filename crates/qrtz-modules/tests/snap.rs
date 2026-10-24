@@ -29,9 +29,9 @@ fn the_bundled_manifest_qrtz_json_and_lock_agree() {
     assert_eq!(q.name, m.id);
     assert_eq!(q.version, m.version);
     assert_eq!(q.kind, PackageKind::Extension);
-    // ADR 0169: the module's helper is its package's own executable.
-    assert_eq!(m.launch.kind, qrtz_modules::manifest::LaunchKind::Package);
-    assert_eq!(ext.entry, m.launch.entry);
+    // ADR 0237: snap ships inside qrtz.app as Contents/MacOS/qrtz-snap; its old package entry kept the same name.
+    assert_eq!(m.launch.kind, qrtz_modules::manifest::LaunchKind::BundledHelper);
+    assert_eq!(ext.entry, format!("bin/{}", m.launch.entry));
     assert_eq!(ext.channels, m.launch.channels);
     assert_eq!(ext.views, m.views);
     assert_eq!(ext.capabilities, m.capabilities);
