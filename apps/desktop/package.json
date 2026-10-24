@@ -1,7 +1,7 @@
 {
   "name": "@qrtz/desktop",
   "productName": "qrtz",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "qrtz desktop app (Tauri 2 + Rust core)",
   "license": "AGPL-3.0-only",

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.3.5 (2026-10-23)
+
+- Fix: echo never rewrites a whole field's text in Slate-based editors (it inserts at the caret instead), and never pastes a second copy after a step that already put the text in.
 - Fix: the echo bubble follows you onto a screen plugged in after qrtz started.
 
 ## 0.3.4 (2026-10-23)
