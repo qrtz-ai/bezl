@@ -306,14 +306,17 @@ mod layout_tests {
 
     #[test]
     fn the_installed_layout_takes_no_path_from_a_release_environment() {
-        let get = |k: &str| (k == "QRTZ_SNAP_BIN").then(|| "/tmp/evil".to_owned());
+        // ADR 0237: every first-party helper is bundled; no `QRTZ_<ID>_BIN` may point one elsewhere.
+        let get = |k: &str| k.ends_with("_BIN").then(|| "/tmp/evil".to_owned());
         let data = std::path::Path::new("/data");
         assert_eq!(
             super::installed_layout_from(data, std::path::Path::new("/app/MacOS"), false, get),
             HelperLayout::Installed {
                 root: data.into(),
                 programs: Default::default(),
-                bundled: [("echo".to_owned(), "/app/MacOS/qrtz-echo".into())].into(),
+                bundled: ["echo", "nano", "ctrl", "snap"]
+                    .map(|id| (id.to_owned(), format!("/app/MacOS/qrtz-{id}").into()))
+                    .into(),
             }
         );
         let HelperLayout::Installed { programs, .. } =

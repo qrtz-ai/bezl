@@ -152,7 +152,7 @@ async fn sub_app_capability_matrix() {
             json!({"permission": "microphone"}),
             true,
         ),
-        ("dash", "config:set", json!({"patch": {}}), false),
+        ("note", "config:set", json!({"patch": {}}), false),
         ("gallery", "note:list", json!({"query": ""}), false),
         ("settings", "config:set", json!({"patch": {}}), true),
         ("settings", "note:delete", json!({"id": "m"}), false),

@@ -131,9 +131,9 @@ Gated paths (signing, release, entitlements, permissions, process spawning, vers
 ### Frontend
 
 - `packages/core/src/modules.ts` + `modules.test.ts`: sidebar visibility for bundled modules (echo's `isViewOn`
-  rule: row shows while off, the view holds the switch).
-- `packages/features/{note,ctrl,snap}`: the view's off-state holds the switch and, for nano/ctrl, asks once to download
-  the models (as `TalkView.tsx` does for Parakeet). Remove "install from marketplace" states.
+  rule: row shows while off; only echo's view holds the switch).
+- `packages/features/{note,ctrl,snap}`: deferred (no `config.write` for these views; their views keep their capabilities). Later: an
+  off-state that, for nano/ctrl, asks once to download the models (as `TalkView.tsx` does for Parakeet). Remove "install from marketplace" states.
 - Marketplace view: drop the first-party listings.
 
 ### Publishing and hosting
@@ -180,7 +180,9 @@ Screen recording and Accessibility are TCC grants, not entitlements, and stay pr
 c. **nano and ctrl stay experimental.** The `experimentalApps` gate stays the primary barrier: with it off, the host
 never spawns either helper, whatever `modules.<id>.enabled` says. Test:
 `e2e_split_host::a_fresh_install_never_spawns_nano_or_ctrl` (no config, and experimental apps off with both switched
-on) plus `modules::the_bundled_nano_ctrl_and_snap_views_hold_only_their_own_switch`.
+on) plus `modules::the_bundled_nano_ctrl_and_snap_views_cannot_write_config`. Their views keep their capabilities:
+none gains `config.write` (only echo's `talk` view holds its switch); the switch stays in the marketplace and
+settings until an in-view switch is reviewed on its own.
 d. **Name squatting.** A package named `echo`, `nano`, `ctrl` or `snap` is refused from an index, from a lock and from
 a sideload (`InstallError::Bundled`; `packages:plan` says it is built into qrtz.app). Test:
 `module_hosting::a_package_named_like_a_bundled_module_is_refused_from_an_index_and_a_sideload`.

@@ -16,13 +16,7 @@
     "channels": ["ctrl.*"]
   },
   "views": ["ctrl"],
-  "capabilities": [
-    "ctrl.read",
-    "ctrl.write",
-    "config.read",
-    "config.write",
-    "module.settings"
-  ],
+  "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
   "permissions": ["accessibility"],
   "entitlements": [],
   "settings": {

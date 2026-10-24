@@ -38,7 +38,7 @@ const { routes } = await import('./App');
 
 describe('module switches (ADR 0146)', () => {
   // ADR 0237: every first-party module is built into qrtz.app, so a switched-off one keeps its tab and its route:
-  // its view shows the off state and holds the switch (as bundled echo's did since ADR 0174).
+  // its view shows the off state (its switch stays in the marketplace and settings; only echo's view holds one).
   it('a switched-off bundled module keeps its tab and its route', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/note/meetings/m1'],

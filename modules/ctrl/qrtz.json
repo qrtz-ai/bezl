@@ -12,13 +12,7 @@
     "minApp": "0.2.0",
     "channels": ["ctrl.*"],
     "views": ["ctrl"],
-    "capabilities": [
-      "ctrl.read",
-      "ctrl.write",
-      "config.read",
-      "config.write",
-      "module.settings"
-    ],
+    "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
     "permissions": ["accessibility"],
     "settings": { "namespace": "ctrl", "legacySections": [] },
     "reads": ["model.laya"]

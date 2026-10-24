@@ -30,8 +30,6 @@
       "doc.read",
       "os.permissions",
       "speech.read",
-      "config.read",
-      "config.write",
       "module.settings"
     ],
     "permissions": ["microphone", "screen-recording", "accessibility"],

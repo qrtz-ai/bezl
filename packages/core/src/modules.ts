@@ -169,7 +169,8 @@ export function isModuleInstalled(
 
 /**
  * ADR 0174, ADR 0237: the modules qrtz.app carries itself (all four first-party apps). Always installed, never in the marketplace; their view
- * stays in the sidebar while they are off and holds their on/off switch. Same list as qrtz-modules
+ * stays in the sidebar while they are off (only echo's view holds its on/off switch; ADR 0237 gave nano, ctrl and
+ * snap no `config.write`). Same list as qrtz-modules
  * `BUNDLED_EXTENSIONS`.
  */
 export const BUNDLED_MODULES: readonly ModuleId[] = [

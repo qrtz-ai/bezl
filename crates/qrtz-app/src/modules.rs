@@ -75,7 +75,7 @@ pub fn gate(cfg: &Value, sub_app: &str, channel: &str) -> Result<(), AppError> {
         return Ok(());
     }
     if let Some(m) = module_of_view(sub_app) {
-        // ADR 0174: a bundled module's view stays in the sidebar while it is off and holds its own switch, so it
+        // ADR 0174: a bundled module's view stays in the sidebar while it is off (echo's also holds its switch), so it
         // may read the status of the models switching it on would download.
         let bundled_status = qrtz_modules::is_bundled_extension(m) && channel == "speech:status";
         if !(g.is_on(m) || bundled_status) {
@@ -295,11 +295,24 @@ mod tests {
         }
     }
 
-    /// ADR 0237: nano, ctrl and snap are bundled like echo. Each view holds exactly its own module's switch (never
-    /// another's, never anything else in config), and while off it may still read the speech status but nothing of
-    /// its module. Switching nano or ctrl on from its view doesn't run it while experimental apps is off.
+    /// ADR 0237: nano, ctrl and snap are bundled like echo, but their views keep the capabilities they had: none
+    /// holds `config.write`, so the router refuses any `config:set` from them (E_FORBIDDEN) before the host's
+    /// own-switch rule is reached. That rule still narrows any patch to the view's own switch, as defence in depth.
+    /// While off, each view may still read the speech status but nothing of its module, and nano or ctrl switched on
+    /// doesn't run while experimental apps is off.
     #[test]
-    fn the_bundled_nano_ctrl_and_snap_views_hold_only_their_own_switch() {
+    fn the_bundled_nano_ctrl_and_snap_views_cannot_write_config() {
+        let c = qrtz_ipc::contract();
+        for view in ["note", "ctrl", "snap"] {
+            assert!(
+                !c.has_capability(view, "config.write"),
+                "{view} must not hold config.write"
+            );
+        }
+        assert!(
+            c.has_capability("talk", "config.write"),
+            "echo's view keeps its ADR 0174 switch"
+        );
         for (view, m, other) in [
             ("note", "nano", "ctrl"),
             ("ctrl", "ctrl", "snap"),

@@ -140,7 +140,7 @@ describe('global module switches', () => {
     const cfg = ConfigSchema.parse({ modules: { nano: { enabled: false } } });
     expect(isModuleOn(cfg, 'nano')).toBe(false);
     expect(isModuleOn(cfg, 'echo')).toBe(true);
-    // ADR 0237: nano is built in, so its view stays (it holds the off state and the switch).
+    // ADR 0237: nano is built in, so its view stays (showing the off state).
     expect(isViewOn(cfg, 'note')).toBe(true);
     const off = ConfigSchema.parse({
       modules: { enabled: false, echo: { enabled: true } },
