@@ -1,6 +1,6 @@
-# qrtz
+# bezl
 
-qrtz is a macOS app (Tauri 2, Rust core, React renderer, Swift helper) built from small modules that run on your Mac.
+bezl is a macOS app by [Qrtz](https://qrtz.ai) (Tauri 2, Rust core, React renderer, Swift helper) built from small modules that run on your Mac.
 Speech recognition and summaries happen on-device: there are no cloud keys and no cloud LLM. The network is used to
 download signed modules and speech models when you ask for them.
 
@@ -32,7 +32,7 @@ Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, Rust (version pinne
 [bun](https://bun.sh) 1.4 or later.
 
 ```sh
-git clone https://github.com/qrtz-ai/qrtz && cd qrtz
+git clone https://github.com/qrtz-ai/bezl && cd bezl
 bun install
 bun run dev:local
 ```
@@ -47,7 +47,7 @@ bun run dev:local -- --build-only      # build and print the environment, don't 
 ```
 
 The dev app runs as a separate app, `ai.qrtz.desktop.dev`, so macOS treats it as new: give it its own Accessibility and
-Microphone grants when asked. Quit the installed qrtz first (or use `--quit-installed`), because both apps grab the fn
+Microphone grants when asked. Quit the installed bezl (still `qrtz.app` until the bundle rename lands) first (or use `--quit-installed`), because both apps grab the fn
 key and dictation breaks while both run. Details: [docs/dev/dev-local.md](docs/dev/dev-local.md).
 
 `bun start` (`bun run --cwd apps/desktop start`) builds the `qrtz` command and then runs `dev:local`, so every module
@@ -93,7 +93,7 @@ Docs: [architecture](docs/architecture.md) · [rust core api](docs/rust-core-api
 
 ## License
 
-qrtz is free software under the [GNU Affero General Public License v3.0 only](LICENSE) (AGPL-3.0-only), with
+bezl is free software under the [GNU Affero General Public License v3.0 only](LICENSE) (AGPL-3.0-only), with
 the additional permission in [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md). Copyright (c) 2026 Jared Grimes. Third-party components keep their own licenses; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Speech models (Parakeet, Nemotron) are not bundled; they are
 downloaded separately and are covered by their own licenses.
