@@ -3,7 +3,8 @@
 # (bundledCode) says, reseal the app, check every signature, then notarize and staple the app and a fresh .dmg.
 #
 # Why: `tauri build` re-signs every externalBin with the app's entitlements (allow-jit, audio-input, apple-events)
-# and the file name as identifier. The `qrtz` command needs none and qrtz-echo (ADR 0174) needs its own (microphone only). So the bundle is built signed but NOT notarized, fixed up here, then notarized.
+# and the file name as identifier. The `qrtz` command needs none and each bundled helper (ADR 0174, ADR 0237: qrtz-echo,
+# qrtz-nano, qrtz-ctrl, qrtz-snap) needs exactly its own (module.json entitlements; verify-bundle.sh pins them). So the bundle is built signed but NOT notarized, fixed up here, then notarized.
 #
 # Usage (on the Mac, after `bun run make` with APPLE_SIGNING_IDENTITY set and APPLE_ID/APPLE_PASSWORD unset; usually
 # through `bun run release:mac`, scripts/release/sign-notarize.sh):
@@ -32,10 +33,10 @@ macos="$app/Contents/MacOS"
 
 # name identifier entitlements(app | none | repo path). Must match confinement-map.json bundledCode (checked by
 # crates/qrtz-lifecycle/tests/offline_graph.rs).
-# ADR 0174: the `qrtz` command. QRT-255: the bundled module helpers (echo's qrtz-echo today) are NOT listed here:
-# their name, identifier, requirement and entitlements come from each modules/*/module.json (bundled-helpers.sh), the
-# same file the launcher's requirement comes from. nano, ctrl and snap are signed in their packages
-# (scripts/modules/build-packages.sh, moduleCode). qrtz-dash-net is never bundled or signed here (ADR 0231).
+# ADR 0174: the `qrtz` command. QRT-255: the bundled module helpers (ADR 0237: qrtz-echo, qrtz-nano, qrtz-ctrl,
+# qrtz-snap) are NOT listed here: their name, identifier, requirement and entitlements come from each
+# modules/*/module.json (bundled-helpers.sh), the same file the launcher's requirement comes from, and verify-bundle.sh
+# pins the exact set and entitlements. qrtz-dash-net is never bundled or signed here (ADR 0231).
 NESTED="
 qrtz ai.qrtz.cli none
 "

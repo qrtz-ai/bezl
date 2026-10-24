@@ -1,6 +1,6 @@
 // Builds/tests native/qrtz-helper with SwiftPM.
-//   bun run build:helper  → macOS: the `qrtz` command, the bundle's one externalBin (ADR 0169: no module code is
-//                           bundled; scripts/modules/build-packages.sh builds the module packages). Elsewhere: skipped.
+//   bun run build:helper  → macOS: the bundle's externalBins: the `qrtz` command and the four module helpers
+//                           (ADR 0174, ADR 0237: qrtz-echo, qrtz-nano, qrtz-ctrl, qrtz-snap). Elsewhere: skipped.
 //   bun run test:helper   → `swift build && swift test` anywhere a Swift toolchain is on PATH (Linux builds the
 //                           Foundation-only core + stub executable; macOS builds everything). Skipped if no toolchain.
 import { spawnSync } from 'node:child_process';
@@ -88,10 +88,10 @@ if (process.platform !== 'darwin') {
   );
   process.exit(0);
 }
-// ADR 0169, ADR 0174: the only module code in the bundle is echo's own executable (qrtz-echo, Contents/MacOS); nano,
-// ctrl and snap ship signed in their own packages (scripts/modules/build-packages.sh) and install from the
-// marketplace. A stale qrtz-helper or qrtz-snap sidecar left from an older build is removed so it can't be mistaken
-// for a bundled one.
+// ADR 0174, ADR 0237: every first-party module's helper is bundled: qrtz-echo, qrtz-nano, qrtz-ctrl and qrtz-snap in
+// Contents/MacOS, each signed ai.qrtz.<id> with exactly its own entitlements (module.json; pinned by
+// scripts/release/verify-bundle.sh). A stale qrtz-helper sidecar left from an older build is removed so it can't be
+// mistaken for a bundled one.
 const binDir = path.resolve(
   import.meta.dirname,
   '../apps/desktop/src-tauri/binaries',
@@ -101,43 +101,61 @@ const repo = path.resolve(import.meta.dirname, '..');
 const targetDir = process.env.CARGO_TARGET_DIR
   ? path.resolve(repo, process.env.CARGO_TARGET_DIR)
   : path.join(repo, 'target');
-for (const old of ['qrtz-helper', 'qrtz-snap']) {
+for (const old of ['qrtz-helper']) {
   fs.rmSync(path.join(binDir, `${old}-aarch64-apple-darwin`), { force: true });
   fs.rmSync(path.join(targetDir, 'debug', old), { force: true });
 }
 
-// ADR 0174: echo, bundled. The SwiftPM product qrtz-echo, signed ai.qrtz.echo with its own entitlements (microphone);
-// tauri build re-signs it with the app's, so scripts/release/sign-mac.sh signs it again (confinement-map bundledCode).
+// The bundled helpers: SwiftPM products, built release arm64. tauri build re-signs them with the app's entitlements,
+// so scripts/release/sign-mac.sh signs them again (confinement-map bundledCode).
+const BUNDLED_HELPERS = ['echo', 'nano', 'ctrl', 'snap'];
 const swiftDir = path.join(repo, 'native/qrtz-helper');
 if (!swift) {
   console.error(
-    '[build:helper] no Swift toolchain: qrtz-echo is bundled (ADR 0174)',
+    '[build:helper] no Swift toolchain: the module helpers are bundled (ADR 0174, ADR 0237)',
   );
   process.exit(1);
 }
-const echoBuild = spawnSync(
-  swift,
-  withFlags([
-    'build',
-    '-c',
-    'release',
-    '--arch',
-    'arm64',
-    '--product',
-    'qrtz-echo',
-  ]),
-  { cwd: swiftDir, stdio: 'inherit' },
-);
-if (echoBuild.status !== 0) process.exit(1);
-const echoBin = spawnSync(
+for (const id of BUNDLED_HELPERS) {
+  const b = spawnSync(
+    swift,
+    withFlags([
+      'build',
+      '-c',
+      'release',
+      '--arch',
+      'arm64',
+      '--product',
+      `qrtz-${id}`,
+    ]),
+    { cwd: swiftDir, stdio: 'inherit' },
+  );
+  if (b.status !== 0) process.exit(1);
+}
+const helperBin = spawnSync(
   swift,
   withFlags(['build', '-c', 'release', '--arch', 'arm64', '--show-bin-path']),
   { cwd: swiftDir, encoding: 'utf8' },
 );
-if (echoBin.status !== 0) process.exit(1);
-const echoDest = path.join(binDir, 'qrtz-echo-aarch64-apple-darwin');
-install(path.join(echoBin.stdout.trim(), 'qrtz-echo'), echoDest);
-console.log(`[build:helper] ${path.relative(process.cwd(), echoDest)}`);
+if (helperBin.status !== 0) process.exit(1);
+const helperDests = BUNDLED_HELPERS.map((id) => {
+  const dest = path.join(binDir, `qrtz-${id}-aarch64-apple-darwin`);
+  install(path.join(helperBin.stdout.trim(), `qrtz-${id}`), dest);
+  console.log(`[build:helper] ${path.relative(process.cwd(), dest)}`);
+  return [id, dest];
+});
+// Entitlements per helper, from its module.json (none: sign without --entitlements).
+const helperEntitlements = (id) => {
+  const m = JSON.parse(
+    fs.readFileSync(path.join(repo, 'modules', id, 'module.json'), 'utf8'),
+  );
+  return (m.entitlements ?? []).length
+    ? [
+        '--entitlements',
+        path.join(swiftDir, `entitlements/ai.qrtz.${id}.entitlements`),
+      ]
+    : [];
+};
 
 // ADR 0162: the `qrtz` command ships as an externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
 // Contents/MacOS/qrtz-app). Built here so `bun run make` and the release workflow (which runs build:helper) bundle the
@@ -166,15 +184,10 @@ const identity = process.env.APPLE_SIGNING_IDENTITY;
 if (identity) {
   const signs = [
     [cliDest, ['--identifier', 'ai.qrtz.cli']],
-    [
-      echoDest,
-      [
-        '--identifier',
-        'ai.qrtz.echo',
-        '--entitlements',
-        path.join(swiftDir, 'entitlements/ai.qrtz.echo.entitlements'),
-      ],
-    ],
+    ...helperDests.map(([id, dest]) => [
+      dest,
+      ['--identifier', `ai.qrtz.${id}`, ...helperEntitlements(id)],
+    ]),
   ];
   for (const [file, extra] of signs) {
     const sign = spawnSync(
@@ -197,7 +210,7 @@ if (identity) {
 console.log(`[build:helper] ${path.relative(process.cwd(), cliDest)}`);
 // The copies `tauri dev` runs (target/debug/<name>), in case cargo doesn't rerun build.rs before it starts them.
 for (const [file, name] of [
-  [echoDest, 'qrtz-echo'],
+  ...helperDests.map(([id, dest]) => [dest, `qrtz-${id}`]),
   [cliDest, 'qrtz'],
 ]) {
   if (isStub(file)) {

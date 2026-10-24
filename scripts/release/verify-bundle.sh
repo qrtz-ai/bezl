@@ -9,10 +9,12 @@
 #     code.bundleId and code.designatedRequirement of its modules/*/module.json (QRT-255; qrtz-echo ai.qrtz.echo),
 #     qrtz ai.qrtz.cli, Developer ID, team MR26CCZ496; an unknown executable fails;
 #   - each executable's entitlements are exactly its allowlist (ents_for below): qrtz-app apple-events, allow-jit,
-#     audio-input, calendars; qrtz-echo audio-input; qrtz none. get-task-allow anywhere fails;
+#     audio-input, calendars; qrtz-echo audio-input; qrtz-nano audio-input, calendars; qrtz-ctrl, qrtz-snap and qrtz
+#     none (ADR 0237, pinned in pinned_ents and cross-checked against module.json). get-task-allow anywhere fails;
 #   - every Mach-O anywhere in the bundle (Frameworks, Helpers, XPCServices, Library/LoginItems, Resources, ...; found
 #     by magic bytes) and every nested .app/.framework/.xpc/.appex/.bundle/.dylib is one of the three known
-#     executables, with the signing identifier allowed for its path, else it fails;
+#     executables (six since ADR 0237: qrtz-app, qrtz, qrtz-echo,
+#     qrtz-nano, qrtz-ctrl, qrtz-snap), with the signing identifier allowed for its path, else it fails;
 #   - no archive (gzip, zip, xz, bzip2, zstd, tar, 7z, xar, cpio, ...; by magic bytes) unless allowlisted, and no file
 #     holding the qrtz-dash-net marker (ADR 0231, M5);
 #   - no symlink in Contents resolves outside the bundle (or dangles);
@@ -41,6 +43,21 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo/scripts/release/bundled-helpers.sh"
 helpers="$(bundled_helpers "$repo/modules" "$team")" || { echo "verify-bundle: FAIL: can't read the bundled helpers from $repo/modules/*/module.json" >&2; exit 1; }
 helper_field() { awk -F'\t' -v n="$1" -v c="$2" '$1 == n { print $c; exit }' <<<"$helpers"; }
+# ADR 0237 (Bozniak review b): the six executables a release may carry and each helper's exact entitlements, pinned
+# here and not only derived from module.json, so a module.json or entitlements-file edit that widens a helper fails
+# this gate until this table is changed too (a reviewed release-script change). Confinement for the bundled helpers
+# comes from these lists plus the TCC prompts, not from the app's notarization.
+PINNED_HELPERS="qrtz-ctrl qrtz-echo qrtz-nano qrtz-snap"
+pinned_ents() {
+  case "$1" in
+    qrtz-echo) echo "com.apple.security.device.audio-input" ;;
+    qrtz-nano) echo "com.apple.security.device.audio-input com.apple.security.personal-information.calendars" ;;
+    qrtz-ctrl | qrtz-snap) echo "" ;;
+    *) return 1 ;;
+  esac
+}
+got_helpers="$(cut -f1 <<<"$helpers" | sort | tr '\n' ' ' | sed 's/ $//')"
+[[ "$got_helpers" == "$PINNED_HELPERS" ]] || { echo "verify-bundle: FAIL: modules/*/module.json bundles [$got_helpers], the release allows exactly [$PINNED_HELPERS] (ADR 0237)" >&2; exit 1; }
 helper_names() { cut -f1 <<<"$helpers"; }
 ident_for() {
   case "$1" in qrtz-app) echo ai.qrtz.desktop ;; qrtz) echo ai.qrtz.cli ;; *) helper_field "$1" 2 ;; esac
@@ -51,13 +68,18 @@ ents_for() {
     qrtz-app) echo "com.apple.security.automation.apple-events com.apple.security.cs.allow-jit com.apple.security.device.audio-input com.apple.security.personal-information.calendars" ;;
     qrtz) echo "" ;;
     *)
-      f="$(helper_field "$1" 3)"
-      [[ -n "$f" && "$f" != none ]] && grep -o '<key>[^<]*</key>' "$repo/$f" | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' | sed 's/ $//'
+      pinned_ents "$1"
       ;;
   esac
 }
 ent_keys() { codesign -d --entitlements - --xml "$1" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null | grep -o '<key>[^<]*</key>' | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' | sed 's/ $//'; }
 
+for name in $(helper_names); do
+  f="$(helper_field "$name" 3)"
+  derived=""
+  [[ -n "$f" && "$f" != none ]] && derived="$(grep -o '<key>[^<]*</key>' "$repo/$f" | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' | sed 's/ $//')"
+  [[ "$derived" == "$(pinned_ents "$name")" ]] || { echo "verify-bundle: FAIL: $name: module.json/entitlements file grant [${derived:-none}], the release pins [$(pinned_ents "$name")] (ADR 0237)" >&2; exit 1; }
+done
 for name in qrtz-app qrtz $(helper_names); do [[ -x "$macos/$name" ]] || fail "$name is missing from Contents/MacOS"; done
 
 # QRT-275: the bundle carries its own notices and license texts (Contents/Resources). Each must be there, non-empty,
@@ -140,7 +162,7 @@ for bin in "$macos"/*; do
   if [[ "$keys" == "$want" ]]; then ok "$name entitlements: ${want:-none}"; else fail "$name entitlements must be exactly [${want:-none}], got [${keys:-none}]"; fi
 done
 
-# Every Mach-O anywhere in the bundle (by magic bytes, not name or `file`) must be one of the three known executables,
+# Every Mach-O anywhere in the bundle (by magic bytes, not name or `file`) must be one of the six known executables,
 # and (Bozniak M5) its signing identifier must be the one allowed for that path: a helper copied over a known name, or
 # signed as anything else, fails.
 is_macho() {
@@ -198,7 +220,7 @@ for n in 1 2 3; do
 done
 if [[ $stapled == 1 ]]; then ok "stapler validate"; else fail "stapler validate: no valid stapled ticket"; fi
 # dev-local (scripts/dev/dev-local.sh, src/dev_local.rs) is debug-only and behind a non-default feature: a release
-# qrtz-app, qrtz-echo and qrtz carry none of its override names or its startup line, nor the legacy split/monolith
+# qrtz-app, qrtz and every bundled helper (qrtz-echo, qrtz-nano, qrtz-ctrl, qrtz-snap) carry none of its override names or its startup line, nor the legacy split/monolith
 # overrides it gates (QRTZ_MODULE_HELPERS, QRTZ_HELPER_BIN; Bozniak, 23d892af review).
 for bin in "$macos/qrtz-app" "$macos/qrtz" $(helper_names | sed "s|^|$macos/|"); do
   [[ -f "$bin" ]] || continue
@@ -213,7 +235,7 @@ while IFS= read -r -d '' bin; do
   if LC_ALL=C grep -aqF -e '--bench' -e '--echo-bench' -e '--echo-warmup' "$bin"; then
     fail "${bin#"$app"/} contains a diagnostic CLI flag (--bench/--echo-bench/--echo-warmup; built with QRTZ_DIAG?) (QRT-299)"
   else ok "${bin#"$app"/}: no diagnostic CLI flags"; fi
-done < <(find "$app/Contents" -type f \( -name 'qrtz-echo' -o -name 'qrtz-helper*' \) -print0)
+done < <(find "$app/Contents" -type f \( -name 'qrtz-echo' -o -name 'qrtz-nano' -o -name 'qrtz-ctrl' -o -name 'qrtz-snap' -o -name 'qrtz-helper*' \) -print0)
 
 if ((fails)); then echo "verify-bundle: $app is NOT shippable ($fails check(s) failed)" >&2; exit 1; fi
 echo "verify-bundle: $app passed"

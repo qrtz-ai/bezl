@@ -42,6 +42,89 @@ describe('verify-bundle.sh', () => {
     expect(s).toContain('Notarized Developer ID');
   });
 
+  // ADR 0237 (Bozniak review b): the bundled helpers and their entitlements are pinned in the gate itself.
+  it('pins exactly four bundled helpers and their exact entitlements', () => {
+    const s = read('scripts/release/verify-bundle.sh');
+    expect(s).toContain(
+      'PINNED_HELPERS="qrtz-ctrl qrtz-echo qrtz-nano qrtz-snap"',
+    );
+    expect(s).toContain(
+      'qrtz-echo) echo "com.apple.security.device.audio-input" ;;',
+    );
+    expect(s).toContain(
+      'qrtz-nano) echo "com.apple.security.device.audio-input com.apple.security.personal-information.calendars" ;;',
+    );
+    expect(s).toContain('qrtz-ctrl | qrtz-snap) echo "" ;;');
+  });
+
+  // A copy of the repo's release scripts, modules and entitlements, edited by `edit`, then run on an empty bundle:
+  // the module.json-vs-pinned check runs before any signature check, so this works without codesign.
+  const repoCopy = (edit) => {
+    const t = mkdtempSync(path.join(os.tmpdir(), 'vb-repo-'));
+    const cp = (rel) =>
+      spawnSync('cp', ['-R', path.join(root, rel), path.join(t, rel)]);
+    for (const d of [
+      'scripts/release',
+      'scripts/modules',
+      'native/qrtz-helper',
+    ])
+      mkdirSync(path.join(t, path.dirname(d)), { recursive: true });
+    cp('scripts/release');
+    cp('scripts/modules');
+    mkdirSync(path.join(t, 'native/qrtz-helper'), { recursive: true });
+    cp('native/qrtz-helper/entitlements');
+    cp('modules');
+    edit(t);
+    const app = path.join(t, 'qrtz.app');
+    mkdirSync(path.join(app, 'Contents', 'MacOS'), { recursive: true });
+    return spawnSync(
+      'bash',
+      [path.join(t, 'scripts/release/verify-bundle.sh'), app],
+      { encoding: 'utf8' },
+    );
+  };
+  const editJson = (t, rel, f) => {
+    const p = path.join(t, rel);
+    writeFileSync(p, JSON.stringify(f(JSON.parse(readFileSync(p, 'utf8')))));
+  };
+
+  it('the repo modules match the pinned table (no pin failure on an empty bundle)', () => {
+    const r = repoCopy(() => {});
+    expect(r.stderr).not.toContain('the release pins');
+    expect(r.stderr).not.toContain('the release allows exactly');
+  });
+
+  it('fails when a module.json widens a bundled helper (ctrl gains audio-input)', () => {
+    const r = repoCopy((t) => {
+      editJson(t, 'modules/ctrl/module.json', (m) => ({
+        ...m,
+        entitlements: ['com.apple.security.device.audio-input'],
+      }));
+      writeFileSync(
+        path.join(
+          t,
+          'native/qrtz-helper/entitlements/ai.qrtz.ctrl.entitlements',
+        ),
+        '<plist><dict><key>com.apple.security.device.audio-input</key><true/></dict></plist>',
+      );
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(
+      'qrtz-ctrl: module.json/entitlements file grant',
+    );
+  });
+
+  it('fails when a fifth helper is bundled or one goes missing', () => {
+    const r = repoCopy((t) => {
+      editJson(t, 'modules/snap/module.json', (m) => ({
+        ...m,
+        launch: { ...m.launch, kind: 'package', entry: 'bin/qrtz-snap' },
+      }));
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('the release allows exactly');
+  });
+
   it("fails on agent dash's network helper anywhere in the bundle (ADR 0231)", () => {
     for (const rel of [
       'Contents/MacOS/qrtz-dash-net',
@@ -261,7 +344,15 @@ describe('verify-bundle.sh', () => {
     if (extra) extra(app);
     return app;
   }
-  const base = () => ({ 'qrtz-app': APP, 'qrtz-echo': [APP[2]], qrtz: [] });
+  // ADR 0237: six executables; nano audio-input + calendars, ctrl and snap none.
+  const base = () => ({
+    'qrtz-app': APP,
+    'qrtz-echo': [APP[2]],
+    'qrtz-nano': [APP[2], APP[3]],
+    'qrtz-ctrl': [],
+    'qrtz-snap': [],
+    qrtz: [],
+  });
 
   it.runIf(mac)(
     'fails when qrtz-app carries an entitlement beyond its allowlist',
