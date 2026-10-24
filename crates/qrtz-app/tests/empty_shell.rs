@@ -98,8 +98,8 @@ fn extension(dir: &Path, name: &str, version: &str, deps: Value, views: &[&str])
     d
 }
 
-/// The published fixture: demo and demo-two share `model.sample`; demo-two also needs `model.nanoonly`;
-/// `demo-bad 0.9.0`'s notarization record names a different executable of its package than its entry.
+/// The published fixture: ctrl and nano share `model.sample`; nano also needs `model.nanoonly`; `snap 0.9.0`'s
+/// notarization record names a different executable of its package than its entry.
 fn publish(dir: &Path) -> (PathBuf, String) {
     let src = dir.join("src");
     let out = dir.join("out");
@@ -123,23 +123,22 @@ fn publish(dir: &Path) -> (PathBuf, String) {
         true,
     );
     write(&svc.join("sample.xpc/Contents/Info.plist"), b"<plist/>", false);
-    // ADR 0237: every first-party module ships in qrtz.app, so the downloadable modules here are the test-only
-    // extensions (`fixture-extension`): demo and demo-two share model.sample.
+    // ADR 0174: echo ships in qrtz.app, so the downloadable module sharing nano's model here is ctrl.
     let ctrl = extension(
         &src,
-        "demo",
+        "ctrl",
         "0.3.0",
         json!({"inference.sample": "^1.0.0", "model.sample": "^1.0.0"}),
-        &[],
+        &["ctrl"],
     );
     let nano = extension(
         &src,
-        "demo-two",
+        "nano",
         "0.3.0",
         json!({"inference.sample": "^1.0.0", "model.sample": "^1.0.0", "model.nanoonly": "^1.0.0"}),
-        &[],
+        &["note"],
     );
-    let snap = extension(&src, "demo-bad", "0.9.0", json!({}), &[]);
+    let snap = extension(&src, "snap", "0.9.0", json!({}), &["snap"]);
     write(&snap.join("bin/other"), b"#!/bin/sh\necho other\n", true);
     let mut bad = SpecPackage::fake_notarized(snap.clone());
     let n = bad.notarization.as_mut().unwrap();
@@ -250,19 +249,12 @@ async fn change(r: &Router<Shared>, op: &str, names: &[&str]) -> Result<Value, V
     }
 }
 
-/// The downloaded extensions qrtz.lock installs (the bundled ones are always installed, ADR 0237).
-fn installed(b: &BuiltApp, data: &Path) -> Vec<String> {
+fn installed(b: &BuiltApp) -> Vec<String> {
     let cfg = b.service.config();
-    for id in qrtz_modules::BUNDLED_EXTENSIONS {
-        assert_eq!(
-            cfg["modules"][*id]["installed"], true,
-            "{id} is bundled: {}",
-            cfg["modules"]
-        );
-    }
-    qrtz_app::installed::installed_extensions(&qrtz_app::installed::read_lock(data))
-        .into_iter()
-        .filter(|e| !qrtz_modules::is_bundled_extension(e))
+    qrtz_modules::MODULE_IDS
+        .iter()
+        .filter(|id| cfg["modules"][**id]["installed"] == true)
+        .map(|s| (*s).to_owned())
         .collect()
 }
 
@@ -291,28 +283,44 @@ async fn install_brings_the_models_and_uninstall_takes_what_nothing_else_needs()
     let b = app(&data, &out, &pin);
     let r = Router::new(Shared(b.service.clone())).validate_responses(true);
 
-    // Empty but for the bundled modules (ADR 0174, ADR 0237): echo, nano, ctrl and snap need no lock or index.
-    let none: Vec<String> = vec![];
-    assert_eq!(installed(&b, &data), none, "{}", b.service.config()["modules"]);
-    assert!(qrtz_app::installed::entry(&data, "demo")
+    // Empty but for bundled echo (ADR 0174): a downloadable module's view is refused, it can't be switched on, no
+    // renderer can pretend it is installed, and echo needs no lock or index to count as installed.
+    assert_eq!(installed(&b), ["echo"], "{}", b.service.config()["modules"]);
+    let v = call(&r, "ctrl", "module:get-settings", Value::Null).await;
+    assert_eq!(v["error"]["code"], "E_UNAVAILABLE", "{v}");
+    let v = call(
+        &r,
+        "marketplace",
+        "packages:set-enabled",
+        json!({"name": "ctrl", "enabled": true}),
+    )
+    .await;
+    assert_eq!(v["ok"], false, "{v}");
+    let v = call(
+        &r,
+        "settings",
+        "config:set",
+        json!({"patch": {"modules": {"ctrl": {"installed": true}}}}),
+    )
+    .await;
+    assert_eq!(v["ok"], false, "{v}");
+    assert!(qrtz_app::installed::entry(&data, "ctrl")
         .unwrap_err()
         .contains("not installed"));
 
     ok(&r, "marketplace", "packages:refresh", Value::Null).await;
 
-    // ADR 0174 / ADR 0237: the marketplace never installs, updates or removes a bundled module, and never lists it.
-    for name in qrtz_modules::BUNDLED_EXTENSIONS {
-        for op in ["install", "update", "remove"] {
-            let v = call(
-                &r,
-                "marketplace",
-                "packages:plan",
-                json!({"op": op, "names": [name]}),
-            )
-            .await;
-            assert_eq!(v["ok"], false, "{name} {op}: {v}");
-            assert!(v.to_string().contains("built into qrtz"), "{name} {op}: {v}");
-        }
+    // ADR 0174: the marketplace never installs, updates or removes bundled echo, and never lists it.
+    for op in ["install", "update", "remove"] {
+        let v = call(
+            &r,
+            "marketplace",
+            "packages:plan",
+            json!({"op": op, "names": ["echo"]}),
+        )
+        .await;
+        assert_eq!(v["ok"], false, "{op}: {v}");
+        assert!(v.to_string().contains("built into qrtz"), "{op}: {v}");
     }
     let list = ok(&r, "marketplace", "packages:list", Value::Null).await;
     assert!(
@@ -320,21 +328,22 @@ async fn install_brings_the_models_and_uninstall_takes_what_nothing_else_needs()
             .as_array()
             .unwrap()
             .iter()
-            .any(|a| qrtz_modules::is_bundled_extension(a["name"].as_str().unwrap_or_default())),
+            .any(|a| a["name"] == "echo"),
         "{list}"
     );
 
-    // Install demo: one plan carries demo and its model; afterwards demo is installed, its helper entry is its
-    // package's executable and the helper's model view is linked and marked.
-    let plan = change(&r, "install", &["demo"]).await.unwrap();
+    // Install ctrl: one plan carries ctrl and its model; afterwards ctrl is installed, its view works, its helper
+    // entry is its package's executable and the helper's model view is linked and marked.
+    let plan = change(&r, "install", &["ctrl"]).await.unwrap();
     assert_eq!(
         names(&plan),
-        ["demo", "inference.sample", "model.sample"],
+        ["ctrl", "inference.sample", "model.sample"],
         "{plan}"
     );
-    assert_eq!(installed(&b, &data), ["demo"]);
-    let e = qrtz_app::installed::entry(&data, "demo").unwrap();
-    assert_eq!(e.program, data.join("packages/demo/0.3.0/bin/qrtz-demo"));
+    assert_eq!(installed(&b), ["echo", "ctrl"]);
+    ok(&r, "ctrl", "module:get-settings", Value::Null).await;
+    let e = qrtz_app::installed::entry(&data, "ctrl").unwrap();
+    assert_eq!(e.program, data.join("packages/ctrl/0.3.0/bin/qrtz-ctrl"));
     qrtz_app::installed::check_launch(&e, qrtz_app::installed::LaunchCheck::Dev).unwrap();
     let spawn = qrtz_app::module_helpers::HelperLayout::Installed {
         root: data.clone(),
@@ -342,27 +351,27 @@ async fn install_brings_the_models_and_uninstall_takes_what_nothing_else_needs()
         bundled: Default::default(),
     };
     let base = qrtz_helper_bridge::ProcessSpawn::helper("qrtz-installed-module".into());
-    let _ = spawn.spawner(&base, "demo");
+    let _ = spawn.spawner(&base, "ctrl");
     let view = data.join("models/sample");
     assert_eq!(std::fs::read(view.join("weights/a.bin")).unwrap(), WEIGHTS);
     assert!(view.join(qrtz_app::local_models::MARKER).is_file());
 
-    // demo-two shares model.sample: its plan only adds its own model.
-    let plan = change(&r, "install", &["demo-two"]).await.unwrap();
-    assert_eq!(names(&plan), ["demo-two", "model.nanoonly"], "{plan}");
-    assert_eq!(installed(&b, &data), ["demo", "demo-two"]);
+    // nano shares model.sample: its plan only adds its own model.
+    let plan = change(&r, "install", &["nano"]).await.unwrap();
+    assert_eq!(names(&plan), ["model.nanoonly", "nano"], "{plan}");
+    assert_eq!(installed(&b), ["echo", "nano", "ctrl"]);
 
-    // Removing demo keeps model.sample (demo-two needs it), its view and its package dir.
-    change(&r, "remove", &["demo"]).await.unwrap();
-    assert_eq!(installed(&b, &data), ["demo-two"]);
-    assert_eq!(package_dirs(&data, "demo"), 0, "demo pruned");
-    assert_eq!(package_dirs(&data, "model.sample"), 1, "still used by demo-two");
+    // Removing ctrl keeps model.sample (nano needs it), its view and its package dir.
+    change(&r, "remove", &["ctrl"]).await.unwrap();
+    assert_eq!(installed(&b), ["echo", "nano"]);
+    assert_eq!(package_dirs(&data, "ctrl"), 0, "ctrl pruned");
+    assert_eq!(package_dirs(&data, "model.sample"), 1, "still used by nano");
     assert!(view.join("weights/a.bin").is_file());
 
-    // Removing demo-two, the last user: both models, the service, the view and their blobs go.
-    change(&r, "remove", &["demo-two"]).await.unwrap();
-    assert_eq!(installed(&b, &data), none);
-    for p in ["demo-two", "inference.sample", "model.sample", "model.nanoonly"] {
+    // Removing nano, the last user: both models, the service, the view and their blobs go.
+    change(&r, "remove", &["nano"]).await.unwrap();
+    assert_eq!(installed(&b), ["echo"]);
+    for p in ["nano", "inference.sample", "model.sample", "model.nanoonly"] {
         assert_eq!(package_dirs(&data, p), 0, "{p} pruned");
     }
     assert!(!view.exists(), "the model view went with its last module");
@@ -379,14 +388,13 @@ async fn a_failed_model_or_a_wrong_notarization_installs_nothing() {
     let r = Router::new(Shared(b.service.clone())).validate_responses(true);
     ok(&r, "marketplace", "packages:refresh", Value::Null).await;
 
-    let none: Vec<String> = vec![];
-    // demo-bad 0.9.0's notarization record names bin/other, not its entry: refused at staging, nothing changes.
-    let e = change(&r, "install", &["demo-bad"]).await.unwrap_err();
+    // snap 0.9.0's notarization record names bin/other, not its entry: refused at staging, nothing changes.
+    let e = change(&r, "install", &["snap"]).await.unwrap_err();
     assert!(e.to_string().contains("notarized file"), "{e}");
-    assert_eq!(installed(&b, &data), none);
+    assert_eq!(installed(&b), ["echo"]);
     assert!(qrtz_app::installed::read_lock(&data).packages.is_empty());
 
-    // demo-two's own model is gone from Hugging Face: the install fails as a whole (it isn't half installed, and the
+    // nano's own model is gone from Hugging Face: the install fails as a whole (nano isn't half installed, and the
     // shared model it fetched isn't left in the lock); the same plan succeeds once the blob is back (retry).
     let blob = hf_file(out.parent().unwrap(), "model.nanoonly");
     // ADR 0171: model bytes were never on the package host.
@@ -395,12 +403,12 @@ async fn a_failed_model_or_a_wrong_notarization_installs_nothing() {
         .exists());
     let saved = std::fs::read(&blob).unwrap();
     std::fs::remove_file(&blob).unwrap();
-    change(&r, "install", &["demo-two"]).await.unwrap_err();
-    assert_eq!(installed(&b, &data), none);
+    change(&r, "install", &["nano"]).await.unwrap_err();
+    assert_eq!(installed(&b), ["echo"]);
     assert!(qrtz_app::installed::read_lock(&data).packages.is_empty());
     assert!(!data.join("models/sample").exists());
     std::fs::write(&blob, saved).unwrap();
-    change(&r, "install", &["demo-two"]).await.unwrap();
-    assert_eq!(installed(&b, &data), ["demo-two"]);
+    change(&r, "install", &["nano"]).await.unwrap();
+    assert_eq!(installed(&b), ["echo", "nano"]);
     assert!(data.join("models/sample/weights/a.bin").is_file());
 }

@@ -51,8 +51,7 @@ pub fn spawn_for(base: &qrtz_helper_bridge::ProcessSpawn) -> Option<qrtz_helper_
     ))
 }
 
-/// qrtz-snap's spawner for `layout`: in the shipping app, `Contents/MacOS/qrtz-snap` bundled in qrtz.app (ADR 0237;
-/// the layout's bundled entry, checked against snap's compiled-in manifest before every spawn), otherwise
+/// qrtz-snap's spawner for `layout`: its installed package in the shipping app (ADR 0169), otherwise
 /// [`spawn_for`]'s sibling of the helper.
 pub fn spawner_for(
     layout: &crate::module_helpers::HelperLayout,

@@ -22,9 +22,6 @@ describe('dev builds are TCC-stable (docs/dev-permissions.md)', () => {
     for (const [name, id] of [
       ['qrtz', 'ai.qrtz.cli'],
       ['qrtz-echo', 'ai.qrtz.echo'],
-      ['qrtz-nano', 'ai.qrtz.nano'],
-      ['qrtz-ctrl', 'ai.qrtz.ctrl'],
-      ['qrtz-snap', 'ai.qrtz.snap'],
     ]) {
       expect(dev).toContain(`\nsign ${name} ${id}\n`);
       if (name === 'qrtz')
@@ -33,20 +30,16 @@ describe('dev builds are TCC-stable (docs/dev-permissions.md)', () => {
         );
     }
     // QRT-255: release signs bundled helpers from module.json, not a hard-coded table.
-    // ADR 0237: all four first-party helpers are bundled.
-    for (const id of ['echo', 'nano', 'ctrl', 'snap']) {
-      const m = JSON.parse(read(`modules/${id}/module.json`));
-      expect(m.launch).toMatchObject({
-        kind: 'bundled-helper',
-        entry: `qrtz-${id}`,
-      });
-      expect(m.code.bundleId).toBe(`ai.qrtz.${id}`);
-      expect(rel).not.toContain(`ai.qrtz.${id}`);
-    }
+    const echo = JSON.parse(read('modules/echo/module.json'));
+    expect(echo.launch).toMatchObject({
+      kind: 'bundled-helper',
+      entry: 'qrtz-echo',
+    });
+    expect(echo.code.bundleId).toBe('ai.qrtz.echo');
+    expect(rel).not.toContain('ai.qrtz.echo');
     expect(rel).toContain('bundled_helpers "$repo/modules"');
     expect(dev).toContain('\nsign qrtz-app ai.qrtz.desktop.dev\n');
-    // The release NESTED table never lists module helpers (they come from module.json); a dev monolith signs as
-    // ai.qrtz.helper.
+    // ADR 0169, ADR 0174: the only module code in the app is echo; a dev monolith signs as ai.qrtz.helper.
     expect(rel).not.toMatch(/\nqrtz-(helper|snap|nano|ctrl) /);
     expect(dev).toContain('ai.qrtz.helper');
   });

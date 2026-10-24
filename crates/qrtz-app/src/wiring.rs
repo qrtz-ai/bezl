@@ -611,8 +611,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         .with_events(service.events.clone()),
     );
     if b.modules_from_lock {
-        // ADR 0237: an old lock's nano, ctrl and snap packages give way to the copies inside qrtz.app.
-        crate::installed::retire_bundled(&dirs.data);
         let views = model_views.then(|| {
             crate::local_models::LocalModels::new(dirs.data.join("models"), b.knobs.local_models_base.clone())
         });

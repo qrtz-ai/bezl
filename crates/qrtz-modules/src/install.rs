@@ -79,10 +79,6 @@ pub enum InstallError {
     PinnedCode(String),
     #[error("another install is running")]
     Busy,
-    /// ADR 0237 (Bozniak's review (d)): no package, from the index or a third party, may take the id of a module
-    /// built into qrtz.app.
-    #[error("{0}: built into qrtz.app; a package of that name is never installed")]
-    Bundled(String),
     #[error(transparent)]
     Module(#[from] ModuleError),
     #[error("io: {0}")]
@@ -103,19 +99,6 @@ impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
-}
-
-/// ADR 0237 (review (d)): `next` adds no package named like a module built into qrtz.app (echo, nano, ctrl, snap),
-/// whoever signed it. What an old lock already holds may stay until [`Installer::retire_bundled`] drops it.
-pub fn refuse_bundled(lock: &QrtzLock, next: &QrtzLock) -> Result<(), InstallError> {
-    for k in next.packages.keys() {
-        if let Some((n, _)) = split_key(k) {
-            if crate::is_bundled_extension(n) && !lock.packages.contains_key(k) {
-                return Err(InstallError::Bundled(n.to_owned()));
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Rule 7's Apple half, on staged bytes: an extension's helper or a service's `.xpc` against its exact designated
@@ -265,7 +248,6 @@ pub struct Installer {
     checks: Box<dyn CodeChecks>,
     store: Store,
     tmp_keep: Option<TmpKeepFn>,
-    refuse_bundled: bool,
 }
 
 /// ADR 0218 / N193: what [`Installer::sweep`] must keep in `store/.tmp/` beyond the blobs locked trees name, as the
@@ -341,49 +323,6 @@ pub fn write_in_use(root: &Path, dirs: &BTreeSet<String>) -> Result<(), ModuleEr
     fsutil::write_private_atomic(&p, &bytes)
 }
 
-/// ADR 0237: `<root>/packages-retired.json`, the package dirs of a module that moved into qrtz.app (nano, ctrl,
-/// snap), by module. [`Installer::retire_bundled`] drops such a module from `qrtz.lock` and names its old dirs here;
-/// every prune keeps them until [`Installer::release_retired`] lets them go, which the app calls only once that
-/// module's bundled helper passed its launch check and launched (Bozniak's review (e)). A failed check keeps them.
-pub const RETIRED_FILE: &str = "packages-retired.json";
-
-/// [`RETIRED_FILE`]'s module → dirs (`packages/<name>/<version>` only). A missing or unreadable file keeps nothing.
-pub fn read_retired(root: &Path) -> BTreeMap<String, BTreeSet<String>> {
-    let Ok(b) = std::fs::read(root.join(RETIRED_FILE)) else {
-        return BTreeMap::new();
-    };
-    let v: serde_json::Value = serde_json::from_slice(&b).unwrap_or_default();
-    v["modules"]
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(m, ds)| {
-            let dirs = ds
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|d| d.as_str())
-                .filter(|d| in_use_dir(d))
-                .map(str::to_owned)
-                .collect();
-            (m.clone(), dirs)
-        })
-        .collect()
-}
-
-fn write_retired(root: &Path, m: &BTreeMap<String, BTreeSet<String>>) -> Result<(), ModuleError> {
-    let p = root.join(RETIRED_FILE);
-    if m.is_empty() {
-        return match std::fs::remove_file(&p) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
-            _ => Ok(()),
-        };
-    }
-    let bytes = serde_json::to_vec(&serde_json::json!({ "modules": m }))
-        .map_err(|e| ModuleError::Io(e.to_string()))?;
-    fsutil::write_private_atomic(&p, &bytes)
-}
-
 /// `packages/<name>/<version>`, one plain component each (no `..`, no separators).
 fn in_use_dir(d: &str) -> bool {
     let mut parts = d.split('/');
@@ -431,16 +370,7 @@ impl Installer {
             pinned_root_sha256,
             checks,
             tmp_keep: None,
-            refuse_bundled: false,
         }
-    }
-
-    /// ADR 0237 (Bozniak's review (d)): every plan and sideload refuses to add a package named like a module built
-    /// into qrtz.app ([`crate::BUNDLED_EXTENSIONS`]), from the index or a third-party file. The app's installer is
-    /// always made this way; the publisher's dry run and the generic installer tests are not.
-    pub fn refusing_bundled(mut self) -> Self {
-        self.refuse_bundled = true;
-        self
     }
 
     /// N193: what the app wants kept in `store/.tmp/` ([`TmpKeep`]). Without it, only parts of blobs the locked
@@ -917,9 +847,6 @@ impl Installer {
                 (next, true, Some(v.timestamp.index.sha256.clone()), Some(v))
             }
         };
-        if self.refuse_bundled {
-            refuse_bundled(&lock, &next)?;
-        }
         next.validate()?;
         self.finish_plan(
             op,
@@ -1437,9 +1364,6 @@ impl Installer {
             .resolved
             .insert(target.name.clone(), target.version.clone());
         let next = next.without_unreachable();
-        if self.refuse_bundled {
-            refuse_bundled(&lock, &next)?;
-        }
         next.validate()?;
         let base = crate::sha256_hex(&lock.to_bytes());
         let plan = self.finish_plan(
@@ -1499,7 +1423,6 @@ impl Installer {
             .filter_map(|k| split_key(k).map(|(n, v)| package_dir(n, v)))
             .collect();
         keep_dirs.extend(read_in_use(&self.root));
-        keep_dirs.extend(read_retired(&self.root).into_values().flatten());
         let base = self.root.join(PACKAGES);
         if let Ok(names) = std::fs::read_dir(&base) {
             for n in names.flatten() {
@@ -1694,73 +1617,6 @@ impl Installer {
             .collect())
     }
 
-    /// ADR 0237: a module now built into qrtz.app (nano, ctrl, snap) leaves `qrtz.lock`: its request, its
-    /// resolution, its overrides and its locked versions. Its models stay installed: each one it depended on becomes
-    /// an exact request of its own (the bundled module reads them through speech, as echo does). Its old package dirs
-    /// are named in [`RETIRED_FILE`] so no prune deletes them before its bundled helper launched. Returns the modules
-    /// retired now (none on every launch after the first).
-    pub fn retire_bundled(&self) -> Result<Vec<String>, InstallError> {
-        let _g = self.guard()?;
-        let mut lock = self.lock()?;
-        let mut retired = read_retired(&self.root);
-        let mut out = vec![];
-        for &m in crate::BUNDLED_EXTENSIONS {
-            let keys: Vec<String> = lock
-                .packages
-                .keys()
-                .filter(|k| split_key(k).is_some_and(|(n, _)| n == m))
-                .cloned()
-                .collect();
-            let requested =
-                lock.workspace.dependencies.contains_key(m) || lock.workspace.resolved.contains_key(m);
-            if keys.is_empty() && !requested {
-                continue;
-            }
-            for k in &keys {
-                let Some(l) = lock.packages.remove(k) else {
-                    continue;
-                };
-                for (dep, ver) in &l.dependencies {
-                    if crate::qrtz_json::kind_of(dep).ok() == Some(PackageKind::Extension)
-                        || lock.workspace.dependencies.contains_key(dep)
-                        || lock.get(dep, ver).is_none()
-                    {
-                        continue;
-                    }
-                    lock.workspace.dependencies.insert(dep.clone(), format!("={ver}"));
-                    lock.workspace.resolved.insert(dep.clone(), ver.clone());
-                }
-                if let Some((n, v)) = split_key(k) {
-                    retired.entry(m.to_owned()).or_default().insert(package_dir(n, v));
-                }
-            }
-            lock.workspace.dependencies.remove(m);
-            lock.workspace.resolved.remove(m);
-            lock.workspace.overrides.remove(m);
-            out.push(m.to_owned());
-        }
-        if out.is_empty() {
-            return Ok(out);
-        }
-        lock.validate()?;
-        write_retired(&self.root, &retired)?;
-        lock.save(&self.lock_path())?;
-        Ok(out)
-    }
-
-    /// ADR 0237: `module`'s bundled helper passed its launch check and launched: its old package dirs leave
-    /// [`RETIRED_FILE`] and are pruned now. False when there was nothing to release.
-    pub fn release_retired(&self, module: &str) -> Result<bool, InstallError> {
-        let _g = self.guard()?;
-        let mut retired = read_retired(&self.root);
-        if retired.remove(module).is_none() {
-            return Ok(false);
-        }
-        write_retired(&self.root, &retired)?;
-        self.sweep(true)?;
-        Ok(true)
-    }
-
     /// ADR 0146's `modules/modules.lock.json`, if this root has one: its modules become requests for the next
     /// online install (returned), and the old file is renamed `.migrated`. Never fetches.
     pub fn migrate_legacy(&self) -> Result<BTreeMap<String, String>, InstallError> {
@@ -1871,23 +1727,6 @@ impl Installer {
     /// [`Self::extension_read_path`] checks. A model that isn't installed (yet) is left out; nothing else is ever in it.
     pub fn process_reads(&self, extension: &str) -> Result<Vec<(String, PathBuf)>, InstallError> {
         let lock = self.lock()?;
-        if !lock.workspace.resolved.contains_key(extension)
-            && crate::BUNDLED_PACKAGE_READS.contains(&extension)
-        {
-            // ADR 0237: bundled ctrl isn't in the lock; its compiled-in manifest's declared reads are the grants.
-            let mut out = vec![];
-            for (_, reads) in crate::bundled::declared_reads()
-                .into_iter()
-                .filter(|(e, _)| e == extension)
-            {
-                for m in reads {
-                    if let Ok(dir) = self.extension_read_path(extension, &m, false) {
-                        out.push((m, dir));
-                    }
-                }
-            }
-            return Ok(out);
-        }
         let grants = crate::resolve::grants_in_lock(&lock, extension)?;
         let mut out = vec![];
         for g in grants.iter().filter(|g| g.own_process) {

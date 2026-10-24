@@ -1,7 +1,8 @@
 //! ADR 0169 upgrade (Bobs and Bozniak, 902bcab review): a Mac upgrading to the empty shell has the app's old model
 //! requests in `qrtz.lock` (echo's and nano's models, pinned by the app before modules were packages). At launch,
-//! `LocalModels::sync_views` drops the ones whose modules aren't installed, with their views, packages and blobs. ADR
-//! 0237: echo and nano are both built into qrtz.app now, so their requests are always kept.
+//! `LocalModels::sync_views` drops the ones whose modules aren't installed, with their views, packages and blobs; a
+//! model an installed module uses keeps its request, package and view, and a request the user made from the index is
+//! never touched.
 use qrtz_app::local_models::{orphaned_app_requests, DownloadControl, LocalModels, Manifest, MARKER};
 use qrtz_modules::index::PackageKind;
 use qrtz_modules::qrtz_lock::{key, QrtzLock, Source};
@@ -120,44 +121,93 @@ fn has_view(data: &Path, dir: &str) -> bool {
     data.join(format!("models/{dir}/{MARKER}")).is_file()
 }
 
-/// ADR 0237: every module whose models the app pinned (echo and nano) is now built into qrtz.app, so none of those
-/// requests is ever orphaned: a launch keeps each request, package and view, with or without old marketplace rows
-/// for echo or nano in the lock (a revoked one included).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn bundled_echo_and_nano_keep_every_app_request_at_an_upgrade() {
+async fn an_upgrade_drops_old_app_requests_only_for_modules_that_arent_installed() {
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path();
     let srv = Server::start().await;
     let models = adopted(&srv, data).await;
-    let keeps_all = |l: &QrtzLock| {
-        for (_, package, dir) in SETS {
-            assert!(l.workspace.dependencies.contains_key(package), "{package}: kept");
-            assert!(l.get(package, "1.0.0").is_some(), "{package}: locked");
-            assert!(
-                data.join(format!("packages/{package}/1.0.0/w.bin")).is_file(),
-                "{package}"
-            );
-            assert!(has_view(data, dir), "{dir}: linked for the bundled helper");
-        }
-    };
 
-    // Nothing installed from the marketplace.
-    assert!(orphaned_app_requests(&lock(data)).is_empty());
-    assert_eq!(models.sync_views(), Vec::<String>::new());
-    keeps_all(&lock(data));
-
-    // An old echo row, and an old nano row that was revoked: still nothing goes.
+    // echo is installed from the marketplace; nano isn't.
     let mut l = lock(data);
     install_extension(data, &mut l, "echo", &[ECHO]);
-    install_extension(data, &mut l, "nano", &NANO);
-    l.packages.get_mut(&key("nano", "0.3.0")).unwrap().disabled = Some("revoked".into());
     l.save(&data.join("qrtz.lock")).unwrap();
-    assert!(orphaned_app_requests(&l).is_empty());
+    let mut want: Vec<String> = NANO.iter().map(|s| s.to_string()).collect();
+    want.sort();
+    assert_eq!(orphaned_app_requests(&l), want);
+
     assert_eq!(models.sync_views(), Vec::<String>::new());
     let l = lock(data);
-    keeps_all(&l);
+    for n in NANO {
+        assert!(!l.workspace.dependencies.contains_key(n), "{n}: request dropped");
+        assert!(l.get(n, "1.0.0").is_none(), "{n}: package left the lock");
+        assert!(
+            !data.join(format!("packages/{n}/1.0.0")).exists(),
+            "{n}: package dir pruned"
+        );
+    }
+    for (_, package, dir) in SETS {
+        assert_eq!(has_view(data, dir), package == ECHO, "{dir}");
+    }
+    // echo's model: still requested, locked, on disk and linked for the helper.
+    assert!(l.workspace.dependencies.contains_key(ECHO));
+    assert!(l.get(ECHO, "1.0.0").is_some());
+    assert!(data.join(format!("packages/{ECHO}/1.0.0/w.bin")).is_file());
+    assert!(orphaned_app_requests(&l).is_empty(), "idempotent");
     assert_eq!(models.sync_views(), Vec::<String>::new());
     assert_eq!(lock(data), l, "a second launch changes nothing");
+
+    // ADR 0174: echo ships in qrtz.app, so even with its old marketplace package gone from the lock its Parakeet
+    // request (what switching echo on downloads) stays, locked and linked.
+    let mut l = lock(data);
+    l.packages.remove(&key("echo", "0.3.0"));
+    l.workspace.dependencies.remove("echo");
+    l.workspace.resolved.remove("echo");
+    l.save(&data.join("qrtz.lock")).unwrap();
+    assert!(
+        orphaned_app_requests(&l).is_empty(),
+        "bundled echo keeps its model"
+    );
+    assert_eq!(models.sync_views(), Vec::<String>::new());
+    assert!(lock(data).get(ECHO, "1.0.0").is_some());
+    assert!(has_view(data, "parakeet-tdt-v2"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_installed_module_and_a_users_own_request_keep_their_models() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path();
+    let srv = Server::start().await;
+    let models = adopted(&srv, data).await;
+
+    let mut l = lock(data);
+    // nano installed but revoked: not installed, so its old requests may go...
+    install_extension(data, &mut l, "nano", &NANO);
+    l.packages.get_mut(&key("nano", "0.3.0")).unwrap().disabled = Some("revoked".into());
+    // ...except one the user asked for from the index (`qrtz install model.localvqe`).
+    l.packages
+        .get_mut(&key("model.localvqe", "1.0.0"))
+        .unwrap()
+        .source = Source::Network;
+    // echo installed with an engine swap onto nano's Nemotron (ADR 0157 §5): nano isn't installed, but an installed
+    // extension depends on it, so that request stays.
+    install_extension(data, &mut l, "echo", &[ECHO, "model.nemotron"]);
+    l.save(&data.join("qrtz.lock")).unwrap();
+    assert_eq!(
+        orphaned_app_requests(&l),
+        vec!["model.nemotron-diarizer".to_owned()]
+    );
+
+    assert_eq!(models.sync_views(), Vec::<String>::new());
+    let l = lock(data);
+    assert!(!l.workspace.dependencies.contains_key("model.nemotron-diarizer"));
+    for n in [ECHO, "model.nemotron", "model.localvqe"] {
+        assert!(l.workspace.dependencies.contains_key(n), "{n}: kept");
+        assert!(data.join(format!("packages/{n}/1.0.0/w.bin")).is_file(), "{n}");
+    }
+    // The diarizer is still reachable through the revoked nano row, so its package stays locked (nothing dropped
+    // that something in the lock needs); only the app's own request for it went.
+    assert!(l.get("model.nemotron-diarizer", "1.0.0").is_some());
 
     // Nothing installed and no app requests: a fresh empty shell is a no-op.
     let tmp2 = tempfile::tempdir().unwrap();

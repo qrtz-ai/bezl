@@ -734,12 +734,10 @@ impl AppService {
         for (id, sup) in [("nano", &h.nano), ("echo", &h.echo), ("ctrl", &h.ctrl)] {
             // QRT-352: an experimental module's helper never runs while experimental apps is off.
             let on = !crate::modules::experiment_off(cfg, id)
-                // ADR 0237: nano and ctrl are built in (always "installed"), so their own switch decides; echo keeps
-                // its ADR 0174 rule (installed, the switch retries a crash-loop below).
-                && if id == "echo" {
-                    g.is_installed(id)
-                } else {
+                && if id == "ctrl" {
                     g.is_on(id)
+                } else {
+                    g.is_installed(id)
                 };
             if last.get(id) == Some(&on) {
                 continue;
@@ -808,7 +806,13 @@ impl AppService {
             .unwrap_or_else(|p| p.into_inner())
             .clone();
         let started = self.relaunch.started.lock().unwrap_or_else(|p| p.into_inner());
-        stale(&locked, &started)
+        started
+            .iter()
+            .filter_map(|(id, old)| {
+                let new = locked.get(*id)?;
+                (new != old).then(|| (*id, old.clone(), new.clone()))
+            })
+            .collect()
     }
 
     /// Keep every stale helper's package dir out of every prune (`packages-in-use.json`; rewritten on a change).
@@ -1397,52 +1401,4 @@ impl Handler for Shared {
 #[cfg(feature = "runtime")]
 fn access_only(status: &Value) -> Value {
     json!({"access": status["access"].as_str().unwrap_or("denied")})
-}
-
-/// ADR 0172: running helpers started from a version the lock no longer resolves: (module, running, locked), sorted.
-/// Generic over module ids (ADR 0237 left no first-party module in the lock; the rule is the marketplace's, for any
-/// installed extension whose helper qrtz runs).
-fn stale<K: AsRef<str> + Ord + Clone>(
-    locked: &std::collections::BTreeMap<String, String>,
-    started: &std::collections::BTreeMap<K, String>,
-) -> Vec<(K, String, String)> {
-    started
-        .iter()
-        .filter_map(|(id, old)| {
-            let new = locked.get(id.as_ref())?;
-            (new != old).then(|| (id.clone(), old.clone(), new.clone()))
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod relaunch_tests {
-    use std::collections::BTreeMap;
-
-    /// ADR 0172 for a third-party module (Bozniak's ADR 0237 review): an update moves the lock while the helper
-    /// keeps running its old version, so it is pending a restart until it is started from the locked one; a module
-    /// that isn't running, or that runs outside the lock, never is.
-    #[test]
-    fn a_third_party_helper_is_pending_restart_while_it_runs_an_old_locked_version() {
-        let lock = |v: &str| {
-            BTreeMap::from([
-                ("demo".to_owned(), v.to_owned()),
-                ("demo-two".to_owned(), "1.0.0".to_owned()),
-            ])
-        };
-        let running = BTreeMap::from([("demo", "0.3.0".to_owned()), ("demo-two", "1.0.0".to_owned())]);
-        assert!(super::stale(&lock("0.3.0"), &running).is_empty());
-        assert_eq!(
-            super::stale(&lock("0.3.1"), &running),
-            [("demo", "0.3.0".to_owned(), "0.3.1".to_owned())]
-        );
-        let restarted = BTreeMap::from([("demo", "0.3.1".to_owned())]);
-        assert!(super::stale(&lock("0.3.1"), &restarted).is_empty());
-        let other = BTreeMap::from([("acme-tool", "2.0.0".to_owned())]);
-        assert!(
-            super::stale(&lock("0.3.1"), &other).is_empty(),
-            "not in the lock: nothing to restart into"
-        );
-        assert!(super::stale(&lock("0.3.1"), &BTreeMap::<&str, String>::new()).is_empty());
-    }
 }

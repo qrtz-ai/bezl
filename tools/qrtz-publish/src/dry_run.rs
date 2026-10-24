@@ -57,12 +57,6 @@ pub fn sample_hugging_face_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
 }
 
 pub fn sample(dir: &Path, big: bool) -> crate::Result<Spec> {
-    sample_named(dir, big, "nano")
-}
-
-/// [`sample`] with the extension named `ext` (ADR 0237: the app refuses a package named like a bundled module, so
-/// its tests publish the test-only extension `demo`, `qrtz_modules`'s `fixture-extension`).
-pub fn sample_named(dir: &Path, big: bool, ext: &str) -> crate::Result<Spec> {
     let model = dir.join("sample/model");
     json(
         &model.join("qrtz.json"),
@@ -84,19 +78,15 @@ pub fn sample_named(dir: &Path, big: bool, ext: &str) -> crate::Result<Spec> {
         true,
     )?;
     write(&svc.join("sample.xpc/Contents/Info.plist"), b"<plist/>", false)?;
-    let nano = dir.join(format!("sample/{ext}"));
+    let nano = dir.join("sample/nano");
     json(
         &nano.join("qrtz.json"),
-        serde_json::json!({"name": ext, "version": "0.3.0", "kind": "extension",
+        serde_json::json!({"name": "nano", "version": "0.3.0", "kind": "extension",
             "dependencies": {"inference.sample": "^1.0.0", "model.sample": "^1.0.0"},
-            "extension": {"entry": format!("bin/qrtz-{ext}"), "protocol": 1, "minApp": "0.3.0",
+            "extension": {"entry": "bin/qrtz-nano", "protocol": 1, "minApp": "0.3.0",
                           "channels": ["recording.*"], "views": ["note"], "permissions": ["microphone"]}}),
     )?;
-    write(
-        &nano.join(format!("bin/qrtz-{ext}")),
-        b"#!/bin/sh\necho dry-run\n",
-        true,
-    )?;
+    write(&nano.join("bin/qrtz-nano"), b"#!/bin/sh\necho dry-run\n", true)?;
     Ok(Spec {
         team_id: TEAM.into(),
         packages: [model, svc, nano]

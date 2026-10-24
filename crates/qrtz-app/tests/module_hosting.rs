@@ -10,7 +10,7 @@ use qrtz_modules::index::{layout, DAY_MS};
 use qrtz_modules::install::{InstallConsent, Installer};
 use qrtz_modules::qrtz_lock::Source;
 use qrtz_modules::sideload::{Confirmation, Refusal, Revoked, SideloadOrigin};
-use qrtz_publish::dry_run::{sample_hugging_face_files, sample_named, NoAppleChecks};
+use qrtz_publish::dry_run::{sample, sample_hugging_face_files, NoAppleChecks};
 use qrtz_publish::keys::Keys;
 use qrtz_publish::{build, pack, write_root, Spec};
 use qrtz_speech::testkit::Server;
@@ -66,11 +66,6 @@ fn serve(out: &Path, s: &Server) {
 }
 
 async fn world() -> World {
-    world_of("demo").await
-}
-
-/// [`world`] with the sample extension published as `name` (ADR 0237: `nano` plays an old index that still had it).
-async fn world_of(name: &str) -> World {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().to_path_buf();
     let out = dir.join("out");
@@ -78,7 +73,7 @@ async fn world_of(name: &str) -> World {
     let now = qrtz_publish::now_ms();
     let (_, pin) = write_root(&out, &keys, None, 1, now).unwrap();
     // The model's weights are 20 MiB: three 8 MiB ranges.
-    let spec = sample_named(&dir, true, name).unwrap();
+    let spec = sample(&dir, true).unwrap();
     build(&out, &spec, &keys, now).unwrap();
     let (primary, mirror) = (Server::start().await, Server::start().await);
     serve(&out, &primary);
@@ -138,7 +133,7 @@ impl World {
 fn no_progress(_: u64, _: u64) {}
 
 fn echo() -> Op {
-    Op::Install(vec![("demo".into(), None)])
+    Op::Install(vec![("nano".into(), None)])
 }
 
 async fn install(c: &Packages, now: u64) -> Result<qrtz_app::module_hosting::Applied, InstallError> {
@@ -150,7 +145,7 @@ fn echo_lock(c: &Packages) -> qrtz_modules::qrtz_lock::Locked {
     c.installer
         .lock()
         .unwrap()
-        .get("demo", "0.3.0")
+        .get("nano", "0.3.0")
         .cloned()
         .expect("echo locked")
 }
@@ -190,7 +185,7 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
     let root = c.installer.root();
     assert_eq!(echo_lock(&c).source, Source::Network);
     assert!(root.join("qrtz.lock").exists());
-    assert!(root.join("packages/demo/0.3.0/qrtz.json").exists());
+    assert!(root.join("packages/nano/0.3.0/qrtz.json").exists());
     assert!(root.join("packages/model.sample/1.0.0/weights/a.bin").exists());
     assert!(root
         .join("packages/inference.sample/1.0.0/sample.xpc/Contents/MacOS/sample")
@@ -200,12 +195,12 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
         use std::os::unix::fs::PermissionsExt;
         let mode = |p: &str| std::fs::metadata(root.join(p)).unwrap().permissions().mode() & 0o777;
         assert_eq!(
-            mode("packages/demo/0.3.0/bin/qrtz-demo"),
+            mode("packages/nano/0.3.0/bin/qrtz-nano"),
             0o500,
             "code is copied, owner-only"
         );
         // Data is a store link (a clone on APFS, a hardlink here): never writable.
-        assert_eq!(mode("packages/demo/0.3.0/qrtz.json") & 0o222, 0);
+        assert_eq!(mode("packages/nano/0.3.0/qrtz.json") & 0o222, 0);
         assert_eq!(mode("packages/model.sample/1.0.0"), 0o500);
     }
     // The big model file came in closed 8 MiB ranges, from its Hugging Face URL only (ADR 0171): the package hosts
@@ -271,7 +266,7 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
         })
         .unwrap();
     assert!(own.fetch.is_empty() && own.changes.is_empty());
-    for model in ["model.nemotron", "model.laya", "demo"] {
+    for model in ["model.nemotron", "model.laya", "nano"] {
         let e = c
             .plan(Op::Engine {
                 extension: "echo".into(),
@@ -284,12 +279,12 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
             "{e}"
         );
     }
-    let rm = c.plan(Op::Remove(vec!["demo".into()])).unwrap();
+    let rm = c.plan(Op::Remove(vec!["nano".into()])).unwrap();
     c.apply(&rm, &rm.consent(), w.now, &no_progress).await.unwrap();
     let p = c.prune().unwrap();
     assert_eq!(p.dirs.len(), 3);
     assert!(p.bytes > 20 * 1024 * 1024);
-    assert!(!root.join("packages/demo").exists());
+    assert!(!root.join("packages/nano").exists());
 }
 
 #[tokio::test]
@@ -462,7 +457,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
     c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
     install(&c, w.now).await.unwrap();
     let pulled = Revoked {
-        package: "demo".into(),
+        package: "nano".into(),
         versions: vec!["0.3.0".into()],
         reason: "pulled: crash on launch".into(),
     };
@@ -472,7 +467,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
         .await
         .unwrap();
     assert_eq!(r.notices.len(), 1);
-    assert_eq!(r.notices[0].module, "demo");
+    assert_eq!(r.notices[0].module, "nano");
     assert_eq!(echo_lock(&c).disabled.as_deref(), Some("pulled: crash on launch"));
     // A fresh client can't install it either: resolution skips revoked versions.
     let c2 = w.client("client2", &[&w.primary]);
@@ -481,7 +476,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
         .unwrap();
     assert!(c2.plan(echo()).is_err(), "no unrevoked echo");
     assert!(c2
-        .plan(Op::Install(vec![("demo".into(), Some("=0.3.0".into()))]))
+        .plan(Op::Install(vec![("nano".into(), Some("=0.3.0".into()))]))
         .is_err());
 }
 
@@ -489,7 +484,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
 async fn sideload_follows_bozniaks_rules() {
     let w = world().await;
     let pkg = w.dir.join("echo-0.3.0.qrtzpkg");
-    pack(&w.out, "demo", "0.3.0", &pkg).unwrap();
+    pack(&w.out, "nano", "0.3.0", &pkg).unwrap();
     let late = w.now + 20 * DAY_MS;
 
     // Rule 4: a file from a watched folder is refused; a user-picked one asks first, showing the list's age.
@@ -547,14 +542,14 @@ async fn sideload_follows_bozniaks_rules() {
 
     // Rule 2: a stored list that revokes it refuses the sideload after the yes, with no override.
     let pulled = Revoked {
-        package: "demo".into(),
+        package: "nano".into(),
         versions: vec![],
         reason: "pulled".into(),
     };
     // Issued a day before `late`, so it is still fresh on the air-gapped Mac, whose clock has seen `late`.
     w.republish(vec![pulled], late - DAY_MS);
     let pkg2 = w.dir.join("echo-0.3.0-b.qrtzpkg");
-    pack(&w.out, "demo", "0.3.0", &pkg2).unwrap();
+    pack(&w.out, "nano", "0.3.0", &pkg2).unwrap();
     let revoker = w.client("revoker", &[&w.primary]);
     revoker
         .refresh(&RefreshConsent::user_asked(), late)
@@ -666,24 +661,24 @@ async fn the_qrtz_cli_drives_the_same_installer() {
         run(c, cmd, &f, &mut io).await
     }
     // Asked, said no: nothing changes.
-    go(&c, "install demo", &mut out, &mut answers, &mut asked)
+    go(&c, "install nano", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert_eq!(asked, ["Proceed?"]);
     assert!(c.installer.lock().unwrap().packages.is_empty());
     let text = String::from_utf8_lossy(&out).to_string();
     assert!(
-        text.contains("+ demo@0.3.0")
+        text.contains("+ nano@0.3.0")
             && text.contains("+ model.sample@1.0.0")
             && text.contains("nothing changed"),
         "{text}"
     );
     // --dry-run shows and stops; -y installs.
-    go(&c, "install demo --dry-run", &mut out, &mut answers, &mut asked)
+    go(&c, "install nano --dry-run", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert!(c.installer.lock().unwrap().packages.is_empty());
-    go(&c, "install demo -y", &mut out, &mut answers, &mut asked)
+    go(&c, "install nano -y", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert_eq!(c.installer.lock().unwrap().packages.len(), 3);
@@ -691,11 +686,11 @@ async fn the_qrtz_cli_drives_the_same_installer() {
     go(&c, "ls", &mut out, &mut answers, &mut asked).await.unwrap();
     let ls = String::from_utf8_lossy(&out).to_string();
     assert!(
-        ls.contains("demo@0.3.0  Extension") && ls.contains("requested ^0.3.0"),
+        ls.contains("nano@0.3.0  Extension") && ls.contains("requested ^0.3.0"),
         "{ls}"
     );
     assert!(
-        ls.contains("model.sample@1.0.0  Model") && ls.contains("for demo"),
+        ls.contains("model.sample@1.0.0  Model") && ls.contains("for nano"),
         "{ls}"
     );
     // Frozen and offline: nothing to do, no request.
@@ -704,7 +699,7 @@ async fn the_qrtz_cli_drives_the_same_installer() {
         .await
         .unwrap();
     assert_eq!(w.hits(), before);
-    go(&c, "remove demo -y", &mut out, &mut answers, &mut asked)
+    go(&c, "remove nano -y", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert_eq!(w.hits(), before, "remove is local");
@@ -735,7 +730,7 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
     let s = ipc.call("packages:refresh", json!(null)).await.unwrap();
     assert_eq!(s["index"]["version"], 1);
     let plan = ipc
-        .call("packages:plan", json!({"op": "install", "names": ["demo"]}))
+        .call("packages:plan", json!({"op": "install", "names": ["nano"]}))
         .await
         .unwrap();
     check("packages:plan", &plan);
@@ -783,9 +778,9 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
         .iter()
         .map(|p| p["kind"].as_str().unwrap())
         .collect();
-    assert_eq!(kinds, ["extension", "service", "model"]);
+    assert_eq!(kinds, ["service", "model", "extension"]);
     let plan = ipc
-        .call("packages:plan", json!({"op": "remove", "names": ["demo"]}))
+        .call("packages:plan", json!({"op": "remove", "names": ["nano"]}))
         .await
         .unwrap();
     ipc.call(
@@ -855,11 +850,11 @@ async fn a_refresh_stuck_on_a_silent_host_blocks_no_install() {
             .await
         }
     };
-    let install = json!({"op": "install", "names": ["demo"]});
+    let install = json!({"op": "install", "names": ["nano"]});
     let plan = ipc.call("packages:plan", install.clone()).await.unwrap();
     apply(plan).await.unwrap();
     let plan = ipc
-        .call("packages:plan", json!({"op": "remove", "names": ["demo"]}))
+        .call("packages:plan", json!({"op": "remove", "names": ["nano"]}))
         .await
         .unwrap();
     apply(plan).await.unwrap();
@@ -937,10 +932,10 @@ impl qrtz_modules::fetch::Transport for MidRefresh {
     }
 }
 
-/// Index v2 (revoking demo@0.3.0) on its own server, v3 (revoking nothing) on the primary and the mirror.
+/// Index v2 (revoking nano@0.3.0) on its own server, v3 (revoking nothing) on the primary and the mirror.
 async fn two_versions(w: &World) -> (Server, Revoked) {
     let pulled = Revoked {
-        package: "demo".into(),
+        package: "nano".into(),
         versions: vec!["0.3.0".into()],
         reason: "pulled: crash on launch".into(),
     };
@@ -1038,194 +1033,4 @@ async fn a_flat_github_release_host_serves_refresh_and_install() {
         "{hits:?}"
     );
     assert_eq!(w.hits(), 0, "the tree hosts are never asked");
-}
-
-/// ADR 0237 (Bozniak's review (d)): an index that still publishes `nano` (a module now inside qrtz.app) never gets it
-/// installed: the app's plan refuses the name, and so does a sideloaded `.qrtzpkg` of it.
-#[tokio::test]
-async fn a_package_named_like_a_bundled_module_is_refused_from_an_index_and_a_sideload() {
-    let w = world_of("nano").await;
-    let c = w.client("client", &[&w.primary]);
-    c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
-    let e = c.plan(Op::Install(vec![("nano".into(), None)])).unwrap_err();
-    assert!(e.to_string().contains("built into qrtz.app"), "{e}");
-    // Below the app's named-op filter, the installer the app builds refuses the name itself.
-    let raw =
-        Installer::new(c.installer.root(), Some(w.pin.clone()), Box::new(NoAppleChecks)).refusing_bundled();
-    let e = raw.plan(Op::Install(vec![("nano".into(), None)])).unwrap_err();
-    assert!(matches!(&e, InstallError::Bundled(n) if n == "nano"), "{e}");
-    // A sideloaded .qrtzpkg of it too.
-    let pkg = w.dir.join("nano.qrtzpkg");
-    pack(&w.out, "nano", "0.3.0", &pkg).unwrap();
-    let e = match raw
-        .sideload(&pkg, SideloadOrigin::UserPickedFile, None, w.now)
-        .await
-    {
-        Err(InstallError::Refused(Refusal::NeedsConfirmation(p))) => {
-            let yes = Confirmation {
-                package_sha256: p.package_sha256.clone(),
-                revocation_issued_ms: p.revocation_issued_ms,
-            };
-            raw.sideload(&pkg, SideloadOrigin::UserPickedFile, Some(&yes), w.now)
-                .await
-                .unwrap_err()
-        }
-        Err(e) => e,
-        Ok(_) => panic!("a sideloaded nano installed"),
-    };
-    assert!(matches!(&e, InstallError::Bundled(n) if n == "nano"), "{e}");
-    assert!(!c.installer.root().join("packages/nano").exists());
-}
-
-/// ADR 0237 (Bozniak's review (e)): a lock from before the move still holds nano. At launch it leaves the lock
-/// (its model stays, now a request of its own), its package dir survives every prune while it is retired, and is
-/// pruned only once the copy inside qrtz.app passed its check and launched.
-#[tokio::test]
-async fn an_old_locks_nano_is_retired_kept_until_the_bundled_helper_launches_then_pruned() {
-    let w = world_of("nano").await;
-    let raw = Installer::new(w.dir.join("old"), Some(w.pin.clone()), Box::new(NoAppleChecks));
-    let t = w.transport(std::slice::from_ref(&w.primary.base));
-    raw.refresh(&t, &RefreshConsent::user_asked(), w.now)
-        .await
-        .unwrap();
-    let plan = raw.plan(Op::Install(vec![("nano".into(), None)])).unwrap();
-    raw.apply(&t, &plan, &plan.consent(), w.now, &no_progress)
-        .await
-        .unwrap();
-    let root = raw.root().to_path_buf();
-    let old_dir = root.join("packages/nano/0.3.0");
-    assert!(old_dir.join("qrtz.json").exists());
-
-    qrtz_app::installed::retire_bundled(&root);
-    let lock = raw.lock().unwrap();
-    assert!(!lock.packages.contains_key("nano"), "nano left the lock");
-    assert!(!lock.workspace.dependencies.contains_key("nano"));
-    assert!(lock.get("model.sample", "1.0.0").is_some(), "its model stays");
-    assert!(
-        lock.workspace.dependencies.contains_key("model.sample"),
-        "now a request of its own"
-    );
-    assert!(qrtz_modules::install::read_retired(&root).contains_key("nano"));
-    // A second launch changes nothing.
-    qrtz_app::installed::retire_bundled(&root);
-
-    raw.prune().unwrap();
-    assert!(old_dir.exists(), "kept while the bundled helper hasn't launched");
-    assert!(root.join("packages/model.sample/1.0.0/weights/a.bin").exists());
-
-    // The bundled copy passed its check and launched.
-    qrtz_app::installed::bundled_launched(&root, "nano");
-    assert!(!old_dir.exists(), "pruned after the bundled launch");
-    assert!(qrtz_modules::install::read_retired(&root).is_empty());
-    assert!(root.join("packages/model.sample/1.0.0/weights/a.bin").exists());
-    // Another module's launch, or a second one, is a no-op.
-    qrtz_app::installed::bundled_launched(&root, "nano");
-    qrtz_app::installed::bundled_launched(&root, "ctrl");
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for e in std::fs::read_dir(from).unwrap().flatten() {
-        let (s, d) = (e.path(), to.join(e.file_name()));
-        if s.is_dir() {
-            copy_dir(&s, &d);
-        } else {
-            std::fs::copy(&s, &d).unwrap();
-        }
-    }
-}
-
-/// ADR 0237 (Bozniak's review): the bundled-name refusal catches only echo, nano, ctrl and snap. Through the app's
-/// own installer (`refusing_bundled`), a third-party module installs and updates as before, and a sideloaded file
-/// can't shadow the locked copy: not with an older version, and not with other bytes under the locked version.
-#[tokio::test]
-async fn a_third_party_module_installs_and_updates_and_a_sideload_never_shadows_it() {
-    let w = world().await;
-    let root = w.dir.join("app");
-    let c = Packages::with(
-        Installer::new(&root, Some(w.pin.clone()), Box::new(NoAppleChecks)).refusing_bundled(),
-        w.transport(std::slice::from_ref(&w.primary.base)),
-    );
-    c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
-    install(&c, w.now).await.unwrap();
-    assert_eq!(c.installer.lock().unwrap().workspace.resolved["demo"], "0.3.0");
-    assert!(root.join("packages/demo/0.3.0/bin/qrtz-demo").is_file());
-
-    // demo 0.3.1 is published; a normal update takes it.
-    let v2 = w.dir.join("demo-0.3.1");
-    copy_dir(&w.dir.join("sample/demo"), &v2);
-    let manifest = v2.join("qrtz.json");
-    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
-    m["version"] = "0.3.1".into();
-    std::fs::write(&manifest, serde_json::to_vec(&m).unwrap()).unwrap();
-    let spec = Spec {
-        team_id: qrtz_publish::dry_run::TEAM.into(),
-        packages: vec![qrtz_publish::SpecPackage::fake_notarized(v2)],
-        pinned_models: vec![],
-        models: vec![],
-        revoked: vec![],
-    };
-    build(&w.out, &spec, &w.keys, w.now + 1000).unwrap();
-    serve(&w.out, &w.primary);
-    // An older version in a file carrying the current index (an older index is refused as a rollback anyway).
-    let old_pkg = w.dir.join("demo-0.3.0.qrtzpkg");
-    pack(&w.out, "demo", "0.3.0", &old_pkg).unwrap();
-    c.refresh(&RefreshConsent::user_asked(), w.now + 2000)
-        .await
-        .unwrap();
-    let plan = c
-        .plan(Op::Update {
-            names: vec!["demo".into()],
-            latest: true,
-        })
-        .unwrap();
-    c.apply(&plan, &plan.consent(), w.now + 2000, &no_progress)
-        .await
-        .unwrap();
-    let lock = c.installer.lock().unwrap();
-    assert_eq!(lock.workspace.resolved["demo"], "0.3.1");
-    assert!(root.join("packages/demo/0.3.1/bin/qrtz-demo").is_file());
-
-    // A sideload of the older file is a downgrade: refused before any prompt, the lock unchanged.
-    let e = c
-        .installer
-        .sideload(&old_pkg, SideloadOrigin::UserPickedFile, None, w.now + 2000)
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(&e, InstallError::Refused(Refusal::Downgrade { installed }) if installed == "0.3.1"),
-        "{e:?}"
-    );
-    assert_eq!(c.installer.lock().unwrap(), lock);
-
-    // A file whose demo@0.3.1 isn't the locked bytes is refused even after the yes, and changes nothing.
-    let new_pkg = w.dir.join("demo-0.3.1.qrtzpkg");
-    pack(&w.out, "demo", "0.3.1", &new_pkg).unwrap();
-    let mut tampered = lock.clone();
-    tampered.packages.get_mut("demo@0.3.1").unwrap().sha256 = "0".repeat(64);
-    tampered.save(&c.installer.lock_path()).unwrap();
-    let p = match c
-        .installer
-        .sideload(&new_pkg, SideloadOrigin::UserPickedFile, None, w.now + 2000)
-        .await
-        .unwrap_err()
-    {
-        InstallError::Refused(Refusal::NeedsConfirmation(p)) => p,
-        e => panic!("{e:?}"),
-    };
-    let yes = Confirmation {
-        package_sha256: p.package_sha256.clone(),
-        revocation_issued_ms: p.revocation_issued_ms,
-    };
-    let e = c
-        .installer
-        .sideload(&new_pkg, SideloadOrigin::UserPickedFile, Some(&yes), w.now + 2000)
-        .await
-        .unwrap_err();
-    assert!(
-        e.to_string()
-            .contains("demo@0.3.1: already installed with different content"),
-        "{e}"
-    );
-    assert_eq!(c.installer.lock().unwrap(), tampered, "the locked copy stays");
 }

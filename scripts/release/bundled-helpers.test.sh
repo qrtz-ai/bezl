@@ -18,13 +18,6 @@ expect_pass() { if why="$("$@")"; then echo "ok: accepted $3"; pass=$((pass + 1)
 real="$(bundled_helpers "$here/../../modules" MR26CCZ496)"
 grep -q $'^qrtz-echo\tai.qrtz.echo\tnative/qrtz-helper/entitlements/ai.qrtz.echo.entitlements\tidentifier "ai.qrtz.echo" and anchor apple generic' <<<"$real" \
   || { echo "FAIL: modules/echo/module.json did not resolve to ai.qrtz.echo: $real" >&2; bad=$((bad + 1)); }
-# ADR 0237: exactly four bundled helpers, each with its own identifier and entitlements (none for ctrl and snap).
-[[ "$(wc -l <<<"$real")" -eq 4 ]] || { echo "FAIL: want 4 bundled helpers, got: $real" >&2; bad=$((bad + 1)); }
-for row in $'qrtz-nano\tai.qrtz.nano\tnative/qrtz-helper/entitlements/ai.qrtz.nano.entitlements\tidentifier "ai.qrtz.nano" and anchor apple generic' \
-           $'qrtz-ctrl\tai.qrtz.ctrl\tnone\tidentifier "ai.qrtz.ctrl" and anchor apple generic' \
-           $'qrtz-snap\tai.qrtz.snap\tnone\tidentifier "ai.qrtz.snap" and anchor apple generic'; do
-  grep -qF "$row" <<<"$real" || { echo "FAIL: no bundled row '${row%%$'\t'*}' as expected: $real" >&2; bad=$((bad + 1)); }
-done
 
 mkdir -p "$t/modules/testhelper"
 cat >"$t/modules/testhelper/module.json" <<'JSON'

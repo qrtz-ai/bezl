@@ -1,8 +1,8 @@
-# ADR 0237: snap, nano and ctrl ship inside qrtz.app, like echo
+# ADR 0237 (draft): snap, nano and ctrl ship inside qrtz.app, like echo
 
-Status: **accepted** (2026-10-23, QRT-361; Bozniak's review answers below). Amends ADR 0169 ("qrtz ships empty") and ADR
-0174 ("echo ships inside qrtz.app; nano, ctrl and snap stay in the marketplace"). Leaves ADR 0171 (models from Hugging
-Face), ADR 0185 (echo's own updates) and ADR 0231 (Agent Dash's network helper is never bundled) as they are.
+Status: **proposed**, for Bozniak's pre-clearance. Amends ADR 0169 ("qrtz ships empty") and ADR 0174 ("echo ships inside
+qrtz.app; nano, ctrl and snap stay in the marketplace"). Leaves ADR 0171 (models from Hugging Face), ADR 0185 (echo's own
+updates) and ADR 0231 (Agent Dash's network helper is never bundled) as they are.
 
 ## Context
 
@@ -102,12 +102,11 @@ Gated paths (signing, release, entitlements, permissions, process spawning, vers
 ### Signing and verification **[gated: signing, entitlements]**
 
 - `scripts/release/sign-mac.sh`: sign each from `bundled_helpers` output (identifier + entitlements per module.json):
-  nano `com.apple.security.device.audio-input` and `com.apple.security.personal-information.calendars` (see review
-  answer b); ctrl and snap none.
+  nano `com.apple.security.device.audio-input`; ctrl and snap none.
 - `scripts/release/bundled-helpers.sh` + `bundled-helpers.test.sh`: the real-modules row count goes 1 → 4, and the
   allowlist test covers each.
 - `scripts/release/verify-bundle.sh` + `verify-bundle.test.mjs`: the Mach-O allowlist grows from three executables to
-  six; exact entitlement allowlists for `qrtz-nano` (audio-input, calendars), `qrtz-ctrl` (none), `qrtz-snap` (none); the dev-local
+  six; exact entitlement allowlists for `qrtz-nano` (audio-input), `qrtz-ctrl` (none), `qrtz-snap` (none); the dev-local
   override-string scan (line ~216) covers the new names.
 - `docs/modules/confinement-map.json`: `bundledCode` entries for the three.
 - `scripts/dev/sign.sh`, `scripts/dev/dev-sign.test.mjs`: dev signing of the new binaries.
@@ -163,31 +162,6 @@ Gated paths (signing, release, entitlements, permissions, process spawning, vers
 3. Migration: is pruning old package dirs after one bundled launch enough, or should they stay until the next app
    update?
 4. Should `"protocol"` become enforced anyway (for third-party modules), or is that separate work?
-
-## Review answers (Bozniak)
-
-a. **Launch check.** The three get exactly echo's check: `codesign -R` against the requirement rebuilt from the
-compiled-in manifest (identifier `ai.qrtz.<id>`, team MR26CCZ496) before every spawn, only from a real
-`.app/Contents/MacOS`. There is no cdhash pin, since no copy is ever downloaded. Tests:
-`installed::bundled_nano_ctrl_and_snap_are_checked_against_their_bundled_manifests`.
-b. **Notarization and entitlements.** Bundled under the app's notarization. Each binary's exact entitlement set is
-enforced by `verify-bundle.sh` (exact match, not a subset): `qrtz-nano` audio-input + calendars, `qrtz-ctrl` and
-`qrtz-snap` none (`bundledCode` `"entitlements": null` in the confinement map). **Deviation from the draft:** the
-draft listed nano as audio-input only, but `modules/nano/module.json` has always also declared
-`com.apple.security.personal-information.calendars` (meeting detection). The bundled signature keeps both rather
-than silently dropping a permission nano uses; removing calendars would be a separate product decision.
-Screen recording and Accessibility are TCC grants, not entitlements, and stay prompt-on-first-use.
-c. **nano and ctrl stay experimental.** The `experimentalApps` gate stays the primary barrier: with it off, the host
-never spawns either helper, whatever `modules.<id>.enabled` says. Test:
-`e2e_split_host::a_fresh_install_never_spawns_nano_or_ctrl` (no config, and experimental apps off with both switched
-on) plus `modules::the_bundled_nano_ctrl_and_snap_views_hold_only_their_own_switch`.
-d. **Name squatting.** A package named `echo`, `nano`, `ctrl` or `snap` is refused from an index, from a lock and from
-a sideload (`InstallError::Bundled`; `packages:plan` says it is built into qrtz.app). Test:
-`module_hosting::a_package_named_like_a_bundled_module_is_refused_from_an_index_and_a_sideload`.
-e. **Pruning.** An old lock's entries for the three are retired on first launch but their package dirs are kept until
-that module's bundled helper has passed its launch check and spawned once; only then are they released for prune.
-Test: `module_hosting::an_old_locks_nano_is_retired_kept_until_the_bundled_helper_launches_then_pruned`.
-f. **`protocol` enforcement** for third-party modules is separate work: QRT-363.
 
 ## Not covered
 

@@ -13,9 +13,9 @@ fn main() {
     .expect("tauri build script");
 }
 
-/// ADR 0162, ADR 0174, ADR 0237: on macOS `binaries/qrtz` (the `qrtz` command) and `binaries/qrtz-<id>` (echo, nano,
-/// ctrl and snap, the module helpers qrtz.app bundles) are the externalBins, which tauri-build requires to exist.
-/// `bun run build:helper` builds the real ones. A debug build
+/// ADR 0162, ADR 0174: on macOS `binaries/qrtz` (the `qrtz` command) and `binaries/qrtz-echo` (echo, the one module
+/// qrtz.app bundles) are the externalBins, which tauri-build requires to exist. `bun run build:helper` builds the real
+/// ones. A debug build
 /// (`cargo check`, `tauri dev`, the CI check) without it gets a stub that says how to build it; a release build
 /// never does, so a bundle can't ship a stub.
 /// tauri-build copies these into target/<profile>/ only when cargo reruns this script, which is mtime-based, so
@@ -28,9 +28,6 @@ const STUBBED: &[(&str, &str)] = &[
         "cargo run -p qrtz-app --features runtime --bin qrtz -- \"$@\"",
     ),
     ("qrtz-echo", "bun run build:helper"),
-    ("qrtz-nano", "bun run build:helper"),
-    ("qrtz-ctrl", "bun run build:helper"),
-    ("qrtz-snap", "bun run build:helper"),
 ];
 
 fn stub_qrtz_command_for_debug_builds() {

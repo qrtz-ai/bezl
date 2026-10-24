@@ -168,16 +168,11 @@ export function isModuleInstalled(
 }
 
 /**
- * ADR 0174, ADR 0237: the modules qrtz.app carries itself (all four first-party apps). Always installed, never in the marketplace; their view
+ * ADR 0174: the modules qrtz.app carries itself (v1: echo). Always installed, never in the marketplace; their view
  * stays in the sidebar while they are off and holds their on/off switch. Same list as qrtz-modules
  * `BUNDLED_EXTENSIONS`.
  */
-export const BUNDLED_MODULES: readonly ModuleId[] = [
-  'echo',
-  'nano',
-  'ctrl',
-  'snap',
-];
+export const BUNDLED_MODULES: readonly ModuleId[] = ['echo'];
 
 export function isBundledModule(id: string): boolean {
   return (BUNDLED_MODULES as readonly string[]).includes(id);

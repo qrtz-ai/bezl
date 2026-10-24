@@ -327,12 +327,10 @@ impl LocalModels {
             None => Hosts::pinned().root1_sha256,
         };
         let (root, manifest) = (self.root.clone(), self.manifest.clone());
-        Installer::new(&self.packages_root, pin, Box::new(AppleCodeChecks))
-            .refusing_bundled()
-            .with_tmp_keep(tmp_keep_fn(
-                &self.packages_root,
-                Some((manifest, root.join("download.json"))),
-            ))
+        Installer::new(&self.packages_root, pin, Box::new(AppleCodeChecks)).with_tmp_keep(tmp_keep_fn(
+            &self.packages_root,
+            Some((manifest, root.join("download.json"))),
+        ))
     }
 
     fn transport(&self, ctl: &DownloadControl) -> HttpTransport {

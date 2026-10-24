@@ -6,11 +6,5 @@ export const manifest = SubAppManifest.parse({
   name: 'ctrl',
   icon: 'command',
   order: 30,
-  capabilities: [
-    'ctrl.read',
-    'ctrl.write',
-    'config.read',
-    'config.write',
-    'module.settings',
-  ],
+  capabilities: ['ctrl.read', 'ctrl.write', 'module.settings'],
 });

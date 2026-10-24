@@ -1557,23 +1557,24 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
                     k.clone(),
                     (
                         v["identifier"].as_str().unwrap().to_owned(),
-                        v["entitlements"].as_str().unwrap_or("none").to_owned(),
+                        v["entitlements"].as_str().unwrap().to_owned(),
                     ),
                 )
             })
             .collect()
     };
-    // ADR 0174, ADR 0237: every first-party module's executable is bundled (bundledCode); none is a package.
+    // ADR 0174: echo's executable is bundled (bundledCode); nano, ctrl and snap are packages (moduleCode).
     let downloadable = table_of(code);
     let in_app = table_of(bundled);
-    assert!(
-        downloadable.is_empty(),
-        "moduleCode names no first-party module since ADR 0237: {downloadable:?}"
+    assert_eq!(
+        downloadable.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["qrtz-ctrl", "qrtz-nano", "qrtz-snap"],
+        "moduleCode names exactly the three downloadable modules"
     );
     assert_eq!(
         in_app.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["qrtz-ctrl", "qrtz-echo", "qrtz-nano", "qrtz-snap"],
-        "bundledCode carries exactly the four modules' code"
+        ["qrtz-echo"],
+        "bundledCode carries exactly echo's module code"
     );
     let mut mapped = downloadable.clone();
     mapped.extend(in_app.clone());
@@ -1602,8 +1603,6 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
             .split(',')
             .map(|x| x.trim().trim_matches('"').to_owned())
             .filter(|x| !x.is_empty())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
             .collect()
     };
     let lib = std::fs::read_to_string(root().join("crates/qrtz-modules/src/lib.rs")).unwrap();
@@ -1736,34 +1735,17 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
             &format!("ai.qrtz.{owner}"),
             "{owner}: the installer pins another identifier"
         );
-        // ADR 0237: a module with no entitlement (ctrl, snap) is signed with none (`null` in the map, as
-        // bundled-helpers.sh emits for an empty module.json list); its entitlements file stays, empty.
-        let ent_path = if ent == "none" {
-            format!("native/qrtz-helper/entitlements/{id}.entitlements")
-        } else {
-            ent.clone()
-        };
-        let file = Path::new(&ent_path)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
+        let file = Path::new(ent).file_name().unwrap().to_str().unwrap();
         assert_eq!(file, format!("{id}.entitlements"));
-        let plist =
-            std::fs::read_to_string(root().join(&ent_path)).unwrap_or_else(|e| panic!("{ent_path}: {e}"));
-        lint_entitlements(&file, &plist, &map).unwrap_or_else(|e| panic!("{name}: {e}"));
-        if ent == "none" {
-            assert!(
-                granted(&plist).is_empty() && !plist.contains("<key>"),
-                "{name} is signed with no entitlements: its file must grant none"
-            );
-        }
+        let plist = std::fs::read_to_string(root().join(ent)).unwrap_or_else(|e| panic!("{ent}: {e}"));
+        lint_entitlements(file, &plist, &map).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
-    // snap (ADR 0159) and ctrl: no entitlement at all.
-    for n in ["qrtz-snap", "qrtz-ctrl"] {
-        assert_eq!(mapped[n].1, "none", "{n} carries no entitlement");
-    }
+    // snap (ADR 0159): no entitlement at all.
+    let snap = std::fs::read_to_string(root().join(&mapped["qrtz-snap"].1)).unwrap();
+    assert!(
+        granted(&snap).is_empty() && !snap.contains("<key>"),
+        "qrtz-snap carries no entitlement"
+    );
     // The dev monolith has its own identifier, which nothing pins.
     let dev = &code["devHelper"];
     assert_eq!(dev["identifier"], "ai.qrtz.helper");

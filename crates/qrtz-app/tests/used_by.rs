@@ -88,15 +88,19 @@ fn expected() -> Vec<(String, Vec<String>)> {
     .collect()
 }
 
-/// ADR 0237: nano is bundled like echo and loads its pinned sets from their views (`models/<set>` with the marker),
-/// so every set keeps its view beside the store package (ADR 0212's read-only reads now apply only to ctrl's laya).
+/// ADR 0212: nano declares it reads its three models in its own process, so they have no view (it loads them from
+/// the read-only store package); echo's Parakeet keeps its view.
 fn on_disk(data: &Path) {
     for (_, package, dir) in SETS {
         assert!(
             data.join(format!("packages/{package}/1.0.0/w.bin")).is_file(),
             "{package}"
         );
-        assert!(data.join(format!("models/{dir}/{MARKER}")).is_file(), "{dir}");
+        assert_eq!(
+            data.join(format!("models/{dir}/{MARKER}")).is_file(),
+            package == "model.parakeet-tdt-v2-en",
+            "{dir}"
+        );
     }
 }
 
@@ -142,10 +146,10 @@ async fn the_speech_models_echo_and_nano_use_are_labeled_with_them_and_never_pru
     let models = LocalModels::with_manifest(data.join("models"), serve(&srv), Some(srv.base.clone()))
         .with_index(Some(pin), vec![ix.base.clone()]);
 
-    // Upgrade from before the package manager: the views are there, the lock isn't. ADR 0237: bundled nano, like
-    // echo, loads its sets from these views, so they count.
+    // Upgrade from before the package manager: the views are there, the lock isn't. nano's writable views no longer
+    // count (ADR 0212: its process reads only the read-only store packages); echo's still does.
     legacy_views(&data.join("models"));
-    assert!(models.installed());
+    assert!(!models.installed());
     assert!(!data.join("qrtz.lock").exists());
     // Switching echo and nano on (or settings → speech) adopts them through the package manager.
     models

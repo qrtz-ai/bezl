@@ -7,7 +7,7 @@
 //!   Hugging Face URL at the pinned commit, nothing but `qrtz.json` on the package host. The helper's layout fixture
 //!   (`native/qrtz-helper/Fixtures/ctrl/laya-live-layout.json`) is the same list.
 //! - Offline, always: an index shaped like the live one (the live `model.laya` qrtz.json byte for byte, the five
-//!   live paths with stand-in bytes) installs for bundled ctrl (ADR 0237: the ctrl package is refused), and the helper is handed the `.mlmodelc` it would load as is
+//!   live paths with stand-in bytes) installs with ctrl, and the helper is handed the `.mlmodelc` it would load as is
 //!   (every file regular and read-only, no symlink, `tokenizer.json` beside it).
 //! - Network, ignored by default: the real install from modules.qrtz.ai and Hugging Face into a temp data dir
 //!   (`cargo test -p qrtz-app --features runtime --test ctrl_live_index -- --ignored`), checked against the real pin.
@@ -313,23 +313,10 @@ async fn ok(r: &Router<Shared>, ch: &str, payload: Value) -> Value {
     v["data"].clone()
 }
 
-/// Refresh, plan `install model.laya`, apply it; the plan. ADR 0237: ctrl itself is built into qrtz.app, so the live
-/// index's ctrl package is refused and only the model it reads is installed.
+/// Refresh, plan `install ctrl`, apply it; the plan.
 async fn install_ctrl(r: &Router<Shared>) -> Value {
     ok(r, "packages:refresh", Value::Null).await;
-    let refused = r
-        .dispatch(
-            json!({"v":1,"id":"t","channel":"packages:plan","version":1,"subApp":"marketplace",
-                         "payload":{"op": "install", "names": ["ctrl"]}}),
-        )
-        .await;
-    assert_eq!(refused["ok"], false, "ctrl is never a package: {refused}");
-    let plan = ok(
-        r,
-        "packages:plan",
-        json!({"op": "install", "names": ["model.laya"]}),
-    )
-    .await;
+    let plan = ok(r, "packages:plan", json!({"op": "install", "names": ["ctrl"]})).await;
     ok(
         r,
         "packages:apply",
@@ -430,8 +417,7 @@ async fn an_index_shaped_like_the_live_one_installs_ctrl_and_hands_the_helper_it
     }
 
     let plan = install_ctrl(&r).await;
-    assert_eq!(plan_names(&plan), ["model.laya"], "{plan}");
-    assert!(!data.join("packages/ctrl").exists());
+    assert_eq!(plan_names(&plan), ["ctrl", "model.laya"], "{plan}");
 
     let pkg = data.join("packages/model.laya/1.0.0");
     let model = m.consent().installed.expect("installed model.laya is ctrl's yes");
@@ -458,7 +444,7 @@ async fn an_index_shaped_like_the_live_one_installs_ctrl_and_hands_the_helper_it
 // ---- the real thing (network) ----
 
 #[tokio::test]
-#[ignore = "network: installs model.laya for bundled ctrl (~484 MB) from modules.qrtz.ai and Hugging Face"]
+#[ignore = "network: installs ctrl + model.laya (~484 MB) from modules.qrtz.ai and Hugging Face"]
 async fn live_install_of_ctrl_from_modules_qrtz_ai() {
     let keep = std::env::var_os("QRTZ_CTRL_LIVE_DIR").map(PathBuf::from);
     let tmp = tempfile::tempdir().unwrap();
@@ -481,7 +467,7 @@ async fn live_install_of_ctrl_from_modules_qrtz_ai() {
     let t0 = std::time::Instant::now();
     let plan = install_ctrl(&r).await;
     eprintln!("live install: {:?}, plan {plan}", t0.elapsed());
-    assert_eq!(plan_names(&plan), ["model.laya"], "{plan}");
+    assert_eq!(plan_names(&plan), ["ctrl", "model.laya"], "{plan}");
     assert!(plan["downloadBytes"].as_u64().unwrap() >= 483_924_622, "{plan}");
 
     // The real pin (ctrl_laya_model.json) accepts the installed files: read-only, of their pinned sizes.
@@ -498,10 +484,8 @@ async fn live_install_of_ctrl_from_modules_qrtz_ai() {
             f.path
         );
     }
-    assert!(
-        !data.join("packages/ctrl").exists(),
-        "ctrl is built in, never downloaded"
-    );
+    let ctrl = data.join("packages/ctrl/0.2.1/bin/qrtz-ctrl");
+    assert!(ctrl.is_file(), "{}", ctrl.display());
     eprintln!(
         "live install kept at {} (model {})",
         data.display(),

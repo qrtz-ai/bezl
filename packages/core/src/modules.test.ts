@@ -107,24 +107,17 @@ describe('module manifests (ADR 0146)', () => {
   });
 });
 
-describe('bundled modules (ADR 0174, ADR 0237)', () => {
-  it('keep their views in the sidebar while off: every first-party module is built in', () => {
+describe('bundled echo (ADR 0174)', () => {
+  it('keeps its view in the sidebar while off, unlike a downloadable module', () => {
     const cfg = ConfigSchema.parse({
-      modules: {
-        echo: { enabled: false },
-        nano: { enabled: false },
-        ctrl: { enabled: false },
-        snap: { enabled: false },
-      },
+      modules: { echo: { enabled: false }, nano: { enabled: false } },
     });
-    expect(BUNDLED_MODULES).toEqual(['echo', 'nano', 'ctrl', 'snap']);
-    for (const id of MODULE_IDS) {
-      expect(isBundledModule(id)).toBe(true);
-      expect(isModuleOn(cfg, id)).toBe(false);
-    }
-    expect(isBundledModule('demo')).toBe(false);
-    for (const v of ['talk', 'note', 'ctrl', 'snap'])
-      expect(isViewOn(cfg, v)).toBe(true);
+    expect(isBundledModule('echo')).toBe(true);
+    expect(isBundledModule('nano')).toBe(false);
+    expect(BUNDLED_MODULES).toEqual(['echo']);
+    expect(isModuleOn(cfg, 'echo')).toBe(false);
+    expect(isViewOn(cfg, 'talk')).toBe(true);
+    expect(isViewOn(cfg, 'note')).toBe(false);
   });
 });
 
@@ -138,10 +131,8 @@ describe('global module switches', () => {
 
   it('control every module, and the all-modules switch wins', () => {
     const cfg = ConfigSchema.parse({ modules: { nano: { enabled: false } } });
-    expect(isModuleOn(cfg, 'nano')).toBe(false);
-    expect(isModuleOn(cfg, 'echo')).toBe(true);
-    // ADR 0237: nano is built in, so its view stays (it holds the off state and the switch).
-    expect(isViewOn(cfg, 'note')).toBe(true);
+    expect(isViewOn(cfg, 'note')).toBe(false);
+    expect(isViewOn(cfg, 'talk')).toBe(true);
     const off = ConfigSchema.parse({
       modules: { enabled: false, echo: { enabled: true } },
     });

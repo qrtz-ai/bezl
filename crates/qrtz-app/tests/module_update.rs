@@ -1,10 +1,6 @@
-//! ADR 0172 (v1), kept by Bozniak's ADR 0237 review: a marketplace update of an installed third-party module keeps
-//! the module installed, on its new locked version; the old version's package dir survives every prune
-//! while a helper may still run it (`packages-in-use.json`, which the host writes for a helper pending a restart),
-//! and the next launch prunes it. ADR 0237 left no first-party module in the lock, so `demo` (a test-only, non-bundled
-//! id) plays the third-party module. qrtz supervises only its own helpers, so the pending-restart rule itself is
-//! pinned on the host's generic stale-helper check (`service::relaunch_tests`); this test covers everything around it
-//! end to end.
+//! ADR 0172 (v1): a marketplace update of an installed module keeps `installed` true and doesn't touch its running
+//! helper: the module is `pendingRestart` until qrtz restarts, and the old version's package dir survives every
+//! prune while that helper lives. The next launch runs the new version and prunes the old dir.
 #![cfg(feature = "runtime")]
 use qrtz_app::module_helpers::{HelperLayout, INSTALLED_PROGRAM};
 use qrtz_app::module_hosting::{HttpTransport, Packages};
@@ -15,12 +11,11 @@ use qrtz_app::wiring::{build_app, module_sync, AppBuild, BuiltApp, DevKnobs};
 use qrtz_app::{AppInfo, Shared};
 use qrtz_helper_bridge::{ProcessSpawn, SupervisorOptions};
 use qrtz_ipc::Router;
-use qrtz_modules::install::{write_in_use, Installer, IN_USE_FILE};
+use qrtz_modules::install::{Installer, IN_USE_FILE};
 use qrtz_publish::dry_run::NoAppleChecks;
 use qrtz_publish::keys::Keys;
 use qrtz_publish::{build, write_root, Spec, SpecPackage};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,14 +37,14 @@ fn write(p: &Path, b: &[u8], exec: bool) {
     }
 }
 
-/// The third-party fixture extension `demo` at `version` (any non-bundled id; ADR 0237).
-fn demo(src: &Path, version: &str, log: &Path) -> PathBuf {
-    let d = src.join(format!("demo-{version}"));
+/// nano `version`: a helper that logs its start and exit to `log` and runs until stdin closes or `shutdown`.
+fn nano(src: &Path, version: &str, log: &Path) -> PathBuf {
+    let d = src.join(format!("nano-{version}"));
     write(
         &d.join("qrtz.json"),
-        serde_json::to_vec(&json!({"name": "demo", "version": version, "kind": "extension",
+        serde_json::to_vec(&json!({"name": "nano", "version": version, "kind": "extension",
             "dependencies": {},
-            "extension": {"entry": "bin/qrtz-demo", "protocol": 1, "minApp": "0.2.0",
+            "extension": {"entry": "bin/qrtz-nano", "protocol": 1, "minApp": "0.2.0",
                           "views": ["note"], "permissions": ["microphone"]}}))
         .unwrap()
         .as_slice(),
@@ -57,7 +52,7 @@ fn demo(src: &Path, version: &str, log: &Path) -> PathBuf {
     );
     let log = log.display();
     write(
-        &d.join("bin/qrtz-demo"),
+        &d.join("bin/qrtz-nano"),
         format!(
             "#!/bin/sh\necho \"start $$ {version}\" >> '{log}'\necho '{{\"type\":\"heartbeat\",\"ts\":0}}'\n\
              while read -r l; do case \"$l\" in *shutdown*) break;; esac; done\necho \"exit $$ {version}\" >> '{log}'\n"
@@ -81,6 +76,7 @@ fn publish(out: &Path, keys: &Keys, dir: PathBuf) {
 
 fn app(data: &Path, out: &Path, pin: &str) -> BuiltApp {
     std::fs::create_dir_all(data).unwrap();
+    // QRT-352: nano is experimental; its helper runs only with experimental apps on.
     if !data.join("config.json").exists() {
         std::fs::write(data.join("config.json"), r#"{"app":{"experimentalApps":true}}"#).unwrap();
     }
@@ -144,6 +140,14 @@ async fn change(r: &Router<Shared>, op: Value) {
     .await;
 }
 
+fn lines(log: &Path) -> Vec<String> {
+    std::fs::read_to_string(log)
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
 async fn until(what: &str, f: impl Fn() -> bool) {
     for _ in 0..200 {
         if f() {
@@ -155,7 +159,7 @@ async fn until(what: &str, f: impl Fn() -> bool) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_third_party_update_keeps_the_old_dir_through_every_prune_while_in_use_and_prunes_it_next_launch() {
+async fn an_update_waits_for_a_restart_and_the_old_dir_outlives_every_prune_until_then() {
     let tmp = tempfile::tempdir().unwrap();
     let (src, out, data) = (
         tmp.path().join("src"),
@@ -165,38 +169,44 @@ async fn a_third_party_update_keeps_the_old_dir_through_every_prune_while_in_use
     let log = tmp.path().join("spawns.log");
     let keys = Keys::ephemeral();
     let (_, pin) = write_root(&out, &keys, None, 1, qrtz_publish::now_ms()).unwrap();
-    publish(&out, &keys, demo(&src, "0.3.0", &log));
+    publish(&out, &keys, nano(&src, "0.3.0", &log));
 
     let b = app(&data, &out, &pin);
     let r = Router::new(Shared(b.service.clone())).validate_responses(true);
     call(&r, "packages:refresh", Value::Null).await;
-    change(&r, json!({"op": "install", "names": ["demo"]})).await;
-    assert_eq!(
-        qrtz_app::installed::entry(&data, "demo").unwrap().version,
-        "0.3.0"
-    );
+    change(&r, json!({"op": "install", "names": ["nano"]})).await;
+    until("nano 0.3.0 runs", || {
+        lines(&log).iter().any(|l| l.ends_with(" 0.3.0"))
+    })
+    .await;
+    let first = lines(&log);
+    assert_eq!(first.len(), 1, "{first:?}");
     assert!(b.service.pending_restart().is_empty());
     assert_eq!(
         call(&r, "packages:list", Value::Null).await["pendingRestart"],
         json!([])
     );
 
-    // A helper is running 0.3.0 (what the host records for a helper pending a restart).
-    let old = data.join("packages/demo/0.3.0");
-    write_in_use(&data, &BTreeSet::from(["packages/demo/0.3.0".to_owned()])).unwrap();
-
-    // demo 0.3.1 is published and the user updates: installed stays true, the lock moves.
-    publish(&out, &keys, demo(&src, "0.3.1", &log));
+    // nano 0.3.1 is published and the user updates: installed stays true, the running helper is left alone, and
+    // the module says it needs a restart.
+    publish(&out, &keys, nano(&src, "0.3.1", &log));
     call(&r, "packages:refresh", Value::Null).await;
-    change(&r, json!({"op": "update", "names": ["demo"], "latest": true})).await;
+    change(&r, json!({"op": "update", "names": ["nano"], "latest": true})).await;
+    assert_eq!(b.service.config()["modules"]["nano"]["installed"], true);
     assert_eq!(
-        qrtz_app::installed::entry(&data, "demo").unwrap().version,
+        qrtz_app::installed::entry(&data, "nano").unwrap().version,
         "0.3.1"
     );
-    assert!(data.join("packages/demo/0.3.1/bin/qrtz-demo").is_file());
+    assert_eq!(b.service.pending_restart(), ["nano"]);
+    let st = call(&r, "packages:list", Value::Null).await;
+    assert_eq!(st["pendingRestart"], json!(["nano"]), "{st}");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(lines(&log), first, "no relaunch: the old process keeps running");
 
     // The apply's prune, an explicit "clean up" and the installer itself (the CLI's prune) all keep the old dir.
-    assert!(old.join("bin/qrtz-demo").is_file(), "the apply's prune kept it");
+    let old = data.join("packages/nano/0.3.0");
+    assert!(old.join("bin/qrtz-nano").is_file(), "the apply's prune kept it");
+    assert!(data.join(IN_USE_FILE).is_file());
     call(&r, "packages:prune", Value::Null).await;
     assert!(old.is_dir(), "clean up keeps it");
     Installer::new(&data, Some(pin.clone()), Box::new(NoAppleChecks))
@@ -206,14 +216,26 @@ async fn a_third_party_update_keeps_the_old_dir_through_every_prune_while_in_use
     let st = call(&r, "packages:list", Value::Null).await;
     assert_eq!(st["reclaimable"]["dirs"], 0, "{st}");
 
-    // Restart qrtz: no helper of this launch runs 0.3.0, so the in-use set is cleared and the old dir goes.
+    // Restart qrtz: the old helper exits, the next launch runs 0.3.1, nothing is pending, the old dir goes.
     b.service.shutdown_helpers(Duration::from_secs(2)).await;
+    until("nano 0.3.0 exits", || {
+        lines(&log)
+            .iter()
+            .any(|l| l.starts_with("exit ") && l.ends_with(" 0.3.0"))
+    })
+    .await;
     drop(r);
     drop(b);
     let b = app(&data, &out, &pin);
+    until("nano 0.3.1 runs", || {
+        lines(&log)
+            .iter()
+            .any(|l| l.starts_with("start ") && l.ends_with(" 0.3.1"))
+    })
+    .await;
     assert!(b.service.pending_restart().is_empty());
     until("the old dir is pruned at launch", || !old.exists()).await;
-    assert!(data.join("packages/demo/0.3.1").is_dir());
+    assert!(data.join("packages/nano/0.3.1").is_dir());
     assert!(!data.join(IN_USE_FILE).exists());
     b.service.shutdown_helpers(Duration::from_secs(2)).await;
 }

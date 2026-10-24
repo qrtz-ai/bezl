@@ -51,22 +51,11 @@ pub use manifest::{Dependency, DependencyKind, ModuleManifest};
 pub const MODULE_IDS: &[&str] = &["echo", "nano", "ctrl", "snap"];
 /// The extensions this shell knows (ADR 0157 §2). An extension runs inside qrtz's own TCC identity, so the list is
 /// part of the shell: a new extension needs a shell release, never just an index entry.
-#[cfg(not(feature = "fixture-extension"))]
 pub const EXTENSION_NAMES: &[&str] = &["echo", "nano", "ctrl", "snap"];
-/// ADR 0237: with every first-party extension bundled, the installer's extension path (index, resolve, revocation,
-/// sideload, launch) is tested with `demo` (and `demo-two`, `demo-bad`), extensions known only to test builds (the `fixture-extension` feature,
-/// enabled by dev-dependencies only; no shipped build has it).
-#[cfg(feature = "fixture-extension")]
-pub const EXTENSION_NAMES: &[&str] = &["echo", "nano", "ctrl", "snap", "demo", "demo-two", "demo-bad"];
-/// ADR 0174, ADR 0237: the extensions qrtz.app carries itself (`Contents/MacOS/qrtz-<id>`, signed `ai.qrtz.<id>`).
+/// ADR 0174: the extensions qrtz.app carries itself (v1: echo, `Contents/MacOS/qrtz-echo`, signed `ai.qrtz.echo`).
 /// Always installed, never a marketplace package; their bundled `module.json` has launch kind `bundled-helper` and
-/// pins the designated requirement the launcher checks. Since ADR 0237 every first-party extension is bundled; the
-/// marketplace carries only models and third-party modules, and refuses any package named like one of these.
-pub const BUNDLED_EXTENSIONS: &[&str] = &["echo", "nano", "ctrl", "snap"];
-/// ADR 0237: the bundled extensions whose models still install as read-only `model.*` packages their process is
-/// granted (ADR 0212): ctrl's `model.laya`, which the host hands to the helper per question. echo's and nano's
-/// models are pinned speech sets under `<data>/models/<set>/` (local_models.json).
-pub const BUNDLED_PACKAGE_READS: &[&str] = &["ctrl"];
+/// pins the designated requirement the launcher checks. The others (nano, ctrl, snap) install from the marketplace.
+pub const BUNDLED_EXTENSIONS: &[&str] = &["echo"];
 
 /// True if `name` ships inside qrtz.app ([`BUNDLED_EXTENSIONS`]).
 pub fn is_bundled_extension(name: &str) -> bool {
@@ -96,15 +85,14 @@ pub mod bundled {
         ]
     }
 
-    /// ADR 0212: `(extension, its extension.reads)` from this build's manifests of the downloadable modules and of
-    /// the bundled ones in [`crate::BUNDLED_PACKAGE_READS`] (ADR 0237: ctrl keeps `model.laya` as a read-only
-    /// package; echo's and nano's pinned speech sets load from `<data>/models/<set>/` instead). Data, not an allowlist: what a
+    /// ADR 0212: `(extension, its extension.reads)` from this build's manifests of the downloadable modules (a
+    /// module bundled in qrtz.app isn't installed through the package manager). Data, not an allowlist: what a
     /// module declares in its qrtz.json is what is read here, for a model that arrives before its module's lock
     /// entry does (the installed lock and the signed index are the other sources).
     pub fn declared_reads() -> Vec<(String, Vec<String>)> {
         package_manifests()
             .iter()
-            .filter(|(id, _)| !crate::is_bundled_extension(id) || crate::BUNDLED_PACKAGE_READS.contains(id))
+            .filter(|(id, _)| !crate::is_bundled_extension(id))
             .filter_map(|(_, t)| crate::qrtz_json::PackageManifest::parse(t.as_bytes()).ok())
             .filter_map(|m| m.extension.map(|e| (m.name, e.reads)))
             .filter(|(_, r)| !r.is_empty())

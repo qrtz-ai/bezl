@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-- Breaking: nano, ctrl and snap ship inside qrtz.app, like echo (ADR 0237), so each app always runs the helpers it was built with. They are no longer marketplace packages. On first launch qrtz drops their old packages from your lock and deletes them once the built-in copy has started; your switches and downloaded models stay. nano and ctrl stay hidden behind experimental apps.
-
 ## 0.3.5 (2026-10-23)
 
 - Fix: echo never rewrites a whole field's text in Slate-based editors (it inserts at the caret instead), and never pastes a second copy after a step that already put the text in.

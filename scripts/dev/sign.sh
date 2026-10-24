@@ -68,8 +68,8 @@ sign() { # name id  (name may be an absolute path)
   fi
 }
 
-# Inside out: nested code first, the app last. Must match scripts/release/sign-mac.sh NESTED. ADR 0237: the module
-# helpers are bundled (below); a dev monolith (QRTZ_HELPER_BIN) signs as ai.qrtz.helper (confinement-map.json moduleCode
+# Inside out: nested code first, the app last. Must match scripts/release/sign-mac.sh NESTED. ADR 0169: no module
+# code is bundled; a dev monolith (QRTZ_HELPER_BIN) signs as ai.qrtz.helper (confinement-map.json moduleCode
 # devHelper), and the installed modules carry their own signatures (scripts/modules/build-packages.sh).
 if [[ -n "${QRTZ_HELPER_BIN:-}" && -f "$QRTZ_HELPER_BIN" ]]; then
   dir="$(dirname "$QRTZ_HELPER_BIN")" sign "$(basename "$QRTZ_HELPER_BIN")" ai.qrtz.helper || true
@@ -82,10 +82,6 @@ for m in nano snap ctrl echo; do
   [[ -n "${!var:-}" && -f "${!var}" ]] && { sign "${!var}" "ai.qrtz.$m" || true; }
 done
 sign qrtz ai.qrtz.cli
-# ADR 0174, ADR 0237: every first-party helper is bundled (Contents/MacOS/qrtz-<id>, target/debug/qrtz-<id> in dev),
-# signed with its release identifier.
+# ADR 0174: echo is bundled (Contents/MacOS/qrtz-echo, target/debug/qrtz-echo in dev), signed as in a release.
 sign qrtz-echo ai.qrtz.echo
-sign qrtz-nano ai.qrtz.nano
-sign qrtz-ctrl ai.qrtz.ctrl
-sign qrtz-snap ai.qrtz.snap
 sign qrtz-app ai.qrtz.desktop.dev

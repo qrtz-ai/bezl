@@ -9,12 +9,7 @@
     "minApp": "0.2.0",
     "channels": ["snap.*"],
     "views": ["snap"],
-    "capabilities": [
-      "snap.read",
-      "config.read",
-      "config.write",
-      "module.settings"
-    ],
+    "capabilities": ["snap.read", "module.settings"],
     "permissions": ["accessibility"],
     "settings": { "namespace": "snap", "legacySections": ["snap"] }
   }

@@ -13,7 +13,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "ae71e53e05a7450bc343740565e5f87275e8990a1209f23d09021c05bb72839f",
+      "manifestSha256": "a54f719f68349060544ab6782fd4159a4a2ae68b961c0c08d84a02c624074537",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.2"
@@ -55,7 +55,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "8d5618b0373345ae612527d0029bfba4d683c41ff64607a9966dcdcf5f5a7d24",
+      "manifestSha256": "16c7bece5437c3864e23ab72235de6167bf214b6c21dd3a5743077dc6059f910",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.3"
@@ -67,7 +67,7 @@
         "teamId": "MR26CCZ496"
       },
       "dependencies": [],
-      "manifestSha256": "c6f9b52e8d2f86fbf3f4680c8e7013f05bf28fea9aa2551a684d9822aace9e1b",
+      "manifestSha256": "78a9062ef757507179780c2c1192ebb61736393c8febbe45a939e408b7223d58",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.1.2"

@@ -37,9 +37,7 @@ vi.mock('./subapps', async () => {
 const { routes } = await import('./App');
 
 describe('module switches (ADR 0146)', () => {
-  // ADR 0237: every first-party module is built into qrtz.app, so a switched-off one keeps its tab and its route:
-  // its view shows the off state and holds the switch (as bundled echo's did since ADR 0174).
-  it('a switched-off bundled module keeps its tab and its route', async () => {
+  it('a switched-off module has no tab, and its route falls back to the top sidebar app', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/note/meetings/m1'],
     });
@@ -51,11 +49,12 @@ describe('module switches (ADR 0146)', () => {
       await new Promise((r) => setTimeout(r, 10));
     });
     const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
-    expect(q('nav-note')).not.toBeNull();
+    expect(q('nav-note')).toBeNull();
     expect(q('nav-talk')).not.toBeNull();
     expect(q('nav-apps')).not.toBeNull();
-    expect(router.state.location.pathname).toBe('/note/meetings/m1');
-    expect(q('view-note')).not.toBeNull();
+    expect(q('view-note')).toBeNull();
+    expect(router.state.location.pathname).toBe('/talk');
+    expect(q('view-talk')).not.toBeNull();
     root.unmount();
   });
 });

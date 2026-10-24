@@ -353,8 +353,6 @@ pub fn migrate_legacy(old: &crate::lock::Lockfile) -> BTreeMap<String, String> {
     old.modules
         .iter()
         .filter(|(id, _)| crate::qrtz_json::kind_of(id).ok() == Some(PackageKind::Extension))
-        // ADR 0237: a module built into qrtz.app is never requested as a package again.
-        .filter(|(id, _)| !crate::is_bundled_extension(id))
         .map(|(id, m)| (id.clone(), format!("^{}", m.version)))
         .collect()
 }
