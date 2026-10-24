@@ -304,6 +304,11 @@ jobs:
           codesign --force --options runtime --identifier ai.qrtz.cli --sign - "$app/Contents/MacOS/qrtz"
           codesign --force --options runtime --identifier ai.qrtz.echo \
             --entitlements native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements --sign - "$app/Contents/MacOS/qrtz-echo"
+          # ADR 0237: nano (microphone + calendars), ctrl and snap (no entitlements) are bundled like echo.
+          codesign --force --options runtime --identifier ai.qrtz.nano \
+            --entitlements native/qrtz-helper/entitlements/ai.qrtz.nano.entitlements --sign - "$app/Contents/MacOS/qrtz-nano"
+          codesign --force --options runtime --identifier ai.qrtz.ctrl --sign - "$app/Contents/MacOS/qrtz-ctrl"
+          codesign --force --options runtime --identifier ai.qrtz.snap --sign - "$app/Contents/MacOS/qrtz-snap"
           codesign --force --options runtime --identifier ai.qrtz.desktop \
             --entitlements apps/desktop/src-tauri/entitlements.mac.plist --sign - "$app"
       # verify-bundle.sh is unchanged and runs in full. Only the FAILs that need a Developer ID signature, notarization
@@ -323,6 +328,10 @@ jobs:
             echo '```'; cat vb.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           grep -q 'no dev-local override strings' vb.log || { echo "dev-local scan did not run" >&2; exit 1; }
+          # ADR 0237: six executables in Contents/MacOS (qrtz-app, qrtz, qrtz-echo, qrtz-nano, qrtz-ctrl, qrtz-snap).
+          for x in qrtz-app qrtz qrtz-echo qrtz-nano qrtz-ctrl qrtz-snap; do
+            [ -x "${{ steps.bundle.outputs.app }}/Contents/MacOS/$x" ] || { echo "missing Contents/MacOS/$x" >&2; exit 1; }
+          done
           if [ -s unexpected.log ]; then echo "unexpected verify-bundle failures:" >&2; cat unexpected.log >&2; exit 1; fi
           echo "only the Developer ID / notarization checks failed (expected for an unsigned build)"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
