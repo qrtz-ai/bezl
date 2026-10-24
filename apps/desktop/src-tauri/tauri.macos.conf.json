@@ -1,6 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/qrtz", "binaries/qrtz-echo"]
+    "externalBin": [
+      "binaries/qrtz",
+      "binaries/qrtz-echo",
+      "binaries/qrtz-nano",
+      "binaries/qrtz-ctrl",
+      "binaries/qrtz-snap"
+    ]
   }
 }

@@ -3,7 +3,11 @@
 # executable with the module's identifier (the one its lock entry and module.json pin; confinement-map.json
 # moduleCode, checked by crates/qrtz-lifecycle/tests/offline_graph.rs), and optionally make a local dev index.
 #
-#   scripts/modules/build-packages.sh [--out <dir>] [--dev-index] [<module>...]   (default: nano ctrl snap; echo is bundled, ADR 0174)
+#   scripts/modules/build-packages.sh [--out <dir>] [--dev-index] [<module>...]
+#
+# ADR 0237: every first-party module (echo, nano, ctrl, snap) ships inside qrtz.app (scripts/build-helper.mjs,
+# sign-mac.sh); none is a package any more, and naming one here is refused. With no module, --dev-index still builds a
+# dev index of the pinned models.
 #
 # Output: <out>/packages/<module>/{qrtz.json, bin/qrtz-<module>} (default out: ~/qrtz-packages), ready for
 # QRTZ_PUBLISH_PACKAGES in scripts/modules/publish.sh, which notarizes each before it enters the index (ADR 0170).
@@ -39,14 +43,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# module identifier entitlements. Must match docs/modules/confinement-map.json moduleCode (offline_graph.rs).
-MODULES="
-nano ai.qrtz.nano native/qrtz-helper/entitlements/ai.qrtz.nano.entitlements
-ctrl ai.qrtz.ctrl native/qrtz-helper/entitlements/ai.qrtz.ctrl.entitlements
-snap ai.qrtz.snap native/qrtz-helper/entitlements/ai.qrtz.snap.entitlements
-"
-[[ ${#want[@]} -gt 0 ]] || want=(nano ctrl snap)
-# ADR 0174: echo ships inside qrtz.app (scripts/build-helper.mjs, sign-mac.sh), never as a package.
+# module identifier entitlements, for a package this script may build. ADR 0237: empty, every first-party module is
+# bundled in qrtz.app (scripts/release/bundled-helpers.sh reads them from module.json), so none is a package.
+MODULES=""
+for m in ${want[@]+"${want[@]}"}; do
+  if [[ -f "$repo/modules/$m/module.json" ]] && [[ "$(jq -r '.launch.kind // ""' "$repo/modules/$m/module.json")" == bundled-helper ]]; then
+    die "$m ships inside qrtz.app (ADR 0237), never as a package"
+  fi
+done
+if [[ ${#want[@]} -eq 0 && "$dev_index" != 1 ]]; then
+  echo "build-packages: nothing to build (ADR 0237: first-party modules are bundled in qrtz.app)"
+  exit 0
+fi
 
 identity="${QRTZ_SIGN_ID:-}"
 if [[ -z "$identity" ]]; then
@@ -57,7 +65,7 @@ if [[ -z "$identity" ]]; then
 fi
 team="${QRTZ_TEAM_ID:-MR26CCZ496}"
 # Refuse before building: every requested module.json must parse and pin its identifier and the signing team.
-for m in "${want[@]}"; do
+for m in ${want[@]+"${want[@]}"}; do
   module_code "$repo/modules/$m/module.json" "$team" >/dev/null || die "$m: modules/$m/module.json fails the signing rules"
 done
 ts=(--timestamp=none)
@@ -66,11 +74,13 @@ ts=(--timestamp=none)
 echo "== swift build (release, arm64)"
 helper="$repo/native/qrtz-helper"
 # shellcheck disable=SC2086
-(cd "$helper" && for p in "${want[@]}"; do swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --product "qrtz-$p"; done)
-bin_dir="$(cd "$helper" && swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
+if [[ ${#want[@]} -gt 0 ]]; then
+  (cd "$helper" && for p in "${want[@]}"; do swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --product "qrtz-$p"; done)
+  bin_dir="$(cd "$helper" && swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
+fi
 
 echo "== stage and sign ($identity)"
-for m in "${want[@]}"; do
+for m in ${want[@]+"${want[@]}"}; do
   line="$(awk -v m="$m" '$1 == m' <<<"$MODULES")"
   [[ -n "$line" ]] || die "$m: not a module (${MODULES//$'\n'/ })"
   read -r _ id ent <<<"$line"
@@ -134,7 +144,7 @@ spec="$out/dev-spec.json"
   done
   printf '\n  ],\n  "packages": ['
   sep=""
-  for m in "${want[@]}"; do
+  for m in ${want[@]+"${want[@]}"}; do
     printf '%s\n    { "dir": "%s", "notarization": %s }' "$sep" "$out/packages/$m" "$(fake "$out/packages/$m/bin/qrtz-$m")"
     sep=","
   done
