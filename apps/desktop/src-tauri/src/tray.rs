@@ -122,9 +122,9 @@ mod tests {
         assert_eq!(s.title, "");
         assert_eq!(
             labels(&s),
-            ["not recording", "start recording", "open qrtz", "quit qrtz"]
+            ["not recording", "start recording", "open bezl", "quit bezl"]
         );
-        assert_eq!(s.tooltip, "qrtz · not recording");
+        assert_eq!(s.tooltip, "bezl · not recording");
     }
 
     #[test]

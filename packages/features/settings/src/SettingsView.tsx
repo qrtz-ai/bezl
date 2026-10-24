@@ -180,7 +180,7 @@ export default function SettingsView() {
         />
       ) : null}
       {/* ADR 0181: qrtz itself: its version and its own update. */}
-      <SettingsSection title="qrtz" data-testid="about-qrtz">
+      <SettingsSection title="bezl" data-testid="about-qrtz">
         <AppUpdateRow />
       </SettingsSection>
       <SettingsSection title="app">
@@ -368,7 +368,7 @@ export default function SettingsView() {
           description={
             <>
               {info
-                ? `qrtz ${info.version} · ${info.platform}/${info.arch} · ${info.electron}`
+                ? `bezl ${info.version} · ${info.platform}/${info.arch} · ${info.electron}`
                 : '…'}
               {db
                 ? ` · database ${db.ok ? 'ok' : 'error'}, schema v${db.schemaVersion}, fts5 ${db.fts5 ? 'on' : 'off'}`
@@ -454,8 +454,8 @@ export default function SettingsView() {
       </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">
         <Text variant="caption" muted data-testid="offline-note">
-          qrtz runs entirely on this computer: audio, transcripts and notes
-          never leave it. it goes online to check for a new qrtz (at launch and
+          bezl runs entirely on this computer: audio, transcripts and notes
+          never leave it. it goes online to check for a new bezl (at launch and
           every 6 hours; nothing about you is sent) and when you ask: to
           download signed apps, models and speech updates.
         </Text>

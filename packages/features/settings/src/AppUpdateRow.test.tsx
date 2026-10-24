@@ -88,13 +88,13 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     const m = await mount(base, {
       'app-update:check': st({ state: 'up-to-date', checkedAtMs: 1 }),
     });
-    expect(m.el.textContent).toContain('qrtz 0.2.0');
+    expect(m.el.textContent).toContain('bezl 0.2.0');
     expect(m.calls).toEqual(['app-update:status']);
     expect(m.q('app-update-download')).toBeNull();
     expect(m.q('app-update-restart')).toBeNull();
     await m.click('update-check');
     expect(m.calls).toContain('app-update:check');
-    expect(m.q('update-result')?.textContent).toBe('qrtz 0.2.0 is up to date');
+    expect(m.q('update-result')?.textContent).toBe('bezl 0.2.0 is up to date');
     m.done();
   });
 
@@ -115,7 +115,7 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
       'app-update:restart': { restarting: true },
     });
     expect(m.q('update-result')?.textContent).toBe(
-      'qrtz 0.2.1 is available (31.4 MB)',
+      'bezl 0.2.1 is available (31.4 MB)',
     );
     expect(m.q('app-update-notes')?.textContent).toBe('faster dictation');
     await m.click('app-update-download');
@@ -137,7 +137,7 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     expect(m.q('app-update-progress')).toBeNull();
     await m.emit(st({ state: 'ready', latest: '0.2.1' }));
     expect(m.q('update-result')?.textContent).toBe(
-      'qrtz 0.2.1 is ready: restart to update',
+      'bezl 0.2.1 is ready: restart to update',
     );
     expect(m.q('app-update-restart')?.textContent).toBe('restart to update');
     await m.click('app-update-restart');
@@ -150,7 +150,7 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     const m = await mount(
       st({ state: 'failed', latest: '0.2.1', error: 'signature mismatch' }),
     );
-    expect(m.q('update-result')?.textContent).toContain("couldn't update qrtz");
+    expect(m.q('update-result')?.textContent).toContain("couldn't update bezl");
     expect(m.q('update-result')?.textContent).toContain('signature mismatch');
     expect(m.q('app-update-download')).not.toBeNull();
     m.done();
@@ -197,7 +197,7 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     const e = failedUpdate(blocked);
     expect(e.title).toBe("couldn't download the update");
     expect(e.next).toBe(
-      'The download was sent to an unexpected server, so qrtz stopped it. Your current version is fine. Try again later, or get the update from the qrtz releases page.',
+      'The download was sent to an unexpected server, so bezl stopped it. Your current version is fine. Try again later, or get the update from the bezl releases page.',
     );
     expect(e.detail).toBe('blocked host: evil.example.com');
     expect(e.next).not.toContain('evil.example.com');
@@ -217,7 +217,7 @@ describe('settings → qrtz: its own update (ADR 0181)', () => {
     expect(r?.textContent).toContain("couldn't download the update");
     expect(r?.textContent).toContain('Your current version is fine.');
     const link = m.q('app-update-releases-link') as HTMLAnchorElement;
-    expect(link.textContent).toBe('qrtz releases page');
+    expect(link.textContent).toBe('bezl releases page');
     expect(link.getAttribute('href')).toBe(RELEASES_URL);
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
     expect(m.q('update-result-details')?.textContent).toContain(
@@ -233,7 +233,7 @@ describe('a dev build', () => {
     vi.stubEnv('DEV', true);
     vi.stubEnv('VITE_QRTZ_COMMIT', 'abc1234');
     const { q, calls } = await mount(st({ state: 'up-to-date' }));
-    expect(q('app-update-dev')?.textContent).toContain('qrtz dev · abc1234');
+    expect(q('app-update-dev')?.textContent).toContain('bezl dev · abc1234');
     expect(q('update-check')).toBeNull();
     expect(calls).toEqual([]);
     vi.stubEnv('DEV', false);

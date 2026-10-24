@@ -90,7 +90,7 @@ describe('marketplace catalog (ADR 0161)', () => {
     expect(infoFor('ctrl').view).toBe('ctrl');
     expect(infoFor('snap').view).toBe('snap');
     expect(infoFor('weather')).toEqual({
-      description: 'a qrtz app.',
+      description: 'a bezl app.',
       icon: 'package',
       view: null,
     });

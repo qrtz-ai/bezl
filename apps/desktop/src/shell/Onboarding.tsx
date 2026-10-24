@@ -226,7 +226,7 @@ function Steps({ onDone }: { onDone: () => void }) {
 
   return (
     <OnboardingFrame
-      title="set up qrtz"
+      title="set up bezl"
       data-testid="onboarding"
       actions={
         <Button
@@ -242,8 +242,8 @@ function Steps({ onDone }: { onDone: () => void }) {
     >
       <Text muted data-testid="onboarding-intro">
         {shown.some((d) => d.id === 'screen-recording')
-          ? 'qrtz needs a few macos permissions to hear you, record calls and type for you.'
-          : 'qrtz needs a few macos permissions to hear you and type for you.'}{' '}
+          ? 'bezl needs a few macos permissions to hear you, record calls and type for you.'
+          : 'bezl needs a few macos permissions to hear you and type for you.'}{' '}
         allow them now, or skip: each one is asked again the first time an app
         needs it.
       </Text>
@@ -275,7 +275,7 @@ function Steps({ onDone }: { onDone: () => void }) {
             label="calendar (optional)"
             reason={
               cal?.access === 'denied'
-                ? 'turned off: allow qrtz in system settings › privacy › calendars'
+                ? 'turned off: allow bezl in system settings › privacy › calendars'
                 : "nano names notes after your meetings and lists what's next; read only, never leaves your mac"
             }
             state={calState}
@@ -294,7 +294,7 @@ function Steps({ onDone }: { onDone: () => void }) {
             disabled={finishing}
             data-testid="onboarding-continue"
           >
-            {allGranted ? 'open qrtz' : 'continue'}
+            {allGranted ? 'open bezl' : 'continue'}
           </Button>
         )}
       </Stack>

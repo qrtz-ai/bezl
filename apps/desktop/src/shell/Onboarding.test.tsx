@@ -89,7 +89,7 @@ describe('permissions onboarding (ADR 0184)', () => {
     host.state.perms.accessibility = 'granted';
     await act(async () => window.dispatchEvent(new Event('focus')));
     await tick();
-    expect(q('onboarding-continue')!.textContent).toBe('open qrtz');
+    expect(q('onboarding-continue')!.textContent).toBe('open bezl');
     await click('onboarding-continue');
     expect(
       host
@@ -219,7 +219,7 @@ describe('permissions onboarding (ADR 0184)', () => {
     expect(q('onboarding-skip')).not.toBeNull();
     await act(async () => release());
     await tick();
-    expect(q('onboarding-continue')!.textContent).toBe('open qrtz');
+    expect(q('onboarding-continue')!.textContent).toBe('open bezl');
     act(() => root.unmount());
   });
 
@@ -232,7 +232,7 @@ describe('permissions onboarding (ADR 0184)', () => {
       },
     });
     const { q, root } = await mount(host);
-    expect(q('onboarding-continue')!.textContent).toBe('open qrtz');
+    expect(q('onboarding-continue')!.textContent).toBe('open bezl');
     act(() => root.unmount());
   });
 });

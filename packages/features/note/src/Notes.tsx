@@ -244,12 +244,12 @@ export function Notes({
         banner={
           open?.readOnly ? (
             <Text variant="caption" data-testid="note-read-only">
-              read-only: this file isn't plain text qrtz can safely edit, so it
+              read-only: this file isn't plain text bezl can safely edit, so it
               is never changed
             </Text>
           ) : conflict ? (
             <Stack dir="row" gap={2} align="center" data-testid="note-conflict">
-              <Text variant="caption">changed outside qrtz</Text>
+              <Text variant="caption">changed outside bezl</Text>
               <Button size="sm" variant="secondary" onClick={keepMine}>
                 keep mine
               </Button>

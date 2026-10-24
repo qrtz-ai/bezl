@@ -7,7 +7,7 @@ import { SubAppManifest } from '@qrtz/core';
 export const manifest = SubAppManifest.parse({
   id: 'marketplace',
   // The qrtz page's app manager (its body and each app's modal); never a sidebar row of its own.
-  name: 'qrtz',
+  name: 'bezl',
   icon: 'package',
   order: 950,
   capabilities: [

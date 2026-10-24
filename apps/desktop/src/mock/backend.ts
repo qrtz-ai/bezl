@@ -479,7 +479,7 @@ export function createMockBridge(): TauriBridge {
       if (!patchIsObject(patch))
         throw new AppError('E_VALIDATION', 'a config patch is an object');
       if (patchTouchesHostOnly(patch))
-        throw new AppError('E_VALIDATION', 'only qrtz writes that setting');
+        throw new AppError('E_VALIDATION', 'only bezl writes that setting');
       config = applyConfigPatch(config, patch);
       emit('config:changed', config);
       return config;
@@ -796,7 +796,7 @@ export function createMockBridge(): TauriBridge {
       const d = docs.get(id);
       if (!d) throw new AppError('E_NOT_FOUND', `note ${id} not found`);
       if (d.hash !== baseHash && !force)
-        throw new AppError('E_VALIDATION', 'the note changed outside qrtz', {
+        throw new AppError('E_VALIDATION', 'the note changed outside bezl', {
           details: { conflict: true },
         });
       const title =
@@ -1059,7 +1059,7 @@ function gateCtrl(h: Partial<Handlers>, on: () => boolean): Partial<Handlers> {
       ch,
       (...a: unknown[]) => {
         if (!on())
-          throw new AppError('E_UNAVAILABLE', 'ctrl is switched off in qrtz');
+          throw new AppError('E_UNAVAILABLE', 'ctrl is switched off in bezl');
         return (fn as (...b: unknown[]) => unknown)(...a);
       },
     ]),

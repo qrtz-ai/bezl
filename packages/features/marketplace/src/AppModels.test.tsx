@@ -66,7 +66,7 @@ describe("an app's models: delete errors (QRT-311)", () => {
     );
     expect(r.shown).toContain("couldn't delete the models");
     expect(r.shown).toContain(
-      "these models are part of qrtz's shared speech, so they can't be deleted for one app.",
+      "these models are part of bezl's shared speech, so they can't be deleted for one app.",
     );
     expect(r.shown).not.toContain('SPEECH_SHARED');
     expect(r.details).toBeNull();

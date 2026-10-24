@@ -178,7 +178,7 @@ describe('shell routing (ADR 0091)', () => {
     expect(q('nav-opts-opts')).toBeNull();
     expect(q('nav-apps')!.textContent).toBe('apps');
     expect(q('nav-apps')!.querySelector('svg')).not.toBeNull();
-    expect(q('nav-opts')!.textContent).toBe('qrtz');
+    expect(q('nav-opts')!.textContent).toBe('bezl');
     expect(q('nav-opts')!.querySelector('svg')).toBeNull();
     expect(q('nav-qrtz')).toBeNull();
     expect(q('nav-marketplace')).toBeNull();

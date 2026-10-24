@@ -51,7 +51,7 @@ export const isModuleId = (n: string): n is ModuleId =>
 export function infoFor(name: string): ExtensionInfo {
   if (isModuleId(name))
     return { ...KNOWN[name], view: MODULE_VIEWS[name][0] ?? null };
-  return { description: 'a qrtz app.', icon: 'package', view: null };
+  return { description: 'a bezl app.', icon: 'package', view: null };
 }
 
 export const PERMISSIONS: Record<

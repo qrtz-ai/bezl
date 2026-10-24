@@ -536,7 +536,7 @@ export default function MarketplaceView() {
       title="apps coming soon"
       data-testid="marketplace-soon"
     >
-      apps will appear here once qrtz.ai&apos;s app server is live. qrtz starts
+      apps will appear here once qrtz.ai&apos;s app server is live. bezl starts
       empty until then.
     </Callout>
   ) : null;
@@ -583,11 +583,11 @@ export default function MarketplaceView() {
           onClick={relaunch}
           data-testid="marketplace-restart-button"
         >
-          restart qrtz
+          restart bezl
         </Button>
       }
     >
-      {`${updated.join(', ')} ${updated.length === 1 ? 'keeps' : 'keep'} running the old version until qrtz restarts.`}
+      {`${updated.join(', ')} ${updated.length === 1 ? 'keeps' : 'keep'} running the old version until bezl restarts.`}
     </Callout>
   ) : null;
 
@@ -742,7 +742,7 @@ export default function MarketplaceView() {
           </AppList>
         ) : (
           <Text variant="caption" muted data-testid="installed-empty">
-            nothing installed yet. qrtz starts empty: download an app below.
+            nothing installed yet. bezl starts empty: download an app below.
           </Text>
         )}
       </SettingsSection>
@@ -782,7 +782,7 @@ export default function MarketplaceView() {
             title={
               soon
                 ? 'nothing to install yet.'
-                : 'qrtz starts empty. check for apps to install your first one.'
+                : 'bezl starts empty. check for apps to install your first one.'
             }
             action={
               soon ? null : (
@@ -942,11 +942,11 @@ function Detail({
           <Text variant="caption" muted>
             {entry
               ? 'none it asks for up front. macos asks you the first time it needs one.'
-              : 'shared with qrtz: one entry in privacy & security.'}
+              : 'shared with bezl: one entry in privacy & security.'}
           </Text>
         )}
         <Text variant="caption" muted>
-          apps run inside qrtz and use qrtz's own permissions; there is one qrtz
+          apps run inside bezl and use bezl's own permissions; there is one bezl
           entry in privacy & security.
         </Text>
       </SettingsSection>
@@ -1009,7 +1009,7 @@ function Detail({
         ) : (
           <Text variant="caption" muted>
             {isBundledModule(name) && appVersion
-              ? `v${appVersion}, built into this qrtz.`
+              ? `v${appVersion}, built into this bezl.`
               : row
                 ? `v${row.version} is installed.`
                 : 'no versions listed yet.'}
