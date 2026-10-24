@@ -140,22 +140,22 @@ CI once GitHub billing is fixed (then the timestamp key moves to a CI secret, an
 
 ## 8. Pulling a bad release
 
-Never delete it. Add `{"package": "echo", "versions": ["0.3.0"], "reason": "…"}` to `revoked` in `publish.json`,
+Never delete it. Add `{"package": "<name>", "versions": ["0.3.0"], "reason": "…"}` to `revoked` in `publish.json`,
 run step 6 again. Installed copies are disabled on their next check; new installs refuse it.
 
 ## 9. Offline file for an air-gapped Mac
 
 ```sh
-$P pack --out ~/qrtz-publish-out --name echo --version 0.3.0 --to echo-0.3.0.qrtzpkg
+$P pack --out ~/qrtz-publish-out --name model.laya --version <v> --to model.laya-<v>.qrtzpkg
 ```
 
-The file carries the roots, the signed index and nano with everything it depends on (its `model.*` packages; ADR
-0174: echo is bundled, `inference.voice` cut); on the other Mac, settings → install from file, or `qrtz install ./nano-0.3.0.qrtzpkg`,
+The file carries the roots, the signed index and the package with everything it depends on (ADR 0174, ADR 0237: echo,
+nano, ctrl and snap are bundled and never packed; `inference.voice` cut); on the other Mac, settings → install from file, or `qrtz install ./model.laya-<v>.qrtzpkg`,
 asks once and shows how old its revocation info is.
 
 ## 10. The `qrtz` command (optional, on your Mac)
 
-`qrtz install echo`, `qrtz remove echo`, `qrtz update`, `qrtz prune`, `qrtz ls`. It's inside the app
+`qrtz install <name>`, `qrtz remove <name>`, `qrtz update`, `qrtz prune`, `qrtz ls`. It's inside the app
 (`/Applications/qrtz.app/Contents/MacOS/qrtz`); to have it on `PATH`, run that once with `link` (it makes
 `~/.local/bin/qrtz`, a symlink into the app; no `sudo`, nothing in `/usr/local`). Until `root1Sha256` is pinned it
 refuses network installs, like the app.
@@ -169,3 +169,10 @@ refuses network installs, like the app.
   Laya's download still needs the live, fresh index above.
 - Done (ADR 0162): `qrtz` ships as the externalBin `qrtz.app/Contents/MacOS/qrtz`; the app's own executable is
   `Contents/MacOS/qrtz-app`.
+
+## ADR 0237: first-party modules are bundled
+
+echo, nano, ctrl and snap ship inside qrtz.app and are never published, packed, installed or removed as packages; the
+installer refuses those names. Once, at the first release with ADR 0237, set `maxApp` on the last published nano, ctrl
+and snap packages to 0.3.5 (the last app without it) and re-sign the index, so older apps keep them and newer apps never
+see them. Their models stay in the index.

@@ -468,3 +468,15 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
   MR26CCZ496 (861949c's `launch_requirement`), plain file in Contents/MacOS, `codesign -R` before every spawn.
 - `inference.voice` cut from v1 (echo/nano qrtz.json, build-packages dev index, tools/qrtz-publish/packages).
 - Base app estimate ~29–32 MB (25 MB empty + qrtz-echo), to measure at the next signed build.
+
+## 2026-10-23 ~18:10 PT: nano, ctrl and snap ship inside qrtz.app (ADR 0237, QRT-361)
+
+- Jared (6:06 PM, after Bozniak's review): ADR 0237 accepted. nano, ctrl and snap are bundled like echo
+  (`Contents/MacOS/qrtz-<id>`, own identifier and exact entitlements, app notarization, `codesign -R` before every
+  spawn). `BUNDLED_EXTENSIONS` = echo, nano, ctrl, snap; the installer refuses those names from an index, lock or
+  sideload. ctrl still reads `model.laya` (a refcounted model package).
+- Migration: an old lock's entries are retired on first launch; their package dirs are released for prune only after
+  the bundled helper launches once. nano and ctrl stay behind `experimentalApps` (a fresh install never spawns them).
+- Deviation: nano keeps its calendars entitlement (declared in module.json since ADR 0217) next to audio-input.
+- Deferred: nano/ctrl model-download prompt in their off-state views; `protocol` enforcement (QRT-363); `maxApp` on
+  the last published packages (release operator); `.github/workflows/ci.yml` change left as a patch for review.

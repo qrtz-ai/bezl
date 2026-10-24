@@ -1,8 +1,8 @@
 # Production setup: what's done, and Jared's checklist
 
 v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.ai`, the signed index and
-`qrtz install …` over the network. echo, nano and ctrl are built in (the bundled `qrtz-helper`), and so is snap
-(`qrtz-snap`, ADR 0159). Part A is the signed build. Part B is the hosting.
+`qrtz install …` over the network. echo, nano, ctrl and snap are built in, each as its own
+`Contents/MacOS/qrtz-<id>` (ADR 0174, ADR 0237); the index carries models and third-party modules. Part A is the signed build. Part B is the hosting.
 
 ## What's done (box side, 2026-10-18)
 
@@ -12,11 +12,12 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
   ([ADR 0162](../adr/0162-the-qrtz-command-ships-as-contents-macos-qrtz.md)). `qrtz link` puts `~/.local/bin/qrtz`
   on your PATH as a symlink into the bundle. Until `root1Sha256` is pinned it refuses every install, as designed.
 - **Every executable in `Contents/MacOS` gets the right signature.** `tauri build` gives every bundled executable the
-  app's entitlements, so `scripts/release/sign-mac.sh` signs each one again: `qrtz` with none and `qrtz-echo` as
-  `ai.qrtz.echo` with its microphone entitlement (ADR 0174: echo is bundled; snap is a package). Then it reseals and checks the app, notarizes and staples it, and makes, notarizes and
+  app's entitlements, so `scripts/release/sign-mac.sh` signs each one again: `qrtz` with none, `qrtz-echo` as
+  `ai.qrtz.echo` with its microphone entitlement (ADR 0174), `qrtz-nano` with microphone + calendars, and `qrtz-ctrl` and
+  `qrtz-snap` with none (ADR 0237). Then it reseals and checks the app, notarizes and staples it, and makes, notarizes and
   staples the `.dmg` (A4). The list it signs is checked against `docs/modules/confinement-map.json` by a test.
-- **Package manifests**: `modules/<name>/qrtz.json` for nano, ctrl and snap (ADR 0174: echo ships inside qrtz.app
-  and `inference.voice` is cut from v1).
+- **Package manifests**: none left for first-party modules (ADR 0237: nano, ctrl and snap ship inside qrtz.app like
+  echo; their `qrtz.json` keeps only model dependencies). `inference.voice` is cut from v1.
 - **`scripts/modules/release-keys.sh`**: the whole key ceremony in one command (offline only). Root 1 has threshold 2,
   so it is signed by both root keys and a key rotation needs both.
 - **`scripts/modules/publish.sh`**: build, verify, upload to R2, and a live check, with credentials from env
@@ -42,7 +43,8 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
   OpenMDW-1.1, and LocalVQE and Laya are Apache-2.0.
 
 echo ships inside qrtz.app and works with no index (ADR 0174; switching it on downloads Parakeet from Hugging Face,
-hash-pinned in qrtz). nano, ctrl and snap install only once they are published; each one's executable is notarized by publish.sh
+hash-pinned in qrtz). nano, ctrl and snap do too since ADR 0237 (nano and ctrl behind experimental apps; their models download from
+Hugging Face when switched on). Third-party modules install once published; each executable is notarized by publish.sh
 and checked offline by the installer (ADR 0170).
 
 ## Part A: the signed v1 build (needed for launch)
