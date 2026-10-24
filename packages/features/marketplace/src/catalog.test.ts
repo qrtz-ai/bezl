@@ -52,7 +52,10 @@ describe('marketplace catalog (ADR 0161)', () => {
     expect(metaLine('echo', echo, '0.2.0')).toBe(
       `v${echo!.version} · 629 mb with dependencies`,
     );
-    expect(metaLine('nano', undefined, '0.2.0')).toBe(
+    // ADR 0237: nano, ctrl and snap are built in too.
+    for (const n of ['nano', 'ctrl', 'snap'])
+      expect(metaLine(n, undefined, '0.2.0')).toBe('v0.2.0 · built in');
+    expect(metaLine('demo', undefined, '0.2.0')).toBe(
       'installed · on this mac',
     );
     for (const n of ['echo', 'nano', 'ctrl', 'snap'])

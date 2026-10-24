@@ -13,6 +13,8 @@ export const manifest = SubAppManifest.parse({
     'doc.read',
     'os.permissions',
     'speech.read',
+    'config.read',
+    'config.write',
     'module.settings',
   ],
   permissions: ['accessibility', 'screen-recording', 'microphone'],
