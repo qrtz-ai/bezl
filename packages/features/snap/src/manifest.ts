@@ -6,5 +6,5 @@ export const manifest = SubAppManifest.parse({
   name: 'snap',
   icon: 'layout',
   order: 40,
-  capabilities: ['snap.read', 'module.settings'],
+  capabilities: ['snap.read', 'config.read', 'config.write', 'module.settings'],
 });

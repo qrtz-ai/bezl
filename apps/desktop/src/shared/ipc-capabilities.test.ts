@@ -25,7 +25,7 @@ describe('sub-app capability matrix', () => {
     ['note', 'note:list', { query: 'x' }, true],
     ['note', 'note:start', {}, true],
     ['note', 'permissions:request', { permission: 'microphone' }, true],
-    ['note', 'config:set', { patch: {} }, false],
+    ['dash', 'config:set', { patch: {} }, false],
     ['unknown', 'note:list', { query: '' }, false],
     ['settings', 'config:set', { patch: {} }, true],
     ['settings', 'note:delete', { id: 'm' }, false],
