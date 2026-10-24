@@ -7,7 +7,7 @@ use qrtz_app::packages_ipc::PackagesIpc;
 use qrtz_app::ports::PackagesPort;
 use qrtz_app::service::Events;
 use qrtz_modules::install::Installer;
-use qrtz_publish::dry_run::{sample, sample_hugging_face_files, NoAppleChecks};
+use qrtz_publish::dry_run::{sample_hugging_face_files, sample_named, NoAppleChecks};
 use qrtz_publish::keys::Keys;
 use qrtz_publish::{build, write_root};
 use qrtz_speech::testkit::Server;
@@ -34,7 +34,7 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
     let keys = Keys::ephemeral();
     let now = qrtz_publish::now_ms();
     let (_, pin) = write_root(&out, &keys, None, 1, now).unwrap();
-    build(&out, &sample(&dir, true).unwrap(), &keys, now).unwrap();
+    build(&out, &sample_named(&dir, true, "demo").unwrap(), &keys, now).unwrap();
     let server = Server::start().await;
     serve(&out, &out, &server);
     // ADR 0171: the model's files come from (a loopback) Hugging Face, not the package host.
@@ -70,8 +70,8 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
     assert!(available.iter().all(|e| e["kind"] == "extension"), "{s}");
     let echo = available
         .iter()
-        .find(|e| e["name"] == "nano")
-        .expect("echo listed");
+        .find(|e| e["name"] == "demo")
+        .expect("demo listed");
     assert_eq!(echo["version"], "0.3.0");
     let deps = echo["dependencies"].as_array().unwrap();
     assert!(!deps.is_empty(), "{echo}");
@@ -82,15 +82,13 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
         echo["installSizeBytes"].as_u64().unwrap(),
         echo["sizeBytes"].as_u64().unwrap() + dep_bytes
     );
-    // The bundled manifest's permissions for the first-party extension.
-    assert_eq!(
-        echo["permissions"],
-        json!(["microphone", "screen-recording", "accessibility"])
-    );
+    // Permissions come from a bundled manifest only (ADR 0237: no first-party extension is a card any more, so a
+    // test-only extension shows none).
+    assert_eq!(echo["permissions"], json!([]));
 
     // The plan's download equals the card's install size on an empty store (nothing shared yet).
     let plan = ipc
-        .call("packages:plan", json!({"op": "install", "names": ["nano"]}))
+        .call("packages:plan", json!({"op": "install", "names": ["demo"]}))
         .await
         .unwrap();
     let total = plan["downloadBytes"].as_u64().unwrap();
@@ -119,5 +117,5 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
         .as_array()
         .unwrap()
         .iter()
-        .any(|p| p["name"] == "nano"));
+        .any(|p| p["name"] == "demo"));
 }

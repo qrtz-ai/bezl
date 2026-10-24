@@ -88,6 +88,8 @@ libc = { workspace = true }
 qrtz-speech = { workspace = true, features = ["testkit", "net"] }
 ed25519-dalek = { workspace = true }
 qrtz-publish = { workspace = true }
+# ADR 0237: every first-party extension is bundled, so the package path is tested with the test-only extension `demo`.
+qrtz-modules = { workspace = true, features = ["fixture-extension"] }
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }
 

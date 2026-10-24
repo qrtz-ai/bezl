@@ -117,12 +117,12 @@ pub fn is_installed_modules(spawn: &ProcessSpawn) -> bool {
 /// grants to any binary. `QRTZ_ALLOW_DEV_KNOBS=1` (the E2E harness's test knobs) never turns this on.
 pub const CODE_KNOBS: bool = cfg!(debug_assertions);
 
-/// ADR 0169: every module helper from its installed package under `data`. `QRTZ_<ID>_BIN` still overrides one in a
+/// ADR 0169: a module helper from its installed package under `data` (ADR 0237: no first-party one any more). `QRTZ_<ID>_BIN` still overrides one in a
 /// debug build; a release build never takes a path from the environment (see [`CODE_KNOBS`]).
 pub fn installed_layout(data: &std::path::Path) -> qrtz_app::module_helpers::HelperLayout {
-    // ADR 0174: echo ships in qrtz.app next to the app binary (Contents/MacOS/qrtz-echo).
+    // ADR 0174, ADR 0237: echo, nano, ctrl and snap ship in qrtz.app next to the app binary (Contents/MacOS/qrtz-<id>).
     // Resolved through any symlink (macOS reports the path the app was exec'd by); a release build only takes a dir
-    // that is really `<something>.app/Contents/MacOS`, else bundled echo has no path and never starts.
+    // that is really `<something>.app/Contents/MacOS`, else no bundled helper has a path and none starts.
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| std::fs::canonicalize(p).ok())
@@ -132,7 +132,7 @@ pub fn installed_layout(data: &std::path::Path) -> qrtz_app::module_helpers::Hel
     installed_layout_from(data, &exe_dir, CODE_KNOBS, |k| std::env::var(k).ok())
 }
 
-/// `dir` is `<name>.app/Contents/MacOS` (ADR 0174: where qrtz-echo is bundled).
+/// `dir` is `<name>.app/Contents/MacOS` (ADR 0174, ADR 0237: where every qrtz-<id> helper is bundled).
 fn is_app_macos_dir(dir: &std::path::Path) -> bool {
     let mut c = dir.components().rev();
     matches!(

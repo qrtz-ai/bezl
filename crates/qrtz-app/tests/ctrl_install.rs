@@ -1,5 +1,6 @@
-//! Run 41: ADR 0169 / ADR 0171 for ctrl, end to end on a local signed index. Installing ctrl from the marketplace
-//! brings `model.laya` in the same plan (one consent, one progress), its files come only from their pinned Hugging
+//! Run 41: ADR 0169 / ADR 0171 for ctrl, end to end on a local signed index. ADR 0237: ctrl is built into qrtz.app
+//! and is never a package (planning it is refused); `model.laya` stays an ADR 0212 read-only package it reads
+//! (`BUNDLED_PACKAGE_READS`), installed under one consent, one progress. Its files come only from their pinned Hugging
 //! Face URL (never from the package host), and with no answer recorded in ctrl's settings the installed model is
 //! ctrl's yes: `CtrlLayaModel::consent()` hands the helper the read-only, store-linked `.mlmodelc` inside
 //! `packages/model.laya/<version>/` (ADR 0157 §9), with no separate download and no helper view under `models/`.
@@ -67,7 +68,8 @@ fn hf_file(pub_dir: &Path, path: &str) -> PathBuf {
     pub_dir.join(format!("hf/FluidInference/laya-coreml/resolve/{REVISION}/{path}"))
 }
 
-/// The published fixture: `model.laya` (its files on "Hugging Face" only) and `ctrl`, which depends on it and reads
+/// The published fixture (shaped like an index from before ADR 0237, which still had a ctrl package the app now
+/// refuses): `model.laya` (its files on "Hugging Face" only) and `ctrl`, which depends on it and reads
 /// it in its own process.
 fn publish(dir: &Path) -> (PathBuf, String) {
     let src = dir.join("src");
@@ -234,8 +236,8 @@ async fn installing_ctrl_brings_laya_from_hugging_face_and_that_is_its_yes() {
     let r = Router::new(Shared(b.service.clone())).validate_responses(true);
     let m = laya(&data);
 
-    // Before: not installed, no answer, nothing decides.
-    assert!(!ctrl_installed(&b));
+    // Before: ctrl is built in (always installed), no model, no answer, nothing decides.
+    assert!(ctrl_installed(&b));
     assert!(!m.consented());
     assert_eq!(m.consent().installed, None);
 
@@ -245,20 +247,23 @@ async fn installing_ctrl_brings_laya_from_hugging_face_and_that_is_its_yes() {
     }
 
     ok(&r, "marketplace", "packages:refresh", Value::Null).await;
-    let plan = change(&r, "install", &["ctrl"]).await.unwrap();
-    assert_eq!(
-        names(&plan),
-        ["ctrl", "model.laya"],
-        "one plan, one consent: {plan}"
-    );
+    let refused = call(
+        &r,
+        "marketplace",
+        "packages:plan",
+        json!({"op": "install", "names": ["ctrl"]}),
+    )
+    .await;
+    assert_eq!(refused["ok"], false, "ctrl is never a package: {refused}");
+    let plan = change(&r, "install", &["model.laya"]).await.unwrap();
+    assert_eq!(names(&plan), ["model.laya"], "one plan, one consent: {plan}");
     let model_bytes: usize = FILES.iter().map(|(_, b)| b.len()).sum();
     assert!(
         plan["downloadBytes"].as_u64().unwrap() >= model_bytes as u64,
         "the consent covers the model's bytes: {plan}"
     );
     assert!(ctrl_installed(&b));
-    let e = qrtz_app::installed::entry(&data, "ctrl").unwrap();
-    assert_eq!(e.program, data.join("packages/ctrl/0.3.0/bin/qrtz-ctrl"));
+    assert!(!data.join("packages/ctrl").exists(), "no ctrl package dir");
 
     // No answer was recorded in ctrl's settings: the installed model is the yes, and the helper gets the compiled
     // model inside the read-only package dir, never a view under models/.
@@ -295,10 +300,10 @@ async fn installing_ctrl_brings_laya_from_hugging_face_and_that_is_its_yes() {
     std::fs::remove_file(data.join("ctrl/laya.json")).unwrap();
     assert!(m.consent().installed.is_some());
 
-    // Removing ctrl, the model's only user, prunes it: nothing decides (QRT-293: no rules fallback).
-    change(&r, "remove", &["ctrl"]).await.unwrap();
-    assert!(!ctrl_installed(&b));
-    assert!(!pkg.exists(), "model.laya pruned with ctrl");
+    // Removing the model prunes it: nothing decides (QRT-293: no rules fallback). ctrl itself stays built in.
+    change(&r, "remove", &["model.laya"]).await.unwrap();
+    assert!(ctrl_installed(&b));
+    assert!(!pkg.exists(), "model.laya pruned");
     assert!(!m.consented());
     assert_eq!(m.consent().installed, None);
     let why = qrtz_ctrl::laya::select_scorer(&m.consent(), None).err();
@@ -321,14 +326,13 @@ async fn a_laya_file_gone_from_hugging_face_installs_nothing() {
     let blob = hf_file(&pub_dir, FILES[2].0);
     let saved = std::fs::read(&blob).unwrap();
     std::fs::remove_file(&blob).unwrap();
-    change(&r, "install", &["ctrl"]).await.unwrap_err();
-    assert!(!ctrl_installed(&b));
+    change(&r, "install", &["model.laya"]).await.unwrap_err();
     assert!(qrtz_app::installed::read_lock(&data).packages.is_empty());
     assert_eq!(laya(&data).consent().installed, None);
 
     // Back at the pinned URL: the same install succeeds.
     std::fs::write(&blob, saved).unwrap();
-    change(&r, "install", &["ctrl"]).await.unwrap();
+    change(&r, "install", &["model.laya"]).await.unwrap();
     assert!(ctrl_installed(&b));
     assert!(laya(&data).consent().installed.is_some());
     let _ = qrtz_modules::fsutil::remove_tree(tmp.path());

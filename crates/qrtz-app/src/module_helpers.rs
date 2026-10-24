@@ -38,8 +38,9 @@ pub enum HelperLayout {
     /// entry under `root` (`<data>/packages/<name>/<version>/`, read from `qrtz.lock` at every start), and only an
     /// installed, switched-on module's helper runs. `programs` are dev overrides (debug builds only).
     ///
-    /// ADR 0174: `bundled` names the modules qrtz.app carries itself (echo → `Contents/MacOS/qrtz-echo`): their
-    /// helper is that file, checked against the bundled manifest's requirement, with no lock or index needed.
+    /// ADR 0174, ADR 0237: `bundled` names the modules qrtz.app carries itself (echo, nano, ctrl, snap →
+    /// `Contents/MacOS/qrtz-<id>`): their helper is that file, checked against the bundled manifest's requirement
+    /// (`codesign -R` before every spawn), with no lock or index needed.
     Installed {
         root: PathBuf,
         programs: BTreeMap<String, PathBuf>,
@@ -113,7 +114,7 @@ impl HelperLayout {
 /// itself, it only carries the arguments and environment every module helper gets.
 pub const INSTALLED_PROGRAM: &str = "qrtz-installed-module";
 
-/// ADR 0174: the modules qrtz.app carries in `Contents/MacOS/qrtz-<id>` (v1: echo).
+/// ADR 0174, ADR 0237: the modules qrtz.app carries in `Contents/MacOS/qrtz-<id>` (echo, nano, ctrl, snap).
 pub use qrtz_modules::BUNDLED_EXTENSIONS;
 
 /// Module `id`'s app next to the helper binary. The Rust mock helper plays every role itself (Linux dev and tests),

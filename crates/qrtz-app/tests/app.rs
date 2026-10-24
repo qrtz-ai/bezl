@@ -134,7 +134,7 @@ async fn app_channels_and_capabilities() {
     );
     assert!(hud.0.load(Ordering::SeqCst));
     assert_eq!(
-        call(&r, "note", "config:set", json!({"patch": {}})).await["error"]["code"],
+        call(&r, "dash", "config:set", json!({"patch": {}})).await["error"]["code"],
         "E_FORBIDDEN"
     );
     assert_eq!(
