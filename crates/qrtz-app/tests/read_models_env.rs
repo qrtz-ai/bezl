@@ -1,12 +1,15 @@
 //! ADR 0212, at launch: a downloaded module's helper gets `QRTZ_READ_MODELS` with exactly its granted read-only
-//! store dirs (empty when it has none, so it never falls back to a writable view); bundled echo gets none.
+//! store dirs (empty when it has none, so it never falls back to a writable view). ADR 0237: echo, nano and snap
+//! are bundled and get none; ctrl is bundled but keeps its laya grant (`BUNDLED_PACKAGE_READS`), so it still gets
+//! the var.
 use qrtz_app::installed::read_models_env;
 
 #[test]
-fn a_downloaded_module_always_gets_the_var_and_bundled_echo_never_does() {
+fn only_a_module_with_package_reads_gets_the_var() {
     let d = tempfile::tempdir().unwrap();
-    assert_eq!(read_models_env(d.path(), "echo"), None);
-    // Not installed: no grants, but the var is set (empty), so nothing falls back to <data>/models.
-    assert_eq!(read_models_env(d.path(), "nano").as_deref(), Some(""));
+    for m in ["echo", "nano", "snap"] {
+        assert_eq!(read_models_env(d.path(), m), None, "{m}");
+    }
+    // Nothing installed: no grants, but the var is set (empty), so ctrl never falls back to <data>/models.
     assert_eq!(read_models_env(d.path(), "ctrl").as_deref(), Some(""));
 }

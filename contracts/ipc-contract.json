@@ -14340,6 +14340,8 @@
         "doc.read",
         "os.permissions",
         "speech.read",
+        "config.read",
+        "config.write",
         "module.settings"
       ]
     },
@@ -14361,6 +14363,8 @@
       "capabilities": [
         "ctrl.read",
         "ctrl.write",
+        "config.read",
+        "config.write",
         "module.settings"
       ]
     },
@@ -14368,6 +14372,8 @@
       "id": "snap",
       "capabilities": [
         "snap.read",
+        "config.read",
+        "config.write",
         "module.settings"
       ]
     },

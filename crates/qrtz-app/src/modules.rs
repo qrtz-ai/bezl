@@ -295,6 +295,51 @@ mod tests {
         }
     }
 
+    /// ADR 0237: nano, ctrl and snap are bundled like echo. Each view holds exactly its own module's switch (never
+    /// another's, never anything else in config), and while off it may still read the speech status but nothing of
+    /// its module. Switching nano or ctrl on from its view doesn't run it while experimental apps is off.
+    #[test]
+    fn the_bundled_nano_ctrl_and_snap_views_hold_only_their_own_switch() {
+        for (view, m, other) in [
+            ("note", "nano", "ctrl"),
+            ("ctrl", "ctrl", "snap"),
+            ("snap", "snap", "nano"),
+        ] {
+            let set = |p: Value| check_view_config_patch(view, "config:set", &json!({ "patch": p }));
+            assert!(set(json!({"modules": {m: {"enabled": true}}})).is_ok(), "{view}");
+            assert!(set(json!({"modules": {m: {"enabled": false}}})).is_ok(), "{view}");
+            assert!(
+                set(json!({"modules": {other: {"enabled": true}}})).is_err(),
+                "{view}"
+            );
+            assert!(
+                set(json!({"modules": {m: {"installed": true}}})).is_err(),
+                "{view}"
+            );
+            assert!(set(json!({"modules": {"enabled": true}})).is_err(), "{view}");
+            assert!(set(json!({"theme": "dark"})).is_err(), "{view}");
+            let off = json!({"app": {"experimentalApps": true}, "modules": {m: {"enabled": false}}});
+            assert!(gate(&off, view, "config:get").is_ok(), "{view}");
+            assert!(
+                gate(&off, view, "speech:status").is_ok(),
+                "{view}: bundled, its view may read speech status"
+            );
+            assert!(gate(&off, view, "speech:download").is_err(), "{view}");
+        }
+        for m in ["nano", "ctrl"] {
+            let cfg = json!({"modules": {m: {"enabled": true}}});
+            assert!(
+                experiment_off(&cfg, m),
+                "{m}: on, but experimental apps never turned on"
+            );
+            assert!(!is_on(&cfg, m), "{m}");
+        }
+        assert!(!experiment_off(
+            &json!({"modules": {"snap": {"enabled": true}}}),
+            "snap"
+        ));
+    }
+
     #[test]
     fn a_switched_off_module_is_refused_but_config_stays_reachable() {
         let cfg = json!({"app": {"experimentalApps": true}, "modules": {"echo": {"enabled": false}}});

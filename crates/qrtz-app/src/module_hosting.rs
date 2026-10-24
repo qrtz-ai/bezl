@@ -502,18 +502,22 @@ impl Packages {
             tracing::warn!(dir = %dir.display(), "dev build: modules install from a local dev index");
             return Some(Self {
                 installer: Installer::new(&root, Some(pin), Box::new(DevCodeChecks))
+                    .refusing_bundled()
                     .with_tmp_keep(crate::local_models::tmp_keep_fn(&root, None)),
                 transport: HttpTransport::local_dir(dir),
             });
         }
         Some(Self {
             installer: Installer::new(&root, Hosts::pinned().root1_sha256, Box::new(AppleCodeChecks))
+                .refusing_bundled()
                 .with_tmp_keep(crate::local_models::tmp_keep_fn(&root, None)),
             transport: HttpTransport::pinned(),
         })
     }
 
+    /// ADR 0237: the app's installer always refuses packages named like a bundled module.
     pub fn with(installer: Installer, transport: HttpTransport) -> Self {
+        let installer = installer.refusing_bundled();
         Self { installer, transport }
     }
 
