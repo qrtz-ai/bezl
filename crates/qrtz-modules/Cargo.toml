@@ -18,6 +18,10 @@ ed25519-dalek = { workspace = true }
 async-trait = { workspace = true }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
+[features]
+# ADR 0237: the test-only extension `demo` (EXTENSION_NAMES). Enabled by dev-dependencies only, never in a shipped build.
+fixture-extension = []
+
 [target.'cfg(unix)'.dependencies]
 # N193 L1: the store/.tmp sweep works relative to one O_NOFOLLOW directory fd (already in the tree via tempfile).
 rustix = { version = "1", features = ["fs"] }
