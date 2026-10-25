@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.1 (2026-10-24)
+
+- Fix: release CI rebuilds the Swift helper's cache after the repo rename to qrtz-ai/bezl (0.4.0 was tagged but never published; its changes ship in 0.4.1).
+
 ## 0.4.0 (2026-10-24)
 
 - Breaking: nano, ctrl and snap ship inside qrtz.app, like echo (ADR 0237), so each app always runs the helpers it was built with. They are no longer marketplace packages. On first launch qrtz drops their old packages from your lock and deletes them once the built-in copy has started; your switches and downloaded models stay. nano and ctrl stay hidden behind experimental apps.
