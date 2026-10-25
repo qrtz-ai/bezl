@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.2 (2026-10-25)
+
+- Fix: undo the bezl rename; the app, icon and repo are back to qrtz (qrtz-ai/qrtz). 0.4.1 was tagged but never published; its changes ship in 0.4.2.
+
 ## 0.4.1 (2026-10-24)
 
 - Fix: release CI rebuilds the Swift helper's cache after the repo rename to qrtz-ai/bezl (0.4.0 was tagged but never published; its changes ship in 0.4.1).
