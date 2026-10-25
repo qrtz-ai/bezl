@@ -94,7 +94,7 @@ export default function SnapView() {
           title="snap isn't running"
           data-testid="snap-not-running"
         >
-          it starts when snap is on and bezl is open.
+          it starts when snap is on and qrtz is open.
         </Callout>
       ) : null}
       {settingsError ? (

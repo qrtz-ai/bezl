@@ -62,7 +62,7 @@ describe('the sidebar dot (ADR 0181)', () => {
         await new Promise((r) => setTimeout(r, 1));
       });
     await push('available');
-    expect(dot()?.getAttribute('aria-label')).toBe('bezl update ready');
+    expect(dot()?.getAttribute('aria-label')).toBe('qrtz update ready');
     expect(el.querySelector('[data-testid="nav-note-dot"]')).toBeNull();
     await push('downloading');
     expect(dot()).toBeNull();

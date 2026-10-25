@@ -21,11 +21,11 @@ export function accessNote(s: CalendarStatus | null): string | null {
     case 'granted':
       return null;
     case 'not-determined':
-      return 'bezl will ask macos for calendar access.';
+      return 'qrtz will ask macos for calendar access.';
     case 'unsupported':
       return 'the calendar works on a mac only.';
     case 'write-only':
-      return 'bezl can only add events, not read them. allow full access in system settings › privacy & security › calendars.';
+      return 'qrtz can only add events, not read them. allow full access in system settings › privacy & security › calendars.';
     default:
       return 'calendar access is off. allow it in system settings › privacy & security › calendars.';
   }

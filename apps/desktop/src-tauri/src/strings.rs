@@ -1,10 +1,10 @@
 //! Every user-visible string the Rust shell renders (window titles, tray, menus). Lowercase by brand rule;
 //! scripts/check-titles.mjs scans `UI_*` consts and `.title(…)`/menu literals in this crate.
-pub const UI_APP: &str = "bezl";
-pub const UI_HUD: &str = "bezl hud";
+pub const UI_APP: &str = "qrtz";
+pub const UI_HUD: &str = "qrtz hud";
 pub const UI_TALK_FAILED: &str = "dictation didn't go through";
-pub const UI_OPEN: &str = "open bezl";
-pub const UI_QUIT: &str = "quit bezl";
+pub const UI_OPEN: &str = "open qrtz";
+pub const UI_QUIT: &str = "quit qrtz";
 pub const UI_START: &str = "start recording";
 pub const UI_RECORD_DETECTED: &str = "record this meeting";
 pub const UI_STOP: &str = "stop recording";
@@ -18,4 +18,4 @@ pub const UI_NO_AUDIO_TITLE: &str = "no audio is being recorded";
 pub const UI_NO_AUDIO_BODY: &str = "check your mic and meeting audio";
 pub const UI_CTRL_CONFIRM_TITLE: &str = "ctrl needs your ok";
 pub const UI_CTRL_CONFIRM_BODY: &str =
-    "a task is waiting before it does something that can't be undone. open bezl to look.";
+    "a task is waiting before it does something that can't be undone. open qrtz to look.";

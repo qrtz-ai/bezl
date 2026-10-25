@@ -129,7 +129,7 @@ export function ModulePermissions({
           label,
           state: STATE[st] ?? st,
           ...(askable ? { onGrant: () => onAsk(p as OsPermission) } : {}),
-          ...(waiting ? { hint: 'switch on bezl' } : {}),
+          ...(waiting ? { hint: 'switch on qrtz' } : {}),
           // A screen recording grant reaches a running qrtz only after a relaunch.
           ...(waiting && p === 'screen-recording' && onRestart
             ? { onRestart }

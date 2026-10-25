@@ -138,11 +138,6 @@ export const OPTS = 'opts';
  * Shell-owned sidebar ids and labels. A module whose id or display name is one of these (any case, any padding)
  * gets no sidebar row and no palette entry, so no module can pose as, or collide with, the apps or opts rows.
  */
-export const RESERVED_NAV: ReadonlySet<string> = new Set([
-  APPS,
-  OPTS,
-  'qrtz',
-  'bezl',
-]); // 'bezl' is opts' sidebar label; 'qrtz' stays reserved (the old label, and the /qrtz page id)
+export const RESERVED_NAV: ReadonlySet<string> = new Set([APPS, OPTS, 'qrtz']); // 'qrtz' is opts' sidebar label
 export const isReservedNav = (s: string) =>
   RESERVED_NAV.has(s.trim().toLowerCase());

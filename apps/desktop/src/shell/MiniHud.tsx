@@ -101,7 +101,7 @@ function Hud() {
                   ? 'recording'
                   : s?.phase === 'processing'
                     ? 'summarizing…'
-                    : 'bezl'
+                    : 'qrtz'
             }`}
             bottom={line || '\u00a0'}
             bottomTestId="mini-hud-line"

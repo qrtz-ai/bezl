@@ -20,7 +20,7 @@ export default function CtrlSettings() {
         onClick={() => requestNavigate({ app: 'qrtz', item: 'ctrl' })}
         data-testid="ctrl-open-in-qrtz"
       >
-        ctrl in bezl
+        ctrl in qrtz
       </Button>
     </Stack>
   );

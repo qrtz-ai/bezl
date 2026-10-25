@@ -99,9 +99,9 @@ export function sidebarItems(
     // ADR 0181: the dot says a newer qrtz is ready (opts → qrtz updates it).
     {
       id: OPTS,
-      label: 'bezl',
+      label: 'qrtz',
       group: 'foot',
-      ...(updateReady ? { dot: true, dotLabel: 'bezl update ready' } : {}),
+      ...(updateReady ? { dot: true, dotLabel: 'qrtz update ready' } : {}),
     },
     ...foot,
   ];

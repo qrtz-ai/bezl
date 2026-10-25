@@ -8,7 +8,7 @@ export const noTransport: QrtzTransport = {
     error: {
       name: 'AppError',
       code: 'E_UNAVAILABLE',
-      message: 'Not running inside bezl',
+      message: 'Not running inside qrtz',
       retryable: false,
     },
   }),

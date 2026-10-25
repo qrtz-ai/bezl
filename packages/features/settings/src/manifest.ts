@@ -4,7 +4,7 @@ import { SubAppManifest } from '@qrtz/core';
 export const manifest = SubAppManifest.parse({
   id: 'settings',
   // qrtz's own settings, behind the qrtz page's gear (/qrtz/settings); never a sidebar row of its own.
-  name: 'bezl opts',
+  name: 'qrtz opts',
   icon: 'settings',
   order: 1000,
   capabilities: [

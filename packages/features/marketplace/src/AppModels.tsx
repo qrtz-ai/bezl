@@ -121,7 +121,7 @@ export function AppModels({
                   'delete the models',
                   (m) =>
                     isSharedBundle(m)
-                      ? "these models are part of bezl's shared speech, so they can't be deleted for one app."
+                      ? "these models are part of qrtz's shared speech, so they can't be deleted for one app."
                       : null,
                 );
               }}

@@ -643,7 +643,7 @@ describe("each app's models, in its modal (moved from settings → speech)", () 
     await click('models-echo-panel-delete');
     await click('models-echo-confirm-delete');
     expect(q('models-echo-panel-error')?.textContent).toContain(
-      "part of bezl's shared speech",
+      "part of qrtz's shared speech",
     );
     expect(el.textContent).not.toContain('remove it in opts');
   });
@@ -721,7 +721,7 @@ describe('qrtz ships empty (ADR 0169)', () => {
     expect(q('installed-empty')?.textContent).toContain(
       'nothing installed yet',
     );
-    expect(el.textContent).toContain('bezl starts empty');
+    expect(el.textContent).toContain('qrtz starts empty');
     await click('marketplace-empty-check');
     expect(f.calls.map((c) => c.channel)).toContain('packages:refresh');
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
@@ -798,7 +798,7 @@ describe('every permission is granted from inside qrtz (in each app modal)', () 
       },
     ]);
     expect(q('perm-echo-accessibility-hint')?.textContent).toBe(
-      'switch on bezl',
+      'switch on qrtz',
     );
     ax = 'granted';
     await wait(1100);

@@ -50,7 +50,7 @@ impl ShellHooks for TauriShell {
             Notice::MeetingDetected { title, platform } => (
                 crate::strings::UI_MEETING_DETECTED.to_string(),
                 format!(
-                    "record “{}”? open bezl to start recording.",
+                    "record “{}”? open qrtz to start recording.",
                     if title.is_empty() { platform } else { title }
                 ),
             ),
@@ -181,7 +181,7 @@ impl StorageShell for TauriStorageShell {
             .dialog()
             .file()
             .set_file_name(default_name)
-            .add_filter("bezl backup", &["zip"]);
+            .add_filter("qrtz backup", &["zip"]);
         if let Ok(docs) = app.path().document_dir() {
             d = d.set_directory(docs);
         }
@@ -191,7 +191,7 @@ impl StorageShell for TauriStorageShell {
         let app = self.0.get()?;
         app.dialog()
             .file()
-            .add_filter("bezl backup", &["zip"])
+            .add_filter("qrtz backup", &["zip"])
             .blocking_pick_file()
             .and_then(|p| p.into_path().ok())
     }
@@ -669,7 +669,7 @@ fn dev_local_badge(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         for _ in 0..10 {
             for (_, w) in app.webview_windows() {
-                let _ = w.set_title("bezl (dev-local)");
+                let _ = w.set_title("qrtz (dev-local)");
                 let _ = w.eval(JS);
             }
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;

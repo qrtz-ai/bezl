@@ -27,22 +27,22 @@ export function appUpdateLine(s: AppUpdateStatus): string {
     case 'checking':
       return 'checking for updates…';
     case 'up-to-date':
-      return `bezl ${s.current} is up to date`;
+      return `qrtz ${s.current} is up to date`;
     case 'available':
-      return `bezl ${s.latest} is available${s.sizeBytes ? ` (${mb(s.sizeBytes)})` : ''}`;
+      return `qrtz ${s.latest} is available${s.sizeBytes ? ` (${mb(s.sizeBytes)})` : ''}`;
     case 'downloading':
-      return `downloading bezl ${s.latest}… ${mb(s.doneBytes)} of ${mb(s.sizeBytes)}`;
+      return `downloading qrtz ${s.latest}… ${mb(s.doneBytes)} of ${mb(s.sizeBytes)}`;
     case 'installing':
-      return `checking and installing bezl ${s.latest}…`;
+      return `checking and installing qrtz ${s.latest}…`;
     case 'ready':
-      return `bezl ${s.latest} is ready: restart to update`;
+      return `qrtz ${s.latest} is ready: restart to update`;
     case 'failed':
       return `${failedUpdate(s).title}: ${failedUpdate(s).next}`;
   }
 }
 
 export const RELEASES_URL = 'https://github.com/qrtz-ai/qrtz/releases';
-const RELEASES_LINK_TEXT = 'bezl releases page';
+const RELEASES_LINK_TEXT = 'qrtz releases page';
 
 /**
  * QRT-313: the download was redirected off GitHub's asset hosts. The refused host (and its scheme, when it isn't
@@ -57,7 +57,7 @@ export function redirectBlocked(s: AppUpdateStatus): UserError {
     : s.error || null;
   return {
     title: "couldn't download the update",
-    next: `The download was sent to an unexpected server, so bezl stopped it. Your current version is fine. Try again later, or get the update from the ${RELEASES_LINK_TEXT}.`,
+    next: `The download was sent to an unexpected server, so qrtz stopped it. Your current version is fine. Try again later, or get the update from the ${RELEASES_LINK_TEXT}.`,
     detail,
   };
 }
@@ -65,7 +65,7 @@ export function redirectBlocked(s: AppUpdateStatus): UserError {
 /** QRT-311: a failed update says so plainly; a technical reason (codes, statuses) goes under details. */
 export function failedUpdate(s: AppUpdateStatus): UserError {
   if (s.errorCode === 'update_redirect_blocked') return redirectBlocked(s);
-  return userError(s.error ?? '', 'update bezl');
+  return userError(s.error ?? '', 'update qrtz');
 }
 
 /** The failed-update callout; a redirect block links its "qrtz releases page" to GitHub releases. */
@@ -111,7 +111,7 @@ function DevVersionRow() {
     <SettingRow
       as="div"
       label="version"
-      description={`bezl dev · ${commit}`}
+      description={`qrtz dev · ${commit}`}
       data-testid="app-update-dev"
     />
   );
@@ -144,13 +144,13 @@ function UpdateRow() {
       (r) => {
         if (!r.restarting)
           setError({
-            title: "couldn't restart bezl",
+            title: "couldn't restart qrtz",
             next: 'quit and open it again.',
             detail: null,
           });
       },
       (e: unknown) =>
-        setError(userError(e, 'restart bezl', 'quit and open it again.')),
+        setError(userError(e, 'restart qrtz', 'quit and open it again.')),
     );
   };
   const s = status;
@@ -172,7 +172,7 @@ function UpdateRow() {
           s?.state !== 'failed' && line
             ? line
             : s?.current
-              ? `bezl ${s.current}`
+              ? `qrtz ${s.current}`
               : null
         }
       >
@@ -211,7 +211,7 @@ function UpdateRow() {
       {s?.state === 'downloading' ? (
         <Progress
           value={(s.doneBytes ?? 0) / Math.max(1, s.sizeBytes ?? 0)}
-          label="bezl update progress"
+          label="qrtz update progress"
           data-testid="app-update-progress"
         />
       ) : null}

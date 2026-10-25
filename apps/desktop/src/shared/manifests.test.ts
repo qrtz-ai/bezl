@@ -32,11 +32,11 @@ describe('manifests', () => {
       'ctrl',
       'snap',
       'apps',
-      'bezl',
+      'qrtz',
     ]);
     expect(items.slice(-2)).toEqual([
       { id: 'apps', label: 'apps', icon: 'plus', group: 'main' },
-      { id: 'opts', label: 'bezl', group: 'foot' },
+      { id: 'opts', label: 'qrtz', group: 'foot' },
     ]);
     expect(items.filter((i) => i.group === 'foot')).toHaveLength(1);
     expect(QRTZ_PAGE_PARTS).toEqual(new Set(['marketplace', 'settings']));
@@ -63,7 +63,6 @@ describe('manifests', () => {
       mod('x2', ' OPTS '),
       mod('x3', 'Apps'),
       mod('x4', 'QRTZ'),
-      mod('x5', 'Bezl'),
       mod('nano', 'nano'),
     ]);
     const ids = items.map((i) => i.id);
@@ -72,10 +71,10 @@ describe('manifests', () => {
     const named = (l: string) =>
       items.filter((i) => i.label.trim().toLowerCase() === l);
     expect(named('apps')).toHaveLength(1);
-    expect(named('bezl')).toHaveLength(1);
+    expect(named('qrtz')).toHaveLength(1);
     expect(items.slice(-2)).toEqual([
       { id: 'apps', label: 'apps', icon: 'plus', group: 'main' },
-      { id: 'opts', label: 'bezl', group: 'foot' },
+      { id: 'opts', label: 'qrtz', group: 'foot' },
     ]);
   });
 });
