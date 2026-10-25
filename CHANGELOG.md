@@ -2,7 +2,11 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-10-24)
+
 - Breaking: nano, ctrl and snap ship inside qrtz.app, like echo (ADR 0237), so each app always runs the helpers it was built with. They are no longer marketplace packages. On first launch qrtz drops their old packages from your lock and deletes them once the built-in copy has started; your switches and downloaded models stay. nano and ctrl stay hidden behind experimental apps.
+- Feature: the desktop app is now called bezl, with a new icon; Qrtz stays the company name.
+- Fix: snap moves Safari windows.
 
 ## 0.3.5 (2026-10-23)
 
