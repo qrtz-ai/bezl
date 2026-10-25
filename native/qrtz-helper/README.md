@@ -1,6 +1,6 @@
 # qrtz-helper
 
-The native macOS side of bezl. Electron spawns it with `--stdio` and talks newline-delimited JSON (see `packages/core/src/helper/protocol.ts`). Shared golden fixtures live in `Fixtures/protocol/`. zod (vitest) and `ProtocolGoldenTests.swift` both check them.
+The native macOS side of qrtz. Electron spawns it with `--stdio` and talks newline-delimited JSON (see `packages/core/src/helper/protocol.ts`). Shared golden fixtures live in `Fixtures/protocol/`. zod (vitest) and `ProtocolGoldenTests.swift` both check them.
 
 | Piece             | Implementation                                                                                                                                                                                                 | Fallback                                                        |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
