@@ -57,7 +57,7 @@ test('first launch: permissions onboarding, then the top sidebar app; reopened f
     await expect(page.getByTestId(`onboarding-perm-${id}-state`)).toHaveText(
       'not granted',
     );
-  await expect(ob.getByRole('heading', { level: 1 })).toHaveText('set up bezl');
+  await expect(ob.getByRole('heading', { level: 1 })).toHaveText('set up qrtz');
   // All text lowercase, no sideways scroll.
   const text = await ob.innerText();
   expect(text).toBe(text.toLowerCase());
