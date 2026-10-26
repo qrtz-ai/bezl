@@ -8,6 +8,8 @@
 //
 //   node scripts/app/feed.mjs --version 0.2.1 --archive <tar.gz> --sig <tar.gz.sig> [--notes-file f] [--host url]
 //                             [--expires YYYY-MM-DDTHH:MM:SSZ | --expires-days 30]
+//                             [--minimum-system-version 15.0 | --tauri-conf <tauri.conf.json>]
+//     (minimumSystemVersion defaults to the bundle's, from apps/desktop/src-tauri/tauri.conf.json)
 //     prints the feed on stdout (sign that file, then --wrap it)
 //   node scripts/app/feed.mjs --wrap <feed.json> --wrap-sig <feed.json.sig>
 //     prints latest.json (the envelope) on stdout
@@ -65,8 +67,22 @@ export function keyFrom(text) {
   return decoded.includes('minisign public key') ? k : null;
 }
 
+/** The bundle's LSMinimumSystemVersion (tauri.conf.json bundle.macOS.minimumSystemVersion). */
+export function minimumSystemVersion(conf) {
+  const m = conf?.bundle?.macOS?.minimumSystemVersion;
+  if (typeof m !== 'string' || !/^\d{1,3}(\.\d{1,3}){0,2}$/.test(m))
+    throw new Error(`tauri.conf.json has no valid minimumSystemVersion: ${m}`);
+  return m;
+}
+
+export const TAURI_CONF = path.join(
+  import.meta.dirname,
+  '../../apps/desktop/src-tauri/tauri.conf.json',
+);
+
 export function feed({
   version,
+  minimumSystemVersion: minOs,
   archive,
   sig,
   notes,
@@ -76,6 +92,8 @@ export function feed({
 }) {
   if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(expires))
     throw new Error(`expires isn't YYYY-MM-DDTHH:MM:SSZ: ${expires}`);
+  if (minOs !== undefined && !/^\d{1,3}(\.\d{1,3}){0,2}$/.test(minOs))
+    throw new Error(`minimumSystemVersion isn't x.y[.z]: ${minOs}`);
   if (!/^\d+\.\d+\.\d+$/.test(version))
     throw new Error(`not a plain x.y.z version: ${version}`);
   const bytes = fs.readFileSync(archive);
@@ -86,6 +104,7 @@ export function feed({
     notes: (notes ?? '').slice(0, 4000),
     pub_date: utc(date),
     expires,
+    ...(minOs !== undefined ? { minimumSystemVersion: minOs } : {}),
     platforms: {
       [TARGET]: {
         url: `${host}/${archivePath(version)}`,
@@ -133,6 +152,12 @@ function main(argv) {
     sig: a.sig,
     notes,
     host: a.host ?? HOST,
+    // Signed with the feed: the app skips a release whose minimum macOS is newer than the one it runs on.
+    minimumSystemVersion:
+      a['minimum-system-version'] ??
+      minimumSystemVersion(
+        JSON.parse(fs.readFileSync(a['tauri-conf'] ?? TAURI_CONF, 'utf8')),
+      ),
     ...(a.expires
       ? { expires: a.expires }
       : a['expires-days']

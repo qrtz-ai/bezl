@@ -7,6 +7,7 @@ import {
   expiresIn,
   feed,
   keyFrom,
+  minimumSystemVersion,
   unwrap,
   wrap,
 } from './feed.mjs';
@@ -94,5 +95,39 @@ describe('scripts/app/feed.mjs', () => {
     expect(fixture.platforms['darwin-aarch64'].url).toContain(
       archivePath('0.3.0'),
     );
+  });
+
+  it('signs the minimum macOS in, from tauri.conf.json by default', () => {
+    const base = {
+      version: '0.3.0',
+      archive: path.join(fx, 'artifact.tar.gz'),
+      sig: path.join(fx, 'good-0.3.0.sig'),
+    };
+    expect(feed(base).minimumSystemVersion).toBeUndefined();
+    expect(
+      feed({ ...base, minimumSystemVersion: '15.0' }).minimumSystemVersion,
+    ).toBe('15.0');
+    expect(() => feed({ ...base, minimumSystemVersion: 'fifteen' })).toThrow(
+      /minimumSystemVersion/,
+    );
+    const conf = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          import.meta.dirname,
+          '../../apps/desktop/src-tauri/tauri.conf.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(minimumSystemVersion(conf)).toBe('14.2');
+    expect(() => minimumSystemVersion({})).toThrow(/minimumSystemVersion/);
+    for (const [name, min] of [
+      ['0.3.0', '15.0'],
+      ['0.3.0-macos99', '99.0'],
+    ])
+      expect(
+        unwrap(fs.readFileSync(path.join(fx, `feed-${name}.json`), 'utf8'))
+          .minimumSystemVersion,
+      ).toBe(min);
   });
 });

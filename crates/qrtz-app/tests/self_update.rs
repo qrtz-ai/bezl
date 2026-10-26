@@ -1,8 +1,8 @@
 //! ADR 0181: qrtz's own updater, with a fake host. Fixtures (TEST ONLY keys): tests/fixtures/app-update/README.md.
 use async_trait::async_trait;
 use qrtz_app::self_update::{
-    archive_path, open_feed, parse_feed, parse_utc, verify_signature, Backend, HighWaterCommit, Release,
-    SelfUpdate, State, TARGET,
+    archive_path, open_feed, os_supports, os_too_old_message, os_version_parts, parse_feed, parse_utc,
+    verify_signature, Backend, HighWaterCommit, Release, SelfUpdate, State, TARGET,
 };
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -406,4 +406,82 @@ async fn a_failed_install_leaves_the_version_free_to_retry() {
     u.check(false).await;
     assert!(matches!(u.download().await, State::Failed { .. }));
     assert!(!hw2.exists());
+}
+
+// Item 5 (macOS 15 floor): the signed feed's minimumSystemVersion.
+
+#[test]
+fn macos_versions_compare_numerically() {
+    assert_eq!(os_version_parts("15"), Some([15, 0, 0]));
+    assert_eq!(os_version_parts("15.0.1"), Some([15, 0, 1]));
+    for bad in ["", "15.", "a.b", "15.0.0.1", "1500", "-1", "15 .0"] {
+        assert_eq!(os_version_parts(bad), None, "{bad}");
+    }
+    assert!(os_supports("15.0", Some("15")));
+    assert!(os_supports("15.0", Some("15.0.1")));
+    assert!(os_supports("15.0", Some("26.1")));
+    assert!(os_supports("15.10", Some("15.10")));
+    assert!(
+        !os_supports("15.10", Some("15.9")),
+        "numeric, not string, compare"
+    );
+    assert!(!os_supports("15.0", Some("14.7.1")));
+    assert!(
+        os_supports("15.0", None),
+        "unknown running OS: offered (the bundle's own floor still holds)"
+    );
+    assert!(os_too_old_message("0.5.0", "15.0", "14.7").contains("needs macOS 15.0 or later"));
+}
+
+#[test]
+fn the_feed_carries_a_valid_minimum_macos() {
+    let mut v = feed("0.3.0", &text("good-0.3.0.sig"));
+    assert_eq!(
+        parse_feed(&serde_json::to_vec(&v).unwrap(), HOST)
+            .unwrap()
+            .minimum_system_version,
+        None
+    );
+    v["minimumSystemVersion"] = json!("15.0");
+    let r = parse_feed(&serde_json::to_vec(&v).unwrap(), HOST).unwrap();
+    assert_eq!(r.minimum_system_version.as_deref(), Some("15.0"));
+    for bad in [json!("fifteen"), json!(15), json!("15.0.0.0")] {
+        v["minimumSystemVersion"] = bad;
+        assert!(parse_feed(&serde_json::to_vec(&v).unwrap(), HOST).is_err());
+    }
+    // The signed fixtures: every feed says 15.0 except the 99.0 one.
+    let r = parse_feed(&open_feed(&signed("0.3.0-macos99"), &key()).unwrap(), HOST).unwrap();
+    assert_eq!(r.minimum_system_version.as_deref(), Some("99.0"));
+}
+
+#[tokio::test]
+async fn an_update_for_a_newer_macos_is_skipped_with_a_message() {
+    for quiet in [true, false] {
+        let (u, f) = setup("0.2.0", Some("0.3.0-macos99"));
+        let u = u.with_os_version(|| Some("15.1".into()));
+        match u.check(quiet).await {
+            State::Failed { message, release } => {
+                assert!(
+                    message.contains("qrtz 0.3.0 needs macOS 99.0 or later"),
+                    "{message}"
+                );
+                assert!(message.contains("macOS 15.1"), "{message}");
+                assert!(release.is_none());
+            }
+            s => panic!("{s:?}"),
+        }
+        assert!(!matches!(u.download().await, State::Ready(_)));
+        assert!(
+            f.installed.lock().unwrap().is_empty(),
+            "never downloaded or installed"
+        );
+    }
+    // The same Mac takes the 15.0 feed; an older Mac doesn't.
+    let (u, _) = setup("0.2.0", Some("0.3.0"));
+    let u = u.with_os_version(|| Some("15.1".into()));
+    assert!(matches!(u.check(false).await, State::Available(_)));
+    let (u, f) = setup("0.2.0", Some("0.3.0"));
+    let u = u.with_os_version(|| Some("14.7.1".into()));
+    assert!(matches!(u.check(false).await, State::Failed { .. }));
+    assert!(f.installed.lock().unwrap().is_empty());
 }

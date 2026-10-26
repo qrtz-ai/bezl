@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Feature: an update that needs a newer macOS than yours is no longer offered; settings says why.
+
 ## 0.4.2 (2026-10-25)
 
 - Fix: undo the bezl rename; the app, icon and repo are back to qrtz (qrtz-ai/qrtz). 0.4.1 was tagged but never published; its changes ship in 0.4.2.
