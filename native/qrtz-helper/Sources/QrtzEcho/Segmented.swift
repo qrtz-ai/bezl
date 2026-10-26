@@ -30,8 +30,12 @@ public struct BatchResult: Sendable, Equatable {
     /// The recogniser's own confidence in the result (Parakeet: FluidAudio's `ASRResult.confidence`, the mean TDT
     /// token confidence), when it reports one. ADR 0131 uses it to drop a short, unsure release tail.
     public var confidence: Float?
-    public init(text: String, words: [Word]? = nil, confidence: Float? = nil) {
-        self.text = text; self.words = words; self.confidence = confidence
+    /// Which recogniser decoded this (e.g. "parakeet-tdt-v2", "phonon-2.5-en"), set by `RoutedRecognizer`; and why the
+    /// primary was used when the experimental secondary was on (`EngineRoute.Fallback` raw value). nil otherwise.
+    public var engine: String?
+    public var engineFallback: String?
+    public init(text: String, words: [Word]? = nil, confidence: Float? = nil, engine: String? = nil, engineFallback: String? = nil) {
+        self.text = text; self.words = words; self.confidence = confidence; self.engine = engine; self.engineFallback = engineFallback
     }
     /// ADR 0132 (N170): the confidence worth reporting from a recogniser's raw one. FluidAudio's
     /// `calculateConfidence` returns placeholders rather than confidences in two cases: 0.1 for an empty
