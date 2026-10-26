@@ -139,6 +139,7 @@ describe("each app's model sets", () => {
     };
     expect(keptFor('echo', ['echo', 'nano'], shared)).toEqual([
       { name: 'parakeet-tdt-v2', keptFor: ['nano'] },
+      { name: 'phonon25-en', keptFor: [] },
     ]);
     expect(keptFor('echo', ['echo'], shared)[0]?.keptFor).toEqual([]);
   });

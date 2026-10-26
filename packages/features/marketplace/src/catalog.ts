@@ -192,7 +192,7 @@ export const isModelApp = (n: string): n is ModelApp =>
  * needs; `keptFor` says which stay and why.
  */
 export const MODEL_SETS: Record<ModelApp, readonly string[]> = {
-  echo: ['parakeet-tdt-v2'],
+  echo: ['parakeet-tdt-v2', 'phonon25-en'],
   nano: ['nemotron-560ms', 'nemotron3-diarizer', 'localvqe'],
   ctrl: ['laya'],
 };

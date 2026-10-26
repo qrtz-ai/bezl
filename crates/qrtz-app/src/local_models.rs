@@ -96,9 +96,6 @@ pub fn sets_needed_by(ext: &str) -> Vec<String> {
         .iter()
         .filter(|m| m.id == ext)
         .flat_map(|m| &m.dependencies)
-        // QRT-367: an optional model (ctrl's Laya, echo's experimental Phonon) is never part of the required set;
-        // it is fetched only from its own setting.
-        .filter(|d| !d.optional)
         .filter_map(|d| d.id.strip_prefix("model:"))
         .map(str::to_owned)
         .collect()
@@ -848,7 +845,9 @@ mod tests {
     /// P0-3: each extension's manifest names exactly the sets it loads, and together they cover every pinned set.
     #[test]
     fn each_extension_needs_only_its_own_sets() {
-        assert_eq!(sets_needed_by("echo"), ["parakeet-tdt-v2"]);
+        // echo's experimental Phonon (like ctrl's Laya) is its own opt-in manifest (echo_phonon_model.rs), not one of
+        // these sets, so for_extensions never downloads it.
+        assert_eq!(sets_needed_by("echo"), ["parakeet-tdt-v2", "phonon25-en"]);
         assert_eq!(
             sets_needed_by("nano"),
             ["nemotron-560ms", "nemotron3-diarizer", "localvqe"]

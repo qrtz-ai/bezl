@@ -69,6 +69,11 @@ pub const BUNDLED_EXTENSIONS: &[&str] = &["echo", "nano", "ctrl", "snap"];
 /// QRT-367: bundled echo too, for its opt-in experimental Phonon-2.5 model only ([`bundled_read_allowed`]).
 pub const BUNDLED_PACKAGE_READS: &[&str] = &["ctrl", "echo"];
 
+/// The bundled extensions whose package reads reach the helper in a host message (echo's `echo.phonon` carries the
+/// verified Phonon path), never as `QRTZ_READ_MODELS`: that env makes the helper use no other dir, and echo still
+/// loads Parakeet from its speech set in `<data>/models/`.
+pub const BUNDLED_READS_BY_MESSAGE: &[&str] = &["echo"];
+
 /// Which of a bundled extension's declared reads it is granted as a package: ctrl all of its own (`model.laya`); echo
 /// only `model.phonon-2.5-en` (its Parakeet stays a pinned speech set, never a package read).
 pub fn bundled_read_allowed(extension: &str, model: &str) -> bool {
