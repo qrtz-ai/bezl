@@ -1022,7 +1022,8 @@ async fn a_model_an_extension_reads_needs_a_fresh_list_and_loads_read_only_from_
     assert!(i.extension_read_path("nano", "model.laya", false).is_err());
     assert!(i.extension_read_path("ctrl", "model.nemotron", false).is_err());
     assert!(i.extension_read_path("echo", "model.laya", false).is_err());
-    assert!(i.process_reads("echo").is_err());
+    // echo may read only its experimental Phonon set, which this store does not hold.
+    assert!(i.process_reads("echo").unwrap().is_empty());
     // A writable file is refused at load.
     let f = dir.join("weights.bin");
     let keep = std::fs::metadata(&f).unwrap().permissions();
