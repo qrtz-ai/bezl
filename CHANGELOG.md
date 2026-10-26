@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Breaking: qrtz now needs macOS 15 or later (was 14.2), for echo's experimental Phonon-2.5 recogniser (Fermion's phonon-coreml requires macOS 15). Minor bump to 0.5.0 pending release clearance.
-- New (experimental, off by default): echo can use Phonon-2.5 English beside Parakeet for clips of 3–35 s once it has loaded in the background, falling back to Parakeet otherwise or on error. Each dictation records which engine heard it (`engine`, `engineFallback` on `dictation.stopped`).
+- Breaking: qrtz now needs macOS 15 or later (was 14.2), for echo's experimental Phonon-2.5 recogniser (Fermion's phonon-coreml requires macOS 15). An update that needs a newer macOS than yours is no longer offered; settings says why.
+- Feature: echo can (experimentally, off by default) use Phonon-2.5 English beside Parakeet for clips of 3–35 s once it has loaded in the background, falling back to Parakeet otherwise or on error. Each dictation records which engine heard it (`engine`, `engineFallback` on `dictation.stopped`).
 
 ## 0.4.2 (2026-10-25)
 

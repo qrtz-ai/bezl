@@ -128,6 +128,7 @@ fn a_chain_through_a_bad_hop_is_blocked_even_if_it_ends_on_an_allowed_host() {
 
 fn release() -> Release {
     Release {
+        minimum_system_version: None,
         version: "0.2.5".into(),
         notes: None,
         path: "app-v0.2.5/qrtz_0.2.5_aarch64.app.tar.gz".into(),
