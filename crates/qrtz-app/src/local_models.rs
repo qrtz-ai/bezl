@@ -126,10 +126,13 @@ pub fn pinned_users(package: &str) -> Vec<String> {
     static SETS: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
     let sets = SETS.get_or_init(|| {
         let ctrl = crate::ctrl_model::CtrlManifest::pinned().manifest;
+        let phonon: Manifest =
+            serde_json::from_str(crate::echo_phonon_model::MANIFEST).expect("echo_phonon_model.json");
         Manifest::pinned()
             .sets
             .into_iter()
             .chain(ctrl.sets)
+            .chain(phonon.sets)
             .map(|s| (s.package, s.dir))
             .collect()
     });
@@ -842,7 +845,9 @@ mod tests {
     /// P0-3: each extension's manifest names exactly the sets it loads, and together they cover every pinned set.
     #[test]
     fn each_extension_needs_only_its_own_sets() {
-        assert_eq!(sets_needed_by("echo"), ["parakeet-tdt-v2"]);
+        // echo's experimental Phonon (like ctrl's Laya) is its own opt-in manifest (echo_phonon_model.rs), not one of
+        // these sets, so for_extensions never downloads it.
+        assert_eq!(sets_needed_by("echo"), ["parakeet-tdt-v2", "phonon25-en"]);
         assert_eq!(
             sets_needed_by("nano"),
             ["nemotron-560ms", "nemotron3-diarizer", "localvqe"]
@@ -900,6 +905,7 @@ mod tests {
             assert_eq!(pinned_users(m), ["nano"], "{m}");
         }
         assert_eq!(pinned_users("model.laya"), ["ctrl"]);
+        assert_eq!(pinned_users("model.phonon-2.5-en"), ["echo"]);
         assert!(pinned_users("model.nobody").is_empty());
         // Every pinned set is some module's.
         for s in Manifest::pinned().sets {

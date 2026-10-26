@@ -18,6 +18,8 @@ public struct EchoDeps: Sendable {
     public var pillTiming: PillDriver.Timing
     /// ADR 0087: load echo's recogniser when the app starts (kept for its life). Off in tests that count loads.
     public var preloadDictationAsr: Bool
+    /// Experimental Phonon-2.5: the router inside echo's segmented recogniser (nil: not built with Phonon).
+    public var phononRouter: RoutedRecognizer?
     /// N137: the per-kind load gate the startup preload goes through.
     public var modelLoads: ModelLoads
     public init(dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil,
@@ -39,6 +41,7 @@ public actor EchoController: ModulePart {
     /// ADR 0092: the native pill's state machine (nil without a pill view).
     public nonisolated let pill: PillDriver?
     private let link: HostLink
+    private let phononRouter: RoutedRecognizer?
     private let preloadAsr: Bool
     /// N174: answers `models.warm` itself (qrtz-echo; in the monolith nano's warm prewarms echo afterwards).
     private let ownsWarm: Bool
@@ -73,6 +76,8 @@ public actor EchoController: ModulePart {
                                          managedMic: true, speech: speech, tail: deps.dictationTail, echo: gate,
                                          micPermission: { permissions.status()[.microphone] }, loads: deps.modelLoads)
         self.link = link; self.preloadAsr = deps.preloadDictationAsr; self.ownsWarm = ownsWarm
+        self.phononRouter = deps.phononRouter
+        deps.phononRouter?.onState = { st, err in send(.echoPhononState(state: st.rawValue, error: err)) }
     }
 
     /// ADR 0087: the startup load of echo's recogniser (tests await it).
@@ -89,6 +94,7 @@ public actor EchoController: ModulePart {
         switch m {
         case .dictationConfigure, .dictationStart, .dictationStop, .dictationCancel, .insertText, .pillFlash, .notchShow, .notchUpdate, .notchDismiss: return true
         case .modelsWarm: return ownsWarm
+        case .echoPhonon: return true
         default: return false
         }
     }
@@ -112,6 +118,12 @@ public actor EchoController: ModulePart {
         case .modelsWarm:
             // N174: a download (or a warm) finished; load the recogniser now, not on the first press.
             await dictation.prewarmIfKeyed(log: true)
+        case .echoPhonon(let on):
+            guard let r = phononRouter else {
+                if on { link.sender(.echoPhononState(state: "error", error: "not available in this build")) }
+                return
+            }
+            await r.setSecondary(enabled: on)
         default: break
         }
     }

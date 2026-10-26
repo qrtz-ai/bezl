@@ -27,9 +27,16 @@ public struct DictationAsrInfo: Sendable, Equatable {
     public var tailDecodeMs: Double?
     public var tailConf: Double?
     public var tailDropped: Bool?
-    public init(asr: String, segments: Int? = nil, tailDecodeMs: Double? = nil, tailConf: Double? = nil, tailDropped: Bool? = nil) {
+    /// Experimental Phonon-2.5 (2026-10-26): the engine that decoded the dictation (`parakeet-tdt-v2`,
+    /// `phonon-2.5-en`, or both joined with "+"), and why Parakeet was used while Phonon was on
+    /// (`not-loaded`, `too-short`, `too-long`, `error`). Absent unless the experimental router ran.
+    public var engine: String?
+    public var engineFallback: String?
+    public init(asr: String, segments: Int? = nil, tailDecodeMs: Double? = nil, tailConf: Double? = nil, tailDropped: Bool? = nil,
+                engine: String? = nil, engineFallback: String? = nil) {
         self.asr = asr; self.segments = segments; self.tailDecodeMs = tailDecodeMs
         self.tailConf = tailConf; self.tailDropped = tailDropped
+        self.engine = engine; self.engineFallback = engineFallback
     }
 }
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
@@ -73,6 +80,9 @@ public enum HelperMessage: Equatable, Sendable {
     case pong(id: String)
     case permissionsStatus([OsPermission: PermissionState])
     case log(level: LogLevel, msg: String)
+    /// Experimental Phonon-2.5: the second recogniser's load state (`off`, `loading`, `ready`, `error`; `error` with
+    /// a short reason), sent on every change after `echo.phonon`.
+    case echoPhononState(state: String, error: String?)
     /// id/activeId are set on dictation.busy (the ignored start, the dictation that owns the helper);
     /// audioPath/activeAudioPath on recording.busy (the ignored start's file, the running recording's file).
     /// reason (N195, dictation.mic only): "denied" | "no-device" | "failed" (N202: granted, cause unknown).
@@ -170,6 +180,9 @@ public enum HostMessage: Equatable, Sendable {
     /// ADR 0079 / N121: the host just installed the speech models: load each once (one at a time, then unload) so the
     /// OS compiles and caches them now, not at the first recording. Ignored while a recording runs.
     case modelsWarm
+    /// Experimental Phonon-2.5 (echo setting `echo.phononExperimental`, default off): load (true) or unload (false)
+    /// the second recogniser. Parakeet is unaffected either way.
+    case echoPhonon(enabled: Bool)
     case summarizeCheck(id: String)
     /// ADR 0217: nano's calendar access, without asking.
     case calendarCheck(id: String)
@@ -185,6 +198,7 @@ private func s(_ v: String) -> JSONValue { .string(v) }
 private func n(_ v: Double) -> JSONValue { .number(v) }
 
 private extension DictationAsrInfo {
+    static let engineFallbacks: Set<String> = ["not-loaded", "too-short", "too-long", "error"]
     /// nil when the message has no `asr` (an older helper, or no recogniser ran).
     init?(_ f: Fields) throws {
         guard let a = try f.optStr("asr") else { return nil }
@@ -200,7 +214,11 @@ private extension DictationAsrInfo {
             guard let b = v.bool else { throw ProtocolError("bad tailDropped") }
             d = b
         }
-        self.init(asr: a, segments: g.map { Int($0) }, tailDecodeMs: t, tailConf: c, tailDropped: d)
+        let e = try f.optStr("engine")
+        if let e, e.isEmpty { throw ProtocolError("empty engine") }
+        let fb = try f.optStr("engineFallback")
+        if let fb, !Self.engineFallbacks.contains(fb) { throw ProtocolError("bad engineFallback \(fb)") }
+        self.init(asr: a, segments: g.map { Int($0) }, tailDecodeMs: t, tailConf: c, tailDropped: d, engine: e, engineFallback: fb)
     }
 }
 
@@ -279,6 +297,10 @@ extension HelperMessage {
             for p in OsPermission.allCases { o[p.rawValue] = s((st[p] ?? .notDetermined).rawValue) }
             return obj("permissions.status", ["status": .object(o)])
         case .log(let level, let msg): return obj("log", ["level": s(level.rawValue), "msg": s(msg)])
+        case .echoPhononState(let state, let error):
+            var o: [String: JSONValue] = ["state": s(state)]
+            if let error { o["error"] = s(Self.capReason(error)) }
+            return obj("echo.phonon.state", o)
         case .error(let code, let message, let fatal, let id, let activeId, let audioPath, let activeAudioPath, let reason):
             var o: [String: JSONValue] = ["code": s(code), "message": s(message), "fatal": .bool(fatal)]
             if let id { o["id"] = s(id) }
@@ -320,6 +342,8 @@ extension HelperMessage {
                 if let t = info.tailDecodeMs { o["tailDecodeMs"] = n(t) }
                 if let c = info.tailConf { o["tailConf"] = n(c) }
                 if let d = info.tailDropped { o["tailDropped"] = .bool(d) }
+                if let e = info.engine { o["engine"] = s(e) }
+                if let e = info.engineFallback { o["engineFallback"] = s(e) }
             }
             return obj("dictation.stopped", o)
         case .captureSilent(let src, let since): return obj("capture.silent", ["source": s(src.rawValue), "sinceMs": n(since)])
@@ -404,6 +428,10 @@ extension HelperMessage {
             }
             self = .permissionsStatus(st)
         case "log": self = .log(level: try f.enumValue("level", LogLevel.self), msg: try f.str("msg"))
+        case "echo.phonon.state":
+            let st = try f.str("state")
+            guard ["off", "loading", "ready", "error"].contains(st) else { throw ProtocolError("bad phonon state \(st)") }
+            self = .echoPhononState(state: st, error: try f.optStr("error"))
         case "error":
             self = .error(code: try f.str("code"), message: try f.str("message"), fatal: f.o["fatal"]?.bool ?? false,
                           id: try f.optStr("id"), activeId: try f.optStr("activeId"),
@@ -557,6 +585,7 @@ extension HostMessage {
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
         case .modelsWarm: return .object(["type": s("models.warm")])
+        case .echoPhonon(let on): return .object(["type": s("echo.phonon"), "enabled": .bool(on)])
         case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let pill, let autoInsert, let echoGate, let motion):
             var o: [String: JSONValue] = ["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)]
             if let consume { o["consumeFn"] = .bool(consume) }
@@ -608,6 +637,9 @@ extension HostMessage {
         case "recording.pause": self = .recordingPause
         case "recording.resume": self = .recordingResume
         case "models.warm": self = .modelsWarm
+        case "echo.phonon":
+            guard let on = f.o["enabled"]?.bool else { throw ProtocolError("enabled must be a bool") }
+            self = .echoPhonon(enabled: on)
         case "dictation.configure":
             guard let warm = f.o["warmMic"]?.bool, let stream = f.o["streamAudio"]?.bool else { throw ProtocolError("missing bool") }
             if let c = f.o["consumeFn"], c.bool == nil { throw ProtocolError("consumeFn must be a bool") }

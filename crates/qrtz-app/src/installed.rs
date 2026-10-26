@@ -331,6 +331,12 @@ pub fn read_models_env(root: &Path, module: &str) -> Option<String> {
     if qrtz_modules::is_bundled_extension(module) && !qrtz_modules::BUNDLED_PACKAGE_READS.contains(&module) {
         return None;
     }
+    // QRT-367: bundled echo's one package read (the opt-in Phonon model) is handed to the helper with the
+    // `echo.phonon` message, like ctrl's Laya path per question. Setting QRTZ_READ_MODELS would make the helper use no
+    // other dir, cutting echo off from its Parakeet speech set in `<data>/models/`.
+    if qrtz_modules::BUNDLED_READS_BY_MESSAGE.contains(&module) {
+        return None;
+    }
     let installer =
         qrtz_modules::install::Installer::new(root, None, Box::new(crate::module_hosting::AppleCodeChecks));
     let reads = installer.process_reads(module).unwrap_or_else(|e| {

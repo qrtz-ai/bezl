@@ -32,3 +32,5 @@
 {"content":{"kind":"status","text":"ctrl: opening settings","tone":"normal"},"owner":"ctrl.run","priority":"ctrl","type":"notch.show"}
 {"content":{"icon":"check","kind":"icon","label":"done"},"owner":"module.nano","type":"notch.update"}
 {"owner":"module.nano","type":"notch.dismiss"}
+{"enabled":true,"type":"echo.phonon"}
+{"enabled":false,"type":"echo.phonon"}

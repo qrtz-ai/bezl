@@ -1,6 +1,6 @@
 # Mac verification checklist (about 10 minutes)
 
-Runs on an Apple Silicon Mac with macOS 14.2+ and Xcode 16+ (`xcode-select -p`). macOS 26 is needed to test the SpeechAnalyzer fallback.
+Runs on an Apple Silicon Mac with macOS 15+ and Xcode 16+ (`xcode-select -p`). macOS 26 is needed to test the SpeechAnalyzer fallback.
 The Swift helper's portable core is tested on Linux. Everything below covers the parts only a Mac can run.
 Mark each box, and paste any compiler error or odd output into an issue (or just tell Grok Bot).
 

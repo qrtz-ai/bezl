@@ -1,7 +1,7 @@
 // modules/<m>/qrtz.json is generated from modules/<m>/module.json (the source of truth: the signed bundled
 // manifest, ADR 0146). The one hand-written field is `description`, kept from the existing qrtz.json.
 // Model dependencies: module.json names a pinned set by its dir (`model:<dir>`); the package the runtime
-// resolves is the set's `package` in crates/qrtz-app/src/local_models.json or ctrl_laya_model.json.
+// resolves is the set's `package` in crates/qrtz-app/src/local_models.json, ctrl_laya_model.json or echo_phonon_model.json.
 //   bun scripts/modules/qrtz-json.mjs           write every qrtz.json
 //   bun scripts/modules/qrtz-json.mjs --check   exit 1 if any qrtz.json drifts from its module.json
 import fs from 'node:fs';
@@ -20,6 +20,7 @@ export function modelPackages(root = ROOT) {
   for (const f of [
     'crates/qrtz-app/src/local_models.json',
     'crates/qrtz-app/src/ctrl_laya_model.json',
+    'crates/qrtz-app/src/echo_phonon_model.json',
   ]) {
     for (const s of JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'))
       .sets) {

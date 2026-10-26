@@ -90,7 +90,7 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 
 ## 2026-10-16 ~17:48–18:25 PT: iteration 5 (M4 Swift helper, M5.1, part of M6)
 
-- **M4: `native/qrtz-helper` (SwiftPM, Swift 6, macOS 14+).**
+- **M4: `native/qrtz-helper` (SwiftPM, Swift 6, macOS 15+).**
   - **QrtzHelperCore (Foundation-only):**
     - Protocol mirror with an integral-number JSON encoder.
     - `MeetingClassifier` and `MeetingTracker` (4 s grace), covering Zoom.app, Zoom web, and Meet in Chrome and Safari (with a title fallback). Arc, Edge, Brave and Teams are best-effort.

@@ -66,7 +66,23 @@ pub const BUNDLED_EXTENSIONS: &[&str] = &["echo", "nano", "ctrl", "snap"];
 /// ADR 0237: the bundled extensions whose models still install as read-only `model.*` packages their process is
 /// granted (ADR 0212): ctrl's `model.laya`, which the host hands to the helper per question. echo's and nano's
 /// models are pinned speech sets under `<data>/models/<set>/` (local_models.json).
-pub const BUNDLED_PACKAGE_READS: &[&str] = &["ctrl"];
+/// QRT-367: bundled echo too, for its opt-in experimental Phonon-2.5 model only ([`bundled_read_allowed`]).
+pub const BUNDLED_PACKAGE_READS: &[&str] = &["ctrl", "echo"];
+
+/// The bundled extensions whose package reads reach the helper in a host message (echo's `echo.phonon` carries the
+/// verified Phonon path), never as `QRTZ_READ_MODELS`: that env makes the helper use no other dir, and echo still
+/// loads Parakeet from its speech set in `<data>/models/`.
+pub const BUNDLED_READS_BY_MESSAGE: &[&str] = &["echo"];
+
+/// Which of a bundled extension's declared reads it is granted as a package: ctrl all of its own (`model.laya`); echo
+/// only `model.phonon-2.5-en` (its Parakeet stays a pinned speech set, never a package read).
+pub fn bundled_read_allowed(extension: &str, model: &str) -> bool {
+    match extension {
+        "ctrl" => true,
+        "echo" => model == "model.phonon-2.5-en",
+        _ => false,
+    }
+}
 
 /// True if `name` ships inside qrtz.app ([`BUNDLED_EXTENSIONS`]).
 pub fn is_bundled_extension(name: &str) -> bool {
@@ -107,6 +123,12 @@ pub mod bundled {
             .filter(|(id, _)| !crate::is_bundled_extension(id) || crate::BUNDLED_PACKAGE_READS.contains(id))
             .filter_map(|(_, t)| crate::qrtz_json::PackageManifest::parse(t.as_bytes()).ok())
             .filter_map(|m| m.extension.map(|e| (m.name, e.reads)))
+            .map(|(n, mut r)| {
+                if crate::is_bundled_extension(&n) {
+                    r.retain(|m| crate::bundled_read_allowed(&n, m));
+                }
+                (n, r)
+            })
             .filter(|(_, r)| !r.is_empty())
             .collect()
     }

@@ -55,7 +55,11 @@ fn the_bundled_manifests_and_lockfile_agree() {
 fn model_package_hashes_are_the_pinned_model_sets() {
     let lock = Lockfile::parse(bundled::LOCK.as_bytes()).unwrap();
     let mut sets = vec![];
-    for f in ["local_models.json", "ctrl_laya_model.json"] {
+    for f in [
+        "local_models.json",
+        "ctrl_laya_model.json",
+        "echo_phonon_model.json",
+    ] {
         let v = read_json(&format!("crates/qrtz-app/src/{f}"));
         sets.extend(v["sets"].as_array().unwrap().clone());
     }

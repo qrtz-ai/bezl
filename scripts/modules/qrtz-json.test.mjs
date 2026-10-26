@@ -27,8 +27,11 @@ describe('qrtz.json is generated from module.json', () => {
     expect(p.get('model:parakeet-tdt-v2')).toBe('model.parakeet-tdt-v2-en');
     expect(p.get('model:nemotron-560ms')).toBe('model.nemotron');
     expect(p.get('model:laya')).toBe('model.laya');
+    expect(p.get('model:phonon25-en')).toBe('model.phonon-2.5-en');
+    // QRT-367: Phonon is optional in module.json (never downloaded with echo), but echo may read it.
     expect(read('modules/echo/qrtz.json').dependencies).toEqual({
       'model.parakeet-tdt-v2-en': '^1.0.0',
+      'model.phonon-2.5-en': '^1.0.0',
     });
   });
   it('fails on drift: a minApp, channel or model changed in module.json alone', () => {

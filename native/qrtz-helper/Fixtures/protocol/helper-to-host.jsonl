@@ -63,3 +63,7 @@
 {"state":"denied","type":"calendar.access"}
 {"calendars":[{"id":"cal-work","title":"Work"}],"events":[{"allDay":false,"attendees":4,"calendarId":"cal-work","endMs":1790003600000,"id":"ev-1","meetingUrl":"https://meet.google.com/abc-defg-hij","startMs":1790000000000,"title":"weekly sync"},{"allDay":true,"attendees":0,"calendarId":"cal-work","endMs":1790086400000,"id":"ev-2","startMs":1790000000000,"title":"offsite"}],"id":"r1","type":"calendar.events"}
 {"type":"calendar.changed"}
+{"asr":"parakeet-tdt-v2","durationMs":4200,"engine":"phonon-2.5-en","id":"d6","segments":1,"text":"hello there","type":"dictation.stopped"}
+{"asr":"parakeet-tdt-v2","durationMs":2100,"engine":"parakeet-tdt-v2","engineFallback":"too-short","id":"d7","segments":1,"text":"hi","type":"dictation.stopped"}
+{"state":"loading","type":"echo.phonon.state"}
+{"error":"speech models not downloaded (phonon-2.5-en)","state":"error","type":"echo.phonon.state"}

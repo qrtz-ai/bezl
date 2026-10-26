@@ -21,9 +21,9 @@ sign test artifact.tar.gz good-0.3.0.sig 0.3.0
 sign test artifact.tar.gz old-0.2.5.sig 0.2.5
 sign other artifact.tar.gz otherkey-0.3.0.sig 0.3.0
 fresh=2026-11-15T00:00:00Z
-feed() { # $1 = name, $2 = version, $3 = archive sig, [$4 = expires], [$5 = feed key]
+feed() { # $1 = name, $2 = version, $3 = archive sig, [$4 = expires], [$5 = feed key], [$6 = minimum macOS]
   node "$repo/scripts/app/feed.mjs" --version "$2" --archive artifact.tar.gz --sig "$3" \
-    --expires "${4:-$fresh}" --notes-file <(echo "faster dictation") >"$tmp/$1.json"
+    --expires "${4:-$fresh}" --minimum-system-version "${6:-15.0}" --notes-file <(echo "faster dictation") >"$tmp/$1.json"
   sign "${5:-test}" "$tmp/$1.json" "$tmp/$1.json.sig"
   node "$repo/scripts/app/feed.mjs" --wrap "$tmp/$1.json" --wrap-sig "$tmp/$1.json.sig" >"feed-$1.json"
 }
@@ -32,6 +32,7 @@ feed 0.3.0-otherkey-archive 0.3.0 otherkey-0.3.0.sig
 feed 0.3.0-old-archive-sig 0.3.0 old-0.2.5.sig
 feed 0.3.0-expired 0.3.0 good-0.3.0.sig 2026-10-01T00:00:00Z
 feed 0.3.0-otherkey-feed 0.3.0 good-0.3.0.sig "$fresh" other
+feed 0.3.0-macos99 0.3.0 good-0.3.0.sig "$fresh" test 99.0
 feed 0.2.5 0.2.5 old-0.2.5.sig
 feed 0.2.0 0.2.0 good-0.3.0.sig
 feed 0.1.9 0.1.9 good-0.3.0.sig

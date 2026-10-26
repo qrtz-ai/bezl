@@ -37,3 +37,5 @@ not json
 {"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","tailDropped":"yes","text":"","type":"dictation.stopped"}
 {"id":"k3","state":"maybe","type":"calendar.access"}
 {"calendars":[],"id":"r2","type":"calendar.events"}
+{"asr":"parakeet-tdt-v2","durationMs":1,"engineFallback":"bogus","id":"d","text":"","type":"dictation.stopped"}
+{"state":"compiling","type":"echo.phonon.state"}

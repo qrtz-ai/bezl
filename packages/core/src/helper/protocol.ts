@@ -109,6 +109,12 @@ export const HelperToHost = z.discriminatedUnion('type', [
     level: z.enum(['debug', 'info', 'warn', 'error']),
     msg: z.string(),
   }),
+  /** Experimental Phonon-2.5: echo's second recogniser's load state, on every change after `echo.phonon`. */
+  z.object({
+    type: z.literal('echo.phonon.state'),
+    state: z.enum(['off', 'loading', 'ready', 'error']),
+    error: z.string().max(200).optional(),
+  }),
   z.object({
     type: z.literal('error'),
     code: z.string(),
@@ -286,6 +292,13 @@ export const HelperToHost = z.discriminatedUnion('type', [
     tailConf: z.number().min(0).max(1).optional(),
     /** ADR 0131/0132: true when the helper's tail confidence floor dropped the release tail's words; absent otherwise. */
     tailDropped: z.boolean().optional(),
+    /** Experimental Phonon-2.5: the engine that decoded it (`parakeet-tdt-v2`, `phonon-2.5-en`, or both joined with
+     * `+`). Absent unless echo's experimental router ran. */
+    engine: z.string().min(1).optional(),
+    /** Experimental Phonon-2.5: why Parakeet was used while Phonon was on. Absent otherwise. */
+    engineFallback: z
+      .enum(['not-loaded', 'too-short', 'too-long', 'error'])
+      .optional(),
   }),
   z.object({
     /**
@@ -489,6 +502,9 @@ export const HostToHelper = z.discriminatedUnion('type', [
   /** ADR 0079 / N121: the speech models were just installed; load each once (one at a time) so the OS compiles
    * them now, not at the first recording. Ignored while a recording runs. */
   z.object({ type: z.literal('models.warm') }),
+  /** Experimental Phonon-2.5 (`echo.phononExperimental`, default off): load (true) or unload (false) echo's second
+   * recogniser. Parakeet is unaffected. */
+  z.object({ type: z.literal('echo.phonon'), enabled: z.boolean() }),
   /** Dictation settings: warm mic + pre-roll, cloud audio streaming, native push-to-talk key ('' = none). */
   z.object({
     type: z.literal('dictation.configure'),

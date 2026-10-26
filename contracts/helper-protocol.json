@@ -7,6 +7,7 @@
     "pong",
     "permissions.status",
     "log",
+    "echo.phonon.state",
     "error",
     "meeting.detected",
     "meeting.ended",
@@ -53,6 +54,7 @@
     "recording.pause",
     "recording.resume",
     "models.warm",
+    "echo.phonon",
     "dictation.configure",
     "pill.flash",
     "notch.show",
@@ -199,6 +201,32 @@
           "type",
           "level",
           "msg"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "echo.phonon.state"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "loading",
+              "ready",
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "type",
+          "state"
         ]
       },
       {
@@ -912,6 +940,19 @@
           },
           "tailDropped": {
             "type": "boolean"
+          },
+          "engine": {
+            "type": "string",
+            "minLength": 1
+          },
+          "engineFallback": {
+            "type": "string",
+            "enum": [
+              "not-loaded",
+              "too-short",
+              "too-long",
+              "error"
+            ]
           }
         },
         "required": [
@@ -1476,6 +1517,22 @@
         },
         "required": [
           "type"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "echo.phonon"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "enabled"
         ]
       },
       {

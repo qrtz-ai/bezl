@@ -12,5 +12,5 @@ deleted right after signing and never were the real app-update key (that one is 
 - `old-0.2.5.sig`: the same bytes signed for 0.2.5 (a feed pairing it with 0.3.0 must be refused).
 - `feed-<name>.json`: signed `latest.json` envelopes (the feed's bytes signed by `test.pub`, expires
   2026-11-15T00:00:00Z): `0.3.0`, `0.2.5`, `0.2.0`, `0.1.9`, `0.3.0-otherkey-archive` (the archive signed by
-  `other.pub`), `0.3.0-old-archive-sig` (the 0.2.5 archive signature), `0.3.0-expired` (expires 2026-10-01) and
-  `0.3.0-otherkey-feed` (the feed itself signed by `other.pub`).
+  `other.pub`), `0.3.0-old-archive-sig` (the 0.2.5 archive signature), `0.3.0-expired` (expires 2026-10-01) `0.3.0-otherkey-feed` (the feed itself signed by `other.pub`) and `0.3.0-macos99` (`minimumSystemVersion` 99.0;
+  every other feed says 15.0).

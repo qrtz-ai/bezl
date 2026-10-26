@@ -1,0 +1,79 @@
+{
+  "version": "phonon-2.5-en-coreml-948fac9",
+  "note": "echo's experimental Phonon-2.5 English recogniser: Kayetic/Phonon-2.5-English-CoreML pinned at 948fac94 (CC-BY-4.0 weights, Apache-2.0 graph code; FermionResearch/Phonon-2.5-English). Sizes and sha256 hashed from the files at that revision. Opt-in: fetched only after the user turns the Echo setting on; never in echo's required set, never auto-downloaded.",
+  "base": "https://huggingface.co",
+  "sets": [
+    {
+      "id": "phonon25-en",
+      "package": "model.phonon-2.5-en",
+      "task": "asr",
+      "packageVersion": "1.0.0",
+      "license": "CC-BY-4.0",
+      "dir": "phonon25-en",
+      "repo": "Kayetic/Phonon-2.5-English-CoreML",
+      "revision": "948fac942444637c2549e40246844cea49b6ad1c",
+      "files": [
+        {
+          "remote": "Phonon-2.5.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "path": "Phonon-2.5.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "size": 3678384,
+          "sha256": "6e61f4e06a7a7136ab80658fa654bd86425258c06da9a1bb58648503fc4157ba"
+        },
+        {
+          "remote": "Phonon-2.5.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+          "path": "Phonon-2.5.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+          "size": 406851776,
+          "sha256": "71f69ad6f1a77781ff024c52755482a0aa7eb4bf63df50f34568f1affe75be57"
+        },
+        {
+          "remote": "Phonon-2.5.mlpackage/Manifest.json",
+          "path": "Phonon-2.5.mlpackage/Manifest.json",
+          "size": 617,
+          "sha256": "6ebc9309aea0e16bda9c7558521fef6307fac0afba9a5b4959fea45ed7cd0429"
+        },
+        {
+          "remote": "LICENSE-CODE-Apache-2.0.txt",
+          "path": "LICENSE-CODE-Apache-2.0.txt",
+          "size": 11358,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "remote": "LICENSE-WEIGHTS-CC-BY-4.0.txt",
+          "path": "LICENSE-WEIGHTS-CC-BY-4.0.txt",
+          "size": 18657,
+          "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411"
+        },
+        {
+          "remote": "NOTICE",
+          "path": "NOTICE",
+          "size": 3373,
+          "sha256": "7d68c45cee1f555ad7b35c37a79aefc3257828203b032183d540a91b552c6fe9"
+        },
+        {
+          "remote": "conversion.json",
+          "path": "conversion.json",
+          "size": 449,
+          "sha256": "381fe70b9f4bbb71456c2d0cfde28efcb11b434a2e17067a6c1fedf9105b54b1"
+        },
+        {
+          "remote": "decoder.bin",
+          "path": "decoder.bin",
+          "size": 13255820,
+          "sha256": "a1b92232ab6c40c5b3dd3621236fdff5d44b936e51b3d4050b039e2bdb79bd62"
+        },
+        {
+          "remote": "manifest.json",
+          "path": "manifest.json",
+          "size": 1640,
+          "sha256": "9c00b1f0b8f057324def830f337d27510dd4ffb8cf2fae86f56f690f02577242"
+        },
+        {
+          "remote": "static-buckets.json",
+          "path": "static-buckets.json",
+          "size": 678,
+          "sha256": "37c4c30e10748e04785ca09fb129c91d893bf96632d550bd4f83d8c4a0d9edec"
+        }
+      ]
+    }
+  ]
+}

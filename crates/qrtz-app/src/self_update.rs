@@ -93,6 +93,63 @@ pub struct Release {
     pub size: u64,
     /// When the feed that announced it stops being trusted (unix seconds).
     pub expires: u64,
+    /// The oldest macOS the release runs on (`minimumSystemVersion`, "x.y" or "x.y.z"; the bundle's
+    /// `LSMinimumSystemVersion`). `None`: an older feed without it (no OS check).
+    pub minimum_system_version: Option<String>,
+}
+
+/// A dotted macOS version as numbers ("15" / "15.0" / "15.0.1"; at most 3 parts of at most 3 digits).
+pub fn os_version_parts(v: &str) -> Option<[u32; 3]> {
+    let parts: Vec<&str> = v.trim().split('.').collect();
+    if parts.is_empty() || parts.len() > 3 {
+        return None;
+    }
+    let mut out = [0u32; 3];
+    for (i, p) in parts.iter().enumerate() {
+        if p.is_empty() || p.len() > 3 || !p.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        out[i] = p.parse().ok()?;
+    }
+    Some(out)
+}
+
+/// Whether a Mac on `running` can run a release that needs `minimum`. An unreadable running version is treated as
+/// able (the bundle's own LSMinimumSystemVersion still stops it from launching); a malformed minimum never parses
+/// (the feed is refused in [`parse_feed`]).
+/// Fails closed: a running macOS that can't be read (or an unreadable minimum) is not supported.
+pub fn os_supports(minimum: &str, running: Option<&str>) -> bool {
+    match (os_version_parts(minimum), running.and_then(os_version_parts)) {
+        (Some(m), Some(r)) => r >= m,
+        _ => false,
+    }
+}
+
+/// The settings row's message when the release names a minimum macOS and this Mac's version can't be read.
+pub fn os_unknown_message(version: &str, minimum: &str) -> String {
+    format!("qrtz {version} needs macOS {minimum} or later, and qrtz couldn't read this Mac's macOS version, so it won't install it. update from the website instead.")
+}
+
+/// The settings row's message for a release this Mac's macOS is too old for.
+pub fn os_too_old_message(version: &str, minimum: &str, running: &str) -> String {
+    format!("qrtz {version} needs macOS {minimum} or later, and this Mac runs macOS {running}. update macOS in system settings to get it.")
+}
+
+/// The running macOS (`sw_vers -productVersion`), `None` off macOS or when it can't be read.
+pub fn running_macos() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("/usr/bin/sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()?;
+        let v = String::from_utf8(out.stdout).ok()?.trim().to_owned();
+        os_version_parts(&v).map(|_| v)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
 }
 
 fn plain_version(v: &str) -> Result<semver::Version, String> {
@@ -143,6 +200,11 @@ pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
         .as_str()
         .and_then(parse_utc)
         .ok_or("the update feed has no expires (YYYY-MM-DDTHH:MM:SSZ)")?;
+    let minimum_system_version = match &v["minimumSystemVersion"] {
+        Value::Null => None,
+        Value::String(m) if os_version_parts(m).is_some() => Some(m.trim().to_owned()),
+        _ => return Err("the update feed's minimumSystemVersion isn't x.y[.z]".into()),
+    };
     let notes = v["notes"]
         .as_str()
         .map(|n| n.chars().take(MAX_NOTES).collect::<String>());
@@ -154,6 +216,7 @@ pub fn parse_feed(bytes: &[u8], host: &str) -> Result<Release, String> {
         sha256: sha256.to_owned(),
         size,
         expires,
+        minimum_system_version,
     })
 }
 
@@ -483,6 +546,8 @@ pub struct SelfUpdate {
     work_dir: std::path::PathBuf,
     /// Unix seconds now (a test sets it).
     clock: Arc<dyn Fn() -> u64 + Send + Sync>,
+    /// The running macOS version (a test sets it).
+    os_version: Arc<dyn Fn() -> Option<String> + Send + Sync>,
 }
 
 /// ADR 0181: the high-water mark file, in qrtz's data dir.
@@ -515,6 +580,7 @@ impl SelfUpdate {
             high_water: None,
             work_dir: std::env::temp_dir(),
             clock: Arc::new(|| now_ms() / 1000),
+            os_version: Arc::new(running_macos),
         })
     }
 
@@ -530,6 +596,28 @@ impl SelfUpdate {
         let mut me = Arc::try_unwrap(self).unwrap_or_else(|_| panic!("with_clock before sharing"));
         me.clock = Arc::new(clock);
         Arc::new(me)
+    }
+
+    /// The running macOS version the release's `minimumSystemVersion` is judged by.
+    pub fn with_os_version(
+        self: Arc<Self>,
+        os: impl Fn() -> Option<String> + Send + Sync + 'static,
+    ) -> Arc<Self> {
+        let mut me = Arc::try_unwrap(self).unwrap_or_else(|_| panic!("with_os_version before sharing"));
+        me.os_version = Arc::new(os);
+        Arc::new(me)
+    }
+
+    /// `Err(message)` when this Mac's macOS is older than the release needs.
+    fn check_os(&self, r: &Release) -> Result<(), String> {
+        let Some(min) = r.minimum_system_version.as_deref() else {
+            return Ok(());
+        };
+        match (self.os_version)() {
+            None => Err(os_unknown_message(&r.version, min)),
+            Some(running) if os_supports(min, Some(&running)) => Ok(()),
+            Some(running) => Err(os_too_old_message(&r.version, min, &running)),
+        }
     }
 
     /// ADR 0181: keep the highest signed version accepted in `path`; a feed or archive below it is refused even
@@ -597,7 +685,18 @@ impl SelfUpdate {
         .await;
         self.lock().checked_at_ms = Some(now_ms());
         let next = match res {
-            Ok(Some(r)) if is_update(&self.floor(), &r.version) => State::Available(r),
+            // Item 5 (macOS 15 floor): a newer release this macOS can't run is never offered; the message always
+            // shows, quiet check or not, so the user knows why they're stuck.
+            Ok(Some(r)) if is_update(&self.floor(), &r.version) => match self.check_os(&r) {
+                Ok(()) => State::Available(r),
+                Err(message) => {
+                    tracing::info!(%message, "app update skipped: macOS too old");
+                    State::Failed {
+                        message,
+                        release: None,
+                    }
+                }
+            },
             Ok(_) => State::UpToDate,
             Err(e) if quiet => {
                 tracing::warn!(error = %e, "app update check failed");
@@ -664,12 +763,16 @@ impl SelfUpdate {
         next
     }
 
-    async fn fetch_and_install(&self, r: &Release, key: &str) -> Result<(), String> {
+    /// The download-and-install step. Public so a test can show it re-checks the macOS floor on its own, whatever
+    /// `check` said.
+    #[doc(hidden)]
+    pub async fn fetch_and_install(&self, r: &Release, key: &str) -> Result<(), String> {
         // Never a downgrade or a re-install, whatever state led here: above this build and the high-water mark.
         let floor = self.floor();
         if !is_update(&floor, &r.version) {
             return Err(format!("{} isn't newer than {floor}", r.version));
         }
+        self.check_os(r)?;
         let last = Mutex::new(0u64);
         let progress = |done: u64, _total: u64| {
             let mut l = last.lock().unwrap_or_else(|p| p.into_inner());
