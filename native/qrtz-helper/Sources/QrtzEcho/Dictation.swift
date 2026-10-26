@@ -709,9 +709,11 @@ public actor DictationEngine {
             let v = Double(c)
             return v.isFinite ? (min(1, max(0, v)) * 1000).rounded() / 1000 : nil
         }
+        let routed = ((tr as? SegmentedTranscriber)?.batch as? RoutedRecognizer).flatMap { RoutedRecognizer.summary($0.takeRoutes()) }
         return DictationAsrInfo(asr: tr.name, segments: g?.segments,
                                 tailDecodeMs: g.flatMap { $0.tailDecodeMs < 0 ? nil : ($0.tailDecodeMs * 10).rounded() / 10 },
-                                tailConf: conf, tailDropped: g?.tailDropped == true ? true : nil)
+                                tailConf: conf, tailDropped: g?.tailDropped == true ? true : nil,
+                                engine: routed?.engine, engineFallback: routed?.fallback)
     }
 
     /// The pad + finish limit of a release: ADR 0118's segmented budget for a segmented recogniser (its decode is

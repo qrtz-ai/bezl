@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import QrtzEcho
+@testable import QrtzShared
 
 final class StubBatch: BatchRecognizer, @unchecked Sendable {
     let name: String
@@ -80,5 +81,24 @@ final class EngineRouteTests: XCTestCase {
         XCTAssertEqual(p.unloads, 0); XCTAssertTrue(p.prepared)
         let out = try await r.decode(samples(10))
         XCTAssertEqual(out.engine, "parakeet-tdt-v2"); XCTAssertNil(out.engineFallback); XCTAssertEqual(x.decodes, 0)
+    }
+}
+
+final class EngineRouteSummaryTests: XCTestCase {
+    func testSummary() {
+        XCTAssertNil(RoutedRecognizer.summary([]))
+        let p = EngineRoute(engine: "parakeet-tdt-v2", fallback: .tooShort), x = EngineRoute(engine: "phonon-2.5-en")
+        XCTAssertEqual(RoutedRecognizer.summary([x, x])?.engine, "phonon-2.5-en")
+        XCTAssertNil(RoutedRecognizer.summary([x])?.fallback)
+        let mixed = RoutedRecognizer.summary([x, p])
+        XCTAssertEqual(mixed?.engine, "phonon-2.5-en+parakeet-tdt-v2"); XCTAssertEqual(mixed?.fallback, "too-short")
+    }
+
+    func testWireRoundTrip() throws {
+        let m = HelperMessage.dictationStopped(id: "d", text: "t", durationMs: 1,
+                                               asr: DictationAsrInfo(asr: "parakeet-tdt-v2", engine: "phonon-2.5-en", engineFallback: nil))
+        XCTAssertEqual(try HelperMessage(json: m.json), m)
+        let h = HostMessage.echoPhonon(enabled: true)
+        XCTAssertEqual(try HostMessage(json: h.json), h)
     }
 }

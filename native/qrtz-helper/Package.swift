@@ -12,12 +12,18 @@ let platformDeps: [Package.Dependency] = [
     // Pinned exactly (audit P1-5): the reviewed v0.17.7 sources only (tag v0.17.7 = 503b4bd1bbf7220882de39fe8ae6716aae4132da,
     // locked in the committed Package.resolved). A bump is a reviewed change: re-check the local-only loaders
     // (no ModelHub / loadFromHuggingFace) and update both files together.
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7")
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7"),
+    // Experimental echo second recogniser (Jared, 2026-10-26): Phonon-2.5 English via Fermion's runtime. NOT YET LINKED:
+    // waiting on Bozniak's clearance (prebuilt PhononTDT.xcframework signing/notarization + its Package.resolved pin).
+    // Once cleared, add FermionResearch/phonon-coreml pinned exact 1.1.2 here (with its Package.resolved pin) and set
+    // `phonon` below; QrtzEchoMac/Phonon.swift (canImport(PhononCoreML)) then compiles in.
 ]
 let fluidAudio: [Target.Dependency] = [.product(name: "FluidAudio", package: "FluidAudio")]
+let phonon: [Target.Dependency] = []  // [.product(name: "PhononCoreML", package: "phonon-coreml")] once cleared
 #else
 let platformDeps: [Package.Dependency] = []
 let fluidAudio: [Target.Dependency] = []
+let phonon: [Target.Dependency] = []
 #endif
 // The monolith links both module parts' macOS seams (ADR 0146 M2.5; allowlisted until qrtz-helper goes).
 let execDeps: [Target.Dependency] = ["QrtzHelperCore", "QrtzCtrl", "QrtzMacShared", "QrtzEchoMac", "QrtzNanoMac"] + fluidAudio
@@ -27,7 +33,7 @@ let macSeams: [SwiftSetting] = [.swiftLanguageMode(.v5)]
 
 let package = Package(
     name: "qrtz-helper",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .executable(name: "qrtz-helper", targets: ["qrtz-helper"]),
         // ADR 0146 M1.3 / M2.5: the extension helpers, plain executables inside each signed extension (no app bundle;
@@ -56,7 +62,7 @@ let package = Package(
         // each module's own. Both link FluidAudio statically as the interim step (ADR 0144 note; allowlisted edges)
         // until the voice service (ai.qrtz.inference.voice) serves the models.
         .target(name: "QrtzMacShared", dependencies: ["QrtzShared"], swiftSettings: macSeams),
-        .target(name: "QrtzEchoMac", dependencies: ["QrtzEcho", "QrtzMacShared", "QrtzShared"] + fluidAudio, swiftSettings: macSeams),
+        .target(name: "QrtzEchoMac", dependencies: ["QrtzEcho", "QrtzMacShared", "QrtzShared"] + fluidAudio + phonon, swiftSettings: macSeams),
         .target(name: "QrtzNanoMac", dependencies: ["QrtzNano", "QrtzMacShared", "QrtzShared"] + fluidAudio, swiftSettings: macSeams),
         .executableTarget(name: "qrtz-helper", dependencies: execDeps, swiftSettings: macSeams),
         // macOS only in practice (the sources are #if os(macOS)): the notch surface's secure-input hide.

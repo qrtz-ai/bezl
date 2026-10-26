@@ -28,7 +28,7 @@ switch, and nothing downloads until you turn a module on or press download in se
 
 ## Quickstart on a Mac
 
-Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, Rust (version pinned in `rust-toolchain.toml`) and
+Needs Apple Silicon, macOS 15 or later, Xcode 16 or later, Rust (version pinned in `rust-toolchain.toml`) and
 [bun](https://bun.sh) 1.4 or later.
 
 ```sh

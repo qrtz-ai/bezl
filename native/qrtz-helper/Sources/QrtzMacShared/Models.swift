@@ -10,6 +10,8 @@ public enum LocalModels {
     public static let asr = "nemotron-560ms"
     /// Echo dictation: Parakeet TDT v2 English (`local_models.json` set `echo-asr`).
     public static let echoAsr = "parakeet-tdt-v2"
+    /// Experimental echo second recogniser: Phonon-2.5 English Core ML (`local_models.json` set `echo-asr-phonon`).
+    public static let echoAsrPhonon = "phonon-2.5-en"
     public static let diarizer = "nemotron3-diarizer"
     public static let echo = "localvqe"
     public static let marker = ".qrtz-verified"
@@ -22,7 +24,7 @@ public enum LocalModels {
 
     /// The `model.*` package each set is (`local_models.json`), to find its grant in `QRTZ_READ_MODELS`.
     public static let packages: [String: String] = [
-        asr: "model.nemotron", diarizer: "model.nemotron-diarizer", echo: "model.localvqe", echoAsr: "model.parakeet-tdt-v2-en",
+        asr: "model.nemotron", diarizer: "model.nemotron-diarizer", echo: "model.localvqe", echoAsr: "model.parakeet-tdt-v2-en", echoAsrPhonon: "model.phonon-2.5-en",
     ]
     /// ADR 0212: set by the host for a downloaded module (one `model.<name>=<dir>` per line): the read-only store dirs
     /// of exactly the models this process declares it reads. When it is set, no other dir is ever used.

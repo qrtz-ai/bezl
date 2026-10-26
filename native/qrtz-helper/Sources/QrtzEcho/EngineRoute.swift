@@ -41,6 +41,7 @@ public final class RoutedRecognizer: BatchRecognizer, @unchecked Sendable {
     private var generation = 0
     private var loadTask: Task<Void, Never>?
     public private(set) var lastRoute: EngineRoute?
+    private var routes: [EngineRoute] = []
     public var onState: (@Sendable (SecondaryState, String?) -> Void)?
 
     public init(primary: BatchRecognizer, secondary: BatchRecognizer) { self.primary = primary; self.secondary = secondary }
@@ -95,8 +96,21 @@ public final class RoutedRecognizer: BatchRecognizer, @unchecked Sendable {
             r = try await primary.decode(samples16k)
         }
         r.engine = route.engine; r.engineFallback = route.fallback?.rawValue
-        lock.withLock { lastRoute = route }
+        lock.withLock { lastRoute = route; routes.append(route) }
         return r
+    }
+
+    /// The routes of the decodes since the last call (one dictation's segments), cleared.
+    public func takeRoutes() -> [EngineRoute] { lock.withLock { let r = routes; routes = []; return r } }
+
+    /// One dictation's engine label from its segments' routes: the engine when every segment used one, else both
+    /// joined with "+" (primary first); the first fallback reason seen. nil when nothing was decoded.
+    public static func summary(_ routes: [EngineRoute]) -> (engine: String, fallback: String?)? {
+        guard let first = routes.first else { return nil }
+        var engines: [String] = []
+        for r in routes where !engines.contains(r.engine) { engines.append(r.engine) }
+        let engine = engines.count == 1 ? first.engine : engines.joined(separator: "+")
+        return (engine, routes.compactMap { $0.fallback?.rawValue }.first)
     }
 
     public func unload() async {
