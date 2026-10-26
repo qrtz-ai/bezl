@@ -1,8 +1,8 @@
 //! ADR 0181: qrtz's own updater, with a fake host. Fixtures (TEST ONLY keys): tests/fixtures/app-update/README.md.
 use async_trait::async_trait;
 use qrtz_app::self_update::{
-    archive_path, open_feed, os_supports, os_too_old_message, os_version_parts, parse_feed, parse_utc,
-    verify_signature, Backend, HighWaterCommit, Release, SelfUpdate, State, TARGET,
+    archive_path, open_feed, os_supports, os_too_old_message, os_unknown_message, os_version_parts,
+    parse_feed, parse_utc, verify_signature, Backend, HighWaterCommit, Release, SelfUpdate, State, TARGET,
 };
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -107,7 +107,10 @@ fn setup(current: &str, feed: Option<&str>) -> (Arc<SelfUpdate>, Arc<Fake>) {
     *f.feed.lock().unwrap() = feed.map(signed);
     *f.archive.lock().unwrap() = fixture("artifact.tar.gz");
     (
-        SelfUpdate::new(current, Some(key()), f.clone()).with_clock(today),
+        // A supported Mac unless a test says otherwise; the real `sw_vers` read fails closed off macOS.
+        SelfUpdate::new(current, Some(key()), f.clone())
+            .with_clock(today)
+            .with_os_version(|| Some("15.1".into())),
         f,
     )
 }
@@ -231,7 +234,9 @@ async fn a_release_from_a_feed_that_expired_since_is_not_downloaded() {
     *f.archive.lock().unwrap() = fixture("artifact.tar.gz");
     let now = Arc::new(Mutex::new(today()));
     let n2 = now.clone();
-    let u = SelfUpdate::new("0.2.0", Some(key()), f.clone()).with_clock(move || *n2.lock().unwrap());
+    let u = SelfUpdate::new("0.2.0", Some(key()), f.clone())
+        .with_clock(move || *n2.lock().unwrap())
+        .with_os_version(|| Some("15.1".into()));
     assert!(matches!(u.check(false).await, State::Available(_)));
     *now.lock().unwrap() = parse_utc("2026-11-16T00:00:00Z").unwrap();
     assert!(matches!(u.download().await, State::Failed { ref message, .. } if message.contains("expired")));
@@ -326,6 +331,7 @@ async fn the_download_channel_answers_at_once_and_the_events_follow() {
     *f.archive.lock().unwrap() = fixture("artifact.tar.gz");
     let u = SelfUpdate::new("0.2.0", Some(key()), f.clone())
         .with_clock(today)
+        .with_os_version(|| Some("15.1".into()))
         .with_events(events);
     assert_eq!(u.call("app-update:check").await.unwrap()["state"], "available");
     assert_eq!(
@@ -427,8 +433,8 @@ fn macos_versions_compare_numerically() {
     );
     assert!(!os_supports("15.0", Some("14.7.1")));
     assert!(
-        os_supports("15.0", None),
-        "unknown running OS: offered (the bundle's own floor still holds)"
+        !os_supports("15.0", None),
+        "unknown running OS: refused (fail closed)"
     );
     assert!(os_too_old_message("0.5.0", "15.0", "14.7").contains("needs macOS 15.0 or later"));
 }
@@ -484,4 +490,35 @@ async fn an_update_for_a_newer_macos_is_skipped_with_a_message() {
     let u = u.with_os_version(|| Some("14.7.1".into()));
     assert!(matches!(u.check(false).await, State::Failed { .. }));
     assert!(f.installed.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_unreadable_macos_refuses_an_update_with_a_minimum() {
+    let (u, f) = setup("0.2.0", Some("0.3.0"));
+    let u = u.with_os_version(|| None);
+    match u.check(false).await {
+        State::Failed { message, release } => {
+            assert_eq!(message, os_unknown_message("0.3.0", "15.0"));
+            assert!(message.contains("couldn't read this Mac's macOS version"));
+            assert!(release.is_none());
+        }
+        s => panic!("{s:?}"),
+    }
+    assert!(!matches!(u.download().await, State::Ready(_)));
+    assert!(f.installed.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn fetch_and_install_refuses_a_too_old_macos_on_its_own() {
+    let r = parse_feed(&open_feed(&signed("0.3.0-macos99"), &key()).unwrap(), HOST).unwrap();
+    for os in [Some("15.1"), None] {
+        let (u, f) = setup("0.2.0", Some("0.3.0-macos99"));
+        let u = u.with_os_version(move || os.map(str::to_owned));
+        let err = u.fetch_and_install(&r, &key()).await.unwrap_err();
+        assert!(err.contains("needs macOS 99.0 or later"), "{err}");
+        assert!(
+            f.installed.lock().unwrap().is_empty(),
+            "never fetched or installed"
+        );
+    }
 }

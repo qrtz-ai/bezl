@@ -117,11 +117,17 @@ pub fn os_version_parts(v: &str) -> Option<[u32; 3]> {
 /// Whether a Mac on `running` can run a release that needs `minimum`. An unreadable running version is treated as
 /// able (the bundle's own LSMinimumSystemVersion still stops it from launching); a malformed minimum never parses
 /// (the feed is refused in [`parse_feed`]).
+/// Fails closed: a running macOS that can't be read (or an unreadable minimum) is not supported.
 pub fn os_supports(minimum: &str, running: Option<&str>) -> bool {
     match (os_version_parts(minimum), running.and_then(os_version_parts)) {
         (Some(m), Some(r)) => r >= m,
-        _ => true,
+        _ => false,
     }
+}
+
+/// The settings row's message when the release names a minimum macOS and this Mac's version can't be read.
+pub fn os_unknown_message(version: &str, minimum: &str) -> String {
+    format!("qrtz {version} needs macOS {minimum} or later, and qrtz couldn't read this Mac's macOS version, so it won't install it. update from the website instead.")
 }
 
 /// The settings row's message for a release this Mac's macOS is too old for.
@@ -607,15 +613,10 @@ impl SelfUpdate {
         let Some(min) = r.minimum_system_version.as_deref() else {
             return Ok(());
         };
-        let running = (self.os_version)();
-        if os_supports(min, running.as_deref()) {
-            Ok(())
-        } else {
-            Err(os_too_old_message(
-                &r.version,
-                min,
-                running.as_deref().unwrap_or("?"),
-            ))
+        match (self.os_version)() {
+            None => Err(os_unknown_message(&r.version, min)),
+            Some(running) if os_supports(min, Some(&running)) => Ok(()),
+            Some(running) => Err(os_too_old_message(&r.version, min, &running)),
         }
     }
 
@@ -762,7 +763,10 @@ impl SelfUpdate {
         next
     }
 
-    async fn fetch_and_install(&self, r: &Release, key: &str) -> Result<(), String> {
+    /// The download-and-install step. Public so a test can show it re-checks the macOS floor on its own, whatever
+    /// `check` said.
+    #[doc(hidden)]
+    pub async fn fetch_and_install(&self, r: &Release, key: &str) -> Result<(), String> {
         // Never a downgrade or a re-install, whatever state led here: above this build and the high-water mark.
         let floor = self.floor();
         if !is_update(&floor, &r.version) {
