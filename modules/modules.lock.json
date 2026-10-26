@@ -28,9 +28,13 @@
         {
           "id": "model:parakeet-tdt-v2",
           "version": "1.0.0"
+        },
+        {
+          "id": "model:phonon25-en",
+          "version": "1.0.0"
         }
       ],
-      "manifestSha256": "7e35ff85635e3ea040a1aa017c35e72dbd7f9e5844a04d4f94984b5ed44590dd",
+      "manifestSha256": "a1bb024da36a0e6e0be30d028d735652f8a76058cf918c1029de1a0986fbb55c",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.1"
@@ -111,6 +115,14 @@
         "kind": "data",
         "path": "models/parakeet-tdt-v2",
         "sha256": "08834dd5e130c78b57f68d9c52265036ba3cf9c3ebe2cd092f4d0322bcd77730",
+        "teamId": "MR26CCZ496"
+      }
+    },
+    "model:phonon25-en": {
+      "1.0.0": {
+        "kind": "data",
+        "path": "models/phonon25-en",
+        "sha256": "3ee65d09e601a41bfa2dedbdd0576ef6e49732e43ebef12477f9216f112e90d5",
         "teamId": "MR26CCZ496"
       }
     }

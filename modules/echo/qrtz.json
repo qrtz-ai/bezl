@@ -4,7 +4,8 @@
   "kind": "extension",
   "description": "Dictation: hold fn, speak, release; the text is typed where your cursor is.",
   "dependencies": {
-    "model.parakeet-tdt-v2-en": "^1.0.0"
+    "model.parakeet-tdt-v2-en": "^1.0.0",
+    "model.phonon-2.5-en": "^1.0.0"
   },
   "extension": {
     "entry": "bin/qrtz-echo",
@@ -23,7 +24,10 @@
       "module.settings"
     ],
     "permissions": ["microphone", "accessibility"],
-    "settings": { "namespace": "echo", "legacySections": ["talk"] },
-    "reads": ["model.parakeet-tdt-v2-en"]
+    "settings": {
+      "namespace": "echo",
+      "legacySections": ["talk"]
+    },
+    "reads": ["model.parakeet-tdt-v2-en", "model.phonon-2.5-en"]
   }
 }

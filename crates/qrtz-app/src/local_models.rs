@@ -96,6 +96,9 @@ pub fn sets_needed_by(ext: &str) -> Vec<String> {
         .iter()
         .filter(|m| m.id == ext)
         .flat_map(|m| &m.dependencies)
+        // QRT-367: an optional model (ctrl's Laya, echo's experimental Phonon) is never part of the required set;
+        // it is fetched only from its own setting.
+        .filter(|d| !d.optional)
         .filter_map(|d| d.id.strip_prefix("model:"))
         .map(str::to_owned)
         .collect()
@@ -126,10 +129,13 @@ pub fn pinned_users(package: &str) -> Vec<String> {
     static SETS: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
     let sets = SETS.get_or_init(|| {
         let ctrl = crate::ctrl_model::CtrlManifest::pinned().manifest;
+        let phonon: Manifest =
+            serde_json::from_str(crate::echo_phonon_model::MANIFEST).expect("echo_phonon_model.json");
         Manifest::pinned()
             .sets
             .into_iter()
             .chain(ctrl.sets)
+            .chain(phonon.sets)
             .map(|s| (s.package, s.dir))
             .collect()
     });
@@ -900,6 +906,7 @@ mod tests {
             assert_eq!(pinned_users(m), ["nano"], "{m}");
         }
         assert_eq!(pinned_users("model.laya"), ["ctrl"]);
+        assert_eq!(pinned_users("model.phonon-2.5-en"), ["echo"]);
         assert!(pinned_users("model.nobody").is_empty());
         // Every pinned set is some module's.
         for s in Manifest::pinned().sets {

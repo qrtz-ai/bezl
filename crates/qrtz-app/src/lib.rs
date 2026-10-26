@@ -17,6 +17,7 @@ pub mod dash_port;
 pub mod dev_local;
 pub mod diagnostics;
 pub mod dirs;
+pub mod echo_phonon_model;
 pub mod echo_updates;
 pub mod installed;
 #[cfg(feature = "runtime")]

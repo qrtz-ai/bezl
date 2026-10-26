@@ -40,6 +40,14 @@
       "version": "1.0.0",
       "sha256": "08834dd5e130c78b57f68d9c52265036ba3cf9c3ebe2cd092f4d0322bcd77730",
       "teamId": "MR26CCZ496"
+    },
+    {
+      "id": "model:phonon25-en",
+      "kind": "data",
+      "version": "1.0.0",
+      "sha256": "3ee65d09e601a41bfa2dedbdd0576ef6e49732e43ebef12477f9216f112e90d5",
+      "teamId": "MR26CCZ496",
+      "optional": true
     }
   ]
 }
