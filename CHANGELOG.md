@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.3 (2026-10-26)
+
 - Feature: an update that needs a newer macOS than yours is no longer offered; settings says why.
 
 ## 0.4.2 (2026-10-25)
