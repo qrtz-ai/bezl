@@ -33,7 +33,10 @@ static NL_SPACES: LazyLock<Regex> = LazyLock::new(|| re(r" *\n *"));
 static SPACE_BEFORE_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"\s+([,.!?;:])"));
 // ADR 0101 (N160): only a comma or semicolon gets a space after it. A dot, colon, "!" or "?" with no space after it
 // is part of a token the recogniser wrote that way ("qrtz.ai", "config.json", "p.m.", "...", "https://").
-static SPACE_AFTER_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r#"([,;])(?=[^\s0-9"')\]])"#));
+// ADR 0238 (N205): also skip a curly closing quote (U+201D / U+2019), same as ASCII " and '. A curly opening quote
+// still gets the space ("He said,“hi”" -> "He said, “hi”").
+static SPACE_AFTER_PUNCT: LazyLock<Regex> =
+    LazyLock::new(|| re(r#"([,;])(?=[^\s0-9"')\]\x{2019}\x{201D}])"#));
 static COMMAS: LazyLock<Regex> = LazyLock::new(|| re(r",+"));
 static EDGES: LazyLock<Regex> = LazyLock::new(|| re(r"^[\s,]+|[\s,]+$"));
 static ENDS_WORD: LazyLock<Regex> = LazyLock::new(|| re(r"[\p{L}\p{N}]$"));

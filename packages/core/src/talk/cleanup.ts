@@ -2072,7 +2072,8 @@ export function ruleCleanup(
   t = t
     .replace(/\s+([,.!?;:])/g, '$1')
     // ADR 0101 (N160): only "," and ";" get a space after them ("qrtz.ai", "p.m.", "https://" stay as written).
-    .replace(/([,;])(?=[^\s\d"')\]])/g, '$1 ');
+    // ADR 0238 (N205): also skip curly closing quotes (U+201D / U+2019), same as ASCII " and '.
+    .replace(/([,;])(?=[^\s\d"')\]\u2019\u201D])/g, '$1 ');
   t = t.replace(/,+/g, ',').replace(/^[\s,]+|[\s,]+$/g, '');
   // Only for a recogniser that writes capitals: an all-lowercase text's "so. i can" is its own sentence end.
   if (/[A-Z]/.test(raw))

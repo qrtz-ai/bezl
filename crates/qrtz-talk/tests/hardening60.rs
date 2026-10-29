@@ -61,7 +61,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
             c59::rule_cleanup(&without_filler_marks(&with_layout(raw)), dict),
             c59::rule_cleanup(&without_filler_marks(raw), dict),
         ]
-        .map(|c| without_comma_runs(&c, dict));
+        .map(|c| without_space_before_curly_close(&without_comma_runs(&c, dict)));
         candidates
             .iter()
             .find(|c| **c == new)
@@ -88,7 +88,10 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0234 (cycle 82): a spoken title may be written as its abbreviation ("Mister Smith" -> "Mr. Smith").
     // ADR 0236 (cycle 84): a run of commas between a word and a word types as one comma (taken first here so the
     // title edit below sees the same words).
+    // ADR 0238 (cycle 85): no space before a curly closing quote after "," / ";".
     let old = without_comma_runs(&old, dict);
+    // ADR 0238 (cycle 85): drop the space cycle 59 put before a curly closing quote.
+    let old = without_space_before_curly_close(&old);
     let old = with_titles_from(&old, &new);
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
@@ -300,6 +303,15 @@ fn without_comma_runs(old: &str, dict: &[DictionaryEntry]) -> String {
         }
         out = next;
     }
+}
+
+/// ADR 0238's one allowed edit (written independently of cleanup.rs): a space before a curly closing
+/// quote after "," / ";" is dropped. Cycle 59's SPACE_AFTER_PUNCT inserted that space; ASCII quotes were already skipped.
+fn without_space_before_curly_close(old: &str) -> String {
+    old.replace(", \u{201D}", ",\u{201D}")
+        .replace("; \u{201D}", ";\u{201D}")
+        .replace(", \u{2019}", ",\u{2019}")
+        .replace("; \u{2019}", ";\u{2019}")
 }
 
 /// ADR 0234's one allowed edit (written independently of cleanup.rs): where `new` has "Mr." / "Mrs." in the place of

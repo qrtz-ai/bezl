@@ -1235,6 +1235,72 @@
       "category": "comma-run",
       "raw": "We met at the café,, then walked home",
       "ideal": "We met at the café, then walked home."
+    },
+    {
+      "id": "p202",
+      "category": "curly-close-comma",
+      "raw": "The plan was “ship it Friday,” then cut the release",
+      "ideal": "The plan was “ship it Friday,” then cut the release."
+    },
+    {
+      "id": "p203",
+      "category": "curly-close-comma",
+      "raw": "She said “I’m ready,” and left",
+      "ideal": "She said “I’m ready,” and left."
+    },
+    {
+      "id": "p204",
+      "category": "curly-close-comma",
+      "raw": "Call it ‘done,’ then move on",
+      "ideal": "Call it ‘done,’ then move on."
+    },
+    {
+      "id": "p205",
+      "category": "curly-close-comma",
+      "raw": "We marked it “blocked,” so nobody starts it",
+      "ideal": "We marked it “blocked,” so nobody starts it."
+    },
+    {
+      "id": "p206",
+      "category": "curly-close-comma",
+      "raw": "His note ended “thanks,”",
+      "ideal": "His note ended “thanks,”"
+    },
+    {
+      "id": "p207",
+      "category": "curly-close-comma",
+      "raw": "Pick “A,” “B,” or “C”",
+      "ideal": "Pick “A,” “B,” or “C”"
+    },
+    {
+      "id": "p208",
+      "category": "curly-close-comma",
+      "raw": "The label read “fragile,” on every box",
+      "ideal": "The label read “fragile,” on every box."
+    },
+    {
+      "id": "p209",
+      "category": "curly-close-comma",
+      "raw": "Write “urgent,” in the subject",
+      "ideal": "Write “urgent,” in the subject."
+    },
+    {
+      "id": "p210",
+      "category": "curly-close-comma",
+      "raw": "Tag it “v1,” and publish",
+      "ideal": "Tag it “v1,” and publish."
+    },
+    {
+      "id": "p211",
+      "category": "curly-close-comma",
+      "raw": "Use “ok,”; then restart",
+      "ideal": "Use “ok,”; then restart."
+    },
+    {
+      "id": "p212",
+      "category": "curly-close-comma",
+      "raw": "I told Priya “ship tonight,” before the freeze",
+      "ideal": "I told Priya “ship tonight,” before the freeze."
     }
   ],
   "keep": [
@@ -4109,6 +4175,91 @@
       "rule": "comma-run",
       "raw": "Version 2.0, 2.1, and 2.2 are out.",
       "expect": "Version 2.0, 2.1, and 2.2 are out."
+    },
+    {
+      "id": "k475",
+      "rule": "curly-close-comma",
+      "raw": "The plan was \"ship it Friday,\" then cut the release.",
+      "expect": "The plan was \"ship it Friday,\" then cut the release."
+    },
+    {
+      "id": "k476",
+      "rule": "curly-close-comma",
+      "raw": "Call it 'done,' then move on.",
+      "expect": "Call it 'done,' then move on."
+    },
+    {
+      "id": "k477",
+      "rule": "curly-close-comma",
+      "raw": "He said,“hello”",
+      "expect": "He said, “hello”"
+    },
+    {
+      "id": "k478",
+      "rule": "curly-close-comma",
+      "raw": "She whispered,‘wait’",
+      "expect": "She whispered, ‘wait’"
+    },
+    {
+      "id": "k479",
+      "rule": "curly-close-comma",
+      "raw": "Well, well, well, look who it is.",
+      "expect": "Well, well, well, look who it is."
+    },
+    {
+      "id": "k480",
+      "rule": "curly-close-comma",
+      "raw": "Over 1,000 people signed up.",
+      "expect": "Over 1,000 people signed up."
+    },
+    {
+      "id": "k481",
+      "rule": "curly-close-comma",
+      "raw": "It’s a nice day, isn’t it",
+      "expect": "It’s a nice day, isn’t it?"
+    },
+    {
+      "id": "k482",
+      "rule": "curly-close-comma",
+      "raw": "Let’s call it a day, shall we",
+      "expect": "Let’s call it a day, shall we?"
+    },
+    {
+      "id": "k483",
+      "rule": "curly-close-comma",
+      "raw": "See (a,) then (b)",
+      "expect": "See (a,) then (b)"
+    },
+    {
+      "id": "k484",
+      "rule": "curly-close-comma",
+      "raw": "See [a,] then [b]",
+      "expect": "See [a,] then [b]"
+    },
+    {
+      "id": "k485",
+      "rule": "curly-close-comma",
+      "raw": "Hey Priya, thanks for the update",
+      "expect": "Hey Priya, thanks for the update.",
+      "dict": true
+    },
+    {
+      "id": "k486",
+      "rule": "curly-close-comma",
+      "raw": "Dit-il,»oui«",
+      "expect": "Dit-il, »oui«"
+    },
+    {
+      "id": "k487",
+      "rule": "curly-close-comma",
+      "raw": "Version 2.0, 2.1, and 2.2 are out.",
+      "expect": "Version 2.0, 2.1, and 2.2 are out."
+    },
+    {
+      "id": "k488",
+      "rule": "curly-close-comma",
+      "raw": "The total came to 1,000 dollars.",
+      "expect": "The total came to 1,000 dollars."
     }
   ]
 }

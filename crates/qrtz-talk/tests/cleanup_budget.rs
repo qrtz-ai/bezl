@@ -199,4 +199,27 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         "{out}"
     );
     assert_fits_budget(&text, " with comma runs");
+    // ADR 0238: many ",\u{201D}" pairs so SPACE_AFTER_PUNCT sees a curly close after each comma; no ", ”" left.
+    let mut body = String::new();
+    for (i, part) in long_dictation().split(". ").enumerate() {
+        if i > 0 {
+            body.push_str(". ");
+        }
+        body.push_str(part);
+        if part.starts_with(|c: char| c.is_ascii_uppercase()) {
+            body.push_str(" \u{201C}ok,\u{201D}");
+        }
+    }
+    let text = format!("{body} Thanks. The plan was \u{201C}ship it Friday,\u{201D} then cut the release");
+    let out = cleanup_dictation(&text, &dictionary(), true).text;
+    assert!(text.matches(",\u{201D}").count() > 10);
+    assert!(
+        !out.contains(", \u{201D}") && !out.contains(", \u{2019}"),
+        "{out}"
+    );
+    assert!(out.ends_with(
+        "The plan was \u{201C}ship it Friday,\u{201D} then cut the release."
+    ));
+    assert_fits_budget(&text, " with curly closing quotes after commas");
 }
+

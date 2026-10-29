@@ -4856,6 +4856,67 @@
       "raw": "Ship it Friday,,, but only if QA passes",
       "dict": true,
       "expect": "Ship it Friday, but only if QA passes."
+    },
+    {
+      "raw": "The plan was “ship it Friday,” then cut the release",
+      "expect": "The plan was “ship it Friday,” then cut the release."
+    },
+    {
+      "raw": "She said “I’m ready,” and left",
+      "expect": "She said “I’m ready,” and left."
+    },
+    {
+      "raw": "Call it ‘done,’ then move on",
+      "expect": "Call it ‘done,’ then move on."
+    },
+    {
+      "raw": "We marked it “blocked,” so nobody starts it",
+      "expect": "We marked it “blocked,” so nobody starts it."
+    },
+    {
+      "raw": "His note ended “thanks,”",
+      "expect": "His note ended “thanks,”"
+    },
+    {
+      "raw": "Pick “A,” “B,” or “C”",
+      "expect": "Pick “A,” “B,” or “C”"
+    },
+    {
+      "raw": "The label read “fragile,” on every box",
+      "expect": "The label read “fragile,” on every box."
+    },
+    {
+      "raw": "Write “urgent,” in the subject",
+      "expect": "Write “urgent,” in the subject."
+    },
+    {
+      "raw": "Tag it “v1,” and publish",
+      "expect": "Tag it “v1,” and publish."
+    },
+    {
+      "raw": "Use “ok,”; then restart",
+      "expect": "Use “ok,”; then restart."
+    },
+    {
+      "raw": "I told Priya “ship tonight,” before the freeze",
+      "dict": true,
+      "expect": "I told Priya “ship tonight,” before the freeze."
+    },
+    {
+      "raw": "The plan was \"ship it Friday,\" then cut the release",
+      "expect": "The plan was \"ship it Friday,\" then cut the release."
+    },
+    {
+      "raw": "He said,“hello”",
+      "expect": "He said, “hello”"
+    },
+    {
+      "raw": "She whispered,‘wait’",
+      "expect": "She whispered, ‘wait’"
+    },
+    {
+      "raw": "Dit-il,»oui«",
+      "expect": "Dit-il, »oui«"
     }
   ],
   "dictionaryOnly": [
