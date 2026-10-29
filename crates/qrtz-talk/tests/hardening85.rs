@@ -104,9 +104,9 @@ fn curly_close_after_comma_refusals() {
             "He said, \u{201C}hello\u{201D}",
         ),
         (
-            "She whispered,\u{2018}wait\u{2019}",
+            "She murmured,\u{2018}wait\u{2019}",
             false,
-            "She whispered, \u{2018}wait\u{2019}",
+            "She murmured, \u{2018}wait\u{2019}",
         ),
         // Already has a space before the close: leave it (rare; dictionary / paste).
         (
