@@ -2583,3 +2583,51 @@ ADR 0101 keeps bare of a final mark ("qrtz.ai " in a name field). N199 is closed
 findings (N197, N203, N205) and the next steps in section 55 are unchanged. Don't reopen this from the box alone;
 only a real dictation where the space breaks something (a secure field, a PIN box) would bring it back, as part of
 P6's helper-side insert work.
+
+## 57. Cycle 85: no space before a curly closing quote after a comma (ADR 0238, `96f55a88`)
+
+Polish first. N205 (section 55): `SPACE_AFTER_PUNCT` already skipped ASCII `"` / `'` / `)` / `]` after `,` / `;`, but not
+the curly closes U+201D / U+2019, so a dictionary term or pasted text like `"plan A," then` typed `"plan A, " then`.
+Now those two closes are skipped the same way. A curly *opening* quote still gets the space (`He said,“hi”` →
+`He said, “hi”`). Guillemets and other scripts are unchanged.
+
+| Run                                     | Exact     | Edit distance             | Regressions | Keep set (hits / n) |
+| --------------------------------------- | --------- | ------------------------- | ----------- | ------------------- |
+| old cleanup (`2c35df7f`), the 201 cases | 197 / 201 | 58 chars (0.79 % of 7307) | 0           | 0 / 473             |
+| this cycle, the 201 cases               | 197 / 201 | 58 chars (no case changes)| 0           | 0 / 473             |
+| old cleanup, 212 cases (+11 curly)      | 197 / 212 | 74 chars                  | -           | 0 / 487             |
+| this cycle, 212 cases                   | 208 / 212 | 58 chars (0.75 % of 7692) | 0           | 0 / 487             |
+
+- **Examples:** `The plan was “ship it Friday,” then cut the release` stays with the comma tight against `”` (was
+  `Friday, ” then`); `Call it ‘done,’ then move on` keeps `,’`; `Pick “A,” “B,” or “C”` keeps every close tight.
+  Kept: ASCII `"plan A,"` / `'done,'`, `He said,“hello”` → `He said, “hello”` (open still spaced), `1,000`,
+  contractions with curly apostrophes after a normal comma, `(a,)` / `[a,]`, guillemets (`Dit-il,»oui«` still
+  gets a space before `»`).
+- **False-positive evidence:** 14 keep vectors against 11 positives, 13 refusals in tests/hardening85.rs. Intentional
+  `, ”` (space already in the input) is covered only in the hardening unit test, not the shared polish keep set, so
+  the cycle-59 oracle's one allowed edit (strip a space before a curly close) cannot invent a false difference.
+- **Rejected this cycle** (details below): skipping curly *opening* quotes (would leave `He said,“hi”` tight);
+  skipping `»` / `›` without evidence; a dictionary exception on SPACE_AFTER_PUNCT (the ASCII path has none);
+  landing p15 / p19 / p20 / p41 (still blocked as in section 55).
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box: twelve texts, all medians 0.115-0.141 ms (curly-close text
+  0.134 ms); ceiling 2 ms. The character class gains two code points; no extra pass. Capture, segmenting, the
+  decode schedule, Parakeet's settings, the drain / final pass, insert and the timing log are unchanged.
+- **Dictation path review since `1d1b362a` / cycle 84:** origin/main moved only by non-talk work (updater macOS
+  skip, bezl revert, bundle helpers). N205 **fixed**; N197 (Mac device-switch gap), N203 stay open.
+- **Nano quick check:** skipped this cycle if vitest node_modules are not on the box; no Note code changed.
+
+Next: p15 after the Mac check; N203 if real dictations show it; then P7 (idle memory / CPU on the Mac first) or P6's
+remaining helper side. P5's p50 / p95 budget still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 85)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `96f55a88`), then `scripts/dev/dev-local.sh` as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening85 --test polish_set -- --nocapture`:
+   twelve budget medians well under 0.5 ms (box 0.11-0.14 ms), "polish set: 208/212 exact", regressions 0, all pass.
+3. If a dictionary term or paste puts curly quotes around a clause that ends with a comma (`“ship it Friday,” then`),
+   the comma stays tight against the closing quote — never `Friday, ” then`.
+4. Unchanged: `He said, “hello”` still gets the space before the *opening* quote; `1,000` and ASCII `"done,"` stay.
+5. If anything reads worse, `git revert 96f55a88` (talk-only) and tell Echo the dictation.
+
