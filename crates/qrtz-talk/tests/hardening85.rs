@@ -146,11 +146,7 @@ fn curly_close_after_comma_refusals() {
             "Hey Priya, thanks for the update.",
         ),
         // Guillemets and other scripts: not in scope; space still goes in before ».
-        (
-            "Dit-il,\u{00BB}oui\u{00AB}",
-            false,
-            "Dit-il, \u{00BB}oui\u{00AB}",
-        ),
+        ("Dit-il,\u{00BB}oui\u{00AB}", false, "Dit-il, \u{00BB}oui\u{00AB}"),
     ] {
         let d: &[DictionaryEntry] = if dict { &priya } else { &[] };
         assert_eq!(rule_cleanup(raw, d), want, "raw={raw:?}");

@@ -78,7 +78,11 @@ describe('ADR 0238 curly close after comma refusals', () => {
     ],
     ["Call it 'done,' then move on", false, "Call it 'done,' then move on."],
     ['He said,\u201Chello\u201D', false, 'He said, \u201Chello\u201D'],
-    ['She whispered,\u2018wait\u2019', false, 'She whispered, \u2018wait\u2019'],
+    [
+      'She whispered,\u2018wait\u2019',
+      false,
+      'She whispered, \u2018wait\u2019',
+    ],
     [
       'Odd form \u201Cplan A, \u201D then',
       false,

@@ -217,9 +217,6 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         !out.contains(", \u{201D}") && !out.contains(", \u{2019}"),
         "{out}"
     );
-    assert!(out.ends_with(
-        "The plan was \u{201C}ship it Friday,\u{201D} then cut the release."
-    ));
+    assert!(out.ends_with("The plan was \u{201C}ship it Friday,\u{201D} then cut the release."));
     assert_fits_budget(&text, " with curly closing quotes after commas");
 }
-
