@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.4 (2026-10-29)
+
+- Fix: echo no longer puts a space between a comma and a curly closing quote, so “ship it Friday,” stays tight.
+
 ## 0.4.3 (2026-10-26)
 
 - Feature: an update that needs a newer macOS than yours is no longer offered; settings says why.
